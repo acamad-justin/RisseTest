@@ -1,0 +1,90 @@
+/* =========================================
+   Layout & Utility Classes
+   ========================================= */
+
+/* Container */
+.container {
+  width: 100%;
+  max-width: var(--container-xl);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+
+@media (min-width: 640px)  { .container { padding-inline: var(--space-6); } }
+@media (min-width: 1024px) { .container { padding-inline: var(--space-8); } }
+
+/* Flex helpers */
+.flex         { display: flex; }
+.inline-flex  { display: inline-flex; }
+.flex-col     { flex-direction: column; }
+.flex-wrap    { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start  { align-items: flex-start; }
+.items-end    { align-items: flex-end; }
+.justify-center  { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.justify-end     { justify-content: flex-end; }
+.gap-1  { gap: var(--space-1); }
+.gap-2  { gap: var(--space-2); }
+.gap-3  { gap: var(--space-3); }
+.gap-4  { gap: var(--space-4); }
+.gap-6  { gap: var(--space-6); }
+.gap-8  { gap: var(--space-8); }
+
+/* Grid helpers */
+.grid { display: grid; }
+
+/* Visibility */
+.hidden        { display: none; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Spacing helpers */
+.mt-auto { margin-top: auto; }
+.mb-auto { margin-bottom: auto; }
+.ml-auto { margin-left: auto; }
+.mr-auto { margin-right: auto; }
+.mx-auto { margin-inline: auto; }
+
+/* Width */
+.w-full  { width: 100%; }
+.h-full  { height: 100%; }
+.min-h-screen { min-height: 100vh; }
+
+/* Overflow */
+.overflow-hidden { overflow: hidden; }
+.overflow-auto   { overflow: auto; }
+
+/* Position */
+.relative { position: relative; }
+.absolute { position: absolute; }
+.fixed    { position: fixed; }
+.sticky   { position: sticky; }
+
+/* Cursor */
+.cursor-pointer { cursor: pointer; }
+.cursor-default { cursor: default; }
+
+/* Border */
+.rounded-sm   { border-radius: var(--radius-sm); }
+.rounded      { border-radius: var(--radius-base); }
+.rounded-md   { border-radius: var(--radius-md); }
+.rounded-lg   { border-radius: var(--radius-lg); }
+.rounded-xl   { border-radius: var(--radius-xl); }
+.rounded-2xl  { border-radius: var(--radius-2xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* Shadow */
+.shadow-sm   { box-shadow: var(--shadow-sm); }
+.shadow      { box-shadow: var(--shadow-base); }
+.shadow-md   { box-shadow: var(--shadow-md); }
+.shadow-lg   { box-shadow: var(--shadow-lg); }
