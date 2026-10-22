@@ -279,7 +279,7 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  background: #fafafa;
+  background: #ffffff;
   transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 

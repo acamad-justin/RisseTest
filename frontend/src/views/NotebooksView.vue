@@ -26,7 +26,7 @@ const store  = useNotebooksStore()
 const router = useRouter()
 
 // ── Page sizes ────────────────────────────────────────────────────────────
-const LOGS_PER_PAGE = 4
+const LOGS_PER_PAGE = 5
 const PROJ_PER_PAGE = 6
 
 // ── Search ────────────────────────────────────────────────────────────────

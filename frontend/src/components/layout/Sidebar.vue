@@ -16,6 +16,13 @@ import {
   PanelLeft,
 } from '@lucide/vue'
 
+// ── Props ───────────────────────────────────────────────────────
+// `light` switches the sidebar to a white surface (used on pages that
+// present a fully white background instead of the cosmic one).
+defineProps({
+  light: { type: Boolean, default: false },
+})
+
 // ── Collapse state ──────────────────────────────────────────────
 const isCollapsed = ref(false)
 
@@ -47,7 +54,7 @@ function handleToggle() {
 <template>
   <aside
     class="sidebar"
-    :class="{ 'sidebar--collapsed': isCollapsed }"
+    :class="{ 'sidebar--collapsed': isCollapsed, 'sidebar--light': light }"
     :aria-label="isCollapsed ? 'Navigation sidebar (collapsed)' : 'Navigation sidebar'"
   >
     <!-- ── Header ── -->
@@ -99,6 +106,18 @@ function handleToggle() {
 <style scoped>
 /* ─── Sidebar shell ──────────────────────────────────────────── */
 .sidebar {
+  /* Theme tokens — overridden by .sidebar--light for white pages */
+  --sb-bg:            var(--risse-orange);
+  --sb-text:          rgba(255, 255, 255, 0.88);
+  --sb-text-muted:    rgba(255, 255, 255, 0.85);
+  --sb-text-strong:   #fff;
+  --sb-hover-bg:      var(--risse-orange-hover);
+  --sb-hover-text:    #fff;
+  --sb-active-bg:     var(--risse-orange-active);
+  --sb-active-text:   #fff;
+  --sb-outline:       rgba(255, 255, 255, 0.5);
+  --sb-outline-focus: rgba(255, 255, 255, 0.6);
+
   position: fixed;
   top: var(--sidebar-margin);
   left: var(--sidebar-margin);
@@ -109,7 +128,7 @@ function handleToggle() {
   display: flex;
   flex-direction: column;
 
-  background-color: var(--risse-orange);
+  background-color: var(--sb-bg);
   border-radius: var(--sidebar-radius);
   box-sizing: border-box;
   overflow: hidden;
@@ -119,6 +138,20 @@ function handleToggle() {
 
 .sidebar--collapsed {
   width: var(--sidebar-collapsed-width);
+}
+
+/* ─── Light (white) variant — used on pages with a white surface ─── */
+.sidebar--light {
+  --sb-bg:            #ffffff;
+  --sb-text:          #4a4a6a;
+  --sb-text-muted:    #4a4a6a;
+  --sb-text-strong:   #1a1a2e;
+  --sb-hover-bg:      #f0eff8;
+  --sb-hover-text:    #1a1a2e;
+  --sb-outline:       #d0cff0;
+  --sb-outline-focus: #d0cff0;
+  /* Active item keeps the orange brand pill on white */
+  border: 1px solid #ececf2;
 }
 
 /* ─── Header ────────────────────────────────────────────────── */
@@ -133,7 +166,7 @@ function handleToggle() {
 }
 
 .sidebar__logo {
-  color: #fff;
+  color: var(--sb-text-strong);
   font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -157,7 +190,7 @@ function handleToggle() {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--sb-text-muted);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -166,9 +199,9 @@ function handleToggle() {
 
 .sidebar__toggle:hover,
 .sidebar__toggle:focus-visible {
-  background-color: var(--risse-orange-hover);
-  color: #fff;
-  outline: 2px solid rgba(255, 255, 255, 0.5);
+  background-color: var(--sb-hover-bg);
+  color: var(--sb-text-strong);
+  outline: 2px solid var(--sb-outline);
   outline-offset: 1px;
 }
 
@@ -190,7 +223,7 @@ function handleToggle() {
   padding: 0 12px;
   border-radius: 12px;
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--sb-text);
   transition: background-color 150ms ease, color 150ms ease;
   white-space: nowrap;
   overflow: hidden;
@@ -198,22 +231,23 @@ function handleToggle() {
 }
 
 .sidebar__nav-item:hover {
-  background-color: var(--risse-orange-hover);
-  color: #fff;
+  background-color: var(--sb-hover-bg);
+  color: var(--sb-hover-text);
 }
 
 .sidebar__nav-item:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline: 2px solid var(--sb-outline-focus);
   outline-offset: 1px;
 }
 
 .sidebar__nav-item--active {
-  background-color: var(--risse-orange-active);
-  color: #fff;
+  background-color: var(--sb-active-bg);
+  color: var(--sb-active-text);
 }
 
 .sidebar__nav-item--active:hover {
-  background-color: var(--risse-orange-active);
+  background-color: var(--sb-active-bg);
+  color: var(--sb-active-text);
 }
 
 .sidebar__nav-icon {
@@ -265,15 +299,15 @@ function handleToggle() {
   background: transparent;
   border: none;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--sb-text-muted);
   transition: background-color 150ms ease, color 150ms ease;
 }
 
 .sidebar__settings-btn:hover,
 .sidebar__settings-btn:focus-visible {
-  background-color: var(--risse-orange-hover);
-  color: #fff;
-  outline: 2px solid rgba(255, 255, 255, 0.5);
+  background-color: var(--sb-hover-bg);
+  color: var(--sb-text-strong);
+  outline: 2px solid var(--sb-outline);
   outline-offset: 1px;
 }
 

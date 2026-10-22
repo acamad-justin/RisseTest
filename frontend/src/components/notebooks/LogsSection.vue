@@ -65,6 +65,7 @@ const pageNumbers = computed(() => {
         @click="$emit('page-change', page - 1)"
       >
         <ChevronLeft :size="13" aria-hidden="true" />
+        <span class="pager__label">Previous</span>
       </button>
 
       <!-- Page numbers (show up to 5, collapse the rest with …) -->
@@ -106,6 +107,7 @@ const pageNumbers = computed(() => {
         aria-label="Next page"
         @click="$emit('page-change', page + 1)"
       >
+        <span class="pager__label">Next</span>
         <ChevronRight :size="13" aria-hidden="true" />
       </button>
     </div>
@@ -149,6 +151,7 @@ const pageNumbers = computed(() => {
 .logs-section__pagination {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 3px;
   margin-top: 10px;
 }
@@ -157,14 +160,20 @@ const pageNumbers = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  gap: 4px;
   height: 26px;
+  padding: 0 8px;
   border-radius: 6px;
   border: 1px solid #e4e4f0;
   background: transparent;
   color: #6666aa;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
+}
+
+.pager__label {
+  font-size: 11.5px;
+  line-height: 1;
 }
 
 .pager__btn:disabled {

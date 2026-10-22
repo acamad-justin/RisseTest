@@ -5,9 +5,11 @@
  * Adapts its left-offset when the sidebar collapses.
  */
 import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import CosmicBackground from '@/components/layout/CosmicBackground.vue'
 
+const route = useRoute()
 const sidebarCollapsed = ref(false)
 
 function onCollapseChange(collapsed) {
@@ -20,11 +22,22 @@ const mainOffset = computed(() => {
   const w = sidebarCollapsed.value ? 64 : 160
   return `${10 + w + 10}px`
 })
+
+// Notebook-section routes present a fully white workspace surface instead of
+// the cosmic background. The cosmic background is hidden across the entire
+// Notebook experience — the overview plus every conversation / project view —
+// so no cosmic gradients or orange glow bleed in around the chat interface.
+const isNotebookSection = computed(() =>
+  ['notebooks', 'conversation', 'project', 'project-conversation'].includes(route.name)
+)
 </script>
 
 <template>
   <div class="app-layout">
-    <CosmicBackground />
+    <CosmicBackground v-if="!isNotebookSection" />
+    <!-- The sidebar keeps its orange Risse branding across every route,
+         including the Notebook section (per the spec: preserve its orange
+         background and do not remove its orange branding). -->
     <Sidebar @collapse-change="onCollapseChange" />
 
     <main
