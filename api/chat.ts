@@ -2,13 +2,15 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
-import { streamText } from 'ai';
+import { streamText, convertToModelMessages } from 'ai';
 import { SYSTEM_RULES } from '../lib/systemRules';
 
-function getCredentials() {
+export const maxDuration = 30;
+
+function resolveCredentials() {
   const googleApiKey =
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
     process.env.GEMINI_API_KEY ||
@@ -35,27 +37,39 @@ function getCredentials() {
   return { googleApiKey, supabaseUrl, supabaseKey };
 }
 
-async function processChatRequest(body: any) {
-  const { googleApiKey, supabaseUrl, supabaseKey } = getCredentials();
+async function handleChatStream(body: any) {
+  const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
 
-  const rawMessages = body?.messages || [];
-  const checkpointTitle = body?.checkpointTitle || '';
-  const moduleTitle = body?.moduleTitle || body?.parentModuleName || '';
+  if (!googleApiKey) {
+    throw new Error(
+      'Missing Google Generative AI API Key. Please verify GOOGLE_GENERATIVE_AI_API_KEY in your Vercel Project Settings.'
+    );
+  }
 
-  // Normalize messages
-  const formattedMessages = rawMessages.map((m: any) => ({
-    role: (m.role === 'ai' || m.sender === 'ai' || m.role === 'assistant') ? 'assistant' : 'user',
-    content: m.content || m.text || '',
-  }));
+  const rawMessages = body.messages || [];
+  const checkpointTitle = body.checkpointTitle || '';
+  const moduleTitle = body.moduleTitle || body.parentModuleName || '';
 
-  const lastUserMessage = formattedMessages
-    .filter((m: any) => m.role === 'user')
-    .slice(-1)[0]?.content || '';
+  const normalizedMessages = rawMessages.map((m: any, idx: number) => {
+    const textContent = m.content || m.text || '';
+    return {
+      id: m.id || `msg-${idx}-${Date.now()}`,
+      role: m.role === 'assistant' || m.role === 'ai' ? 'assistant' : 'user',
+      content: textContent,
+      parts: Array.isArray(m.parts) && m.parts.length > 0
+        ? m.parts
+        : [{ type: 'text', text: textContent }],
+    };
+  });
+
+  const modelMessages = await convertToModelMessages(normalizedMessages);
+
+  const lastUserMessage = [...normalizedMessages]
+    .reverse()
+    .find((m: any) => m.role === 'user')?.content || '';
 
   let contextText = 'No specific curriculum match found.';
-
-  // Vector retrieval if keys are present
-  if (googleApiKey && supabaseUrl && supabaseKey && lastUserMessage.trim()) {
+  if (lastUserMessage.trim() && supabaseUrl && supabaseKey) {
     try {
       const ai = new GoogleGenAI({ apiKey: googleApiKey });
       const supabase = createClient(supabaseUrl, supabaseKey);
@@ -71,49 +85,56 @@ async function processChatRequest(body: any) {
       });
 
       const queryVector = embedRes.embeddings?.[0]?.values;
-      if (queryVector) {
-        const { data: chunks, error } = await supabase.rpc('match_curriculum', {
+
+      if (queryVector && queryVector.length > 0) {
+        const { data: chunks, error: rpcError } = await supabase.rpc('match_curriculum', {
           query_embedding: queryVector,
-          match_threshold: 0.20,
-          match_count: 5,
+          match_threshold: 0.40,
+          match_count: 3,
         });
 
-        if (!error && chunks && chunks.length > 0) {
+        if (!rpcError && Array.isArray(chunks) && chunks.length > 0) {
           contextText = chunks
-            .map((c: any) => `### ${c.module_title || 'Curriculum Section'}\n${c.content}`)
+            .map((c: any) => `### ${c.module_title || 'Curriculum Reference'}\n${c.content}`)
             .join('\n\n---\n\n');
-        } else if (error) {
-          console.warn('match_curriculum warning:', error.message);
+        } else if (rpcError) {
+          console.warn('[API /api/chat] Supabase match_curriculum RPC warning:', rpcError.message);
         }
       }
-    } catch (err: any) {
-      console.warn('Vector retrieval error:', err?.message || err);
+    } catch (vectorError: any) {
+      console.warn('[API /api/chat] Vector retrieval non-fatal error:', vectorError?.message || vectorError);
     }
   }
 
-  const fullPrompt = `
+  const fullSystemPrompt = `
 ${SYSTEM_RULES}
-CURRENT MODULE: ${moduleTitle || 'Robotics Curriculum'}
-CURRENT CHECKPOINT TOPIC: ${checkpointTitle || 'Robotics Fundamentals'}
 
-=========================
-RETRIEVED CONTEXT FROM CURRICULUM:
+==================================================
+CURRENT ACTIVE LEARNING MODULE CONTEXT
+==================================================
+Active Module: ${moduleTitle || 'Robotics & Control Systems Lab'}
+Active Checkpoint: ${checkpointTitle || 'Robotics Fundamentals & Sensors'}
+
+==================================================
+RETRIEVED CONTEXT FROM CURRICULUM
+==================================================
 ${contextText}
-=========================
+==================================================
 `;
 
-  const result = streamText({
-    model: google('gemini-3.5-flash-lite'),
-    system: fullPrompt,
-    messages: formattedMessages,
+  const google = createGoogleGenerativeAI({
+    apiKey: googleApiKey,
   });
 
-  return result;
+  return streamText({
+    model: google('gemini-3.5-flash-lite'),
+    system: fullSystemPrompt,
+    messages: modelMessages,
+  });
 }
 
 // ── Vercel Node.js Serverless Function Handler (Default Export) ─────────────
 export default async function handler(req: any, res: any) {
-  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -138,27 +159,22 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const result = await processChatRequest(body || {});
+    const result = await handleChatStream(body || {});
     result.pipeTextStreamToResponse(res);
   } catch (error: any) {
-    console.error('[Vercel Chat API Error]:', error);
+    console.error('[API /api/chat Serverless Error]:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: error?.message || 'Chat generation failed' });
     }
   }
 }
 
-// ── Web Standard Request/Response Handler (Edge / Next.js / Fetch compatible) ─
+// ── Web Standard Request/Response Handler (Next.js App Router / Edge) ──────
 export async function POST(req: Request) {
   try {
-    let body: any = {};
-    try {
-      body = await req.json();
-    } catch (e) {
-      body = {};
-    }
+    const body = await req.json().catch(() => ({}));
+    const result = await handleChatStream(body);
 
-    const result = await processChatRequest(body);
     return result.toTextStreamResponse({
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -167,14 +183,17 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    console.error('[Web Chat API Error]:', error);
-    return new Response(JSON.stringify({ error: error?.message || 'Chat generation failed' }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    console.error('[API /api/chat Web Error]:', error);
+    return new Response(
+      JSON.stringify({ error: error?.message || 'Chat generation failed' }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
   }
 }
 
