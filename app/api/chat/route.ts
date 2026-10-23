@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { streamText, convertToModelMessages } from 'ai';
 import { SYSTEM_RULES } from '../../../lib/systemRules';
 
-// Extend max execution time to 30s to prevent Vercel 10s serverless timeout
+// Extend max serverless duration to 30s to prevent Vercel 10s timeout
 export const maxDuration = 30;
 
 function resolveCredentials() {
@@ -38,30 +38,138 @@ function resolveCredentials() {
   return { googleApiKey, supabaseUrl, supabaseKey };
 }
 
-export async function POST(req: Request) {
-  try {
-    const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
+// ── GET /api/chat: Live Diagnostics Endpoint ──────────────────────────────────
+export async function GET() {
+  const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
 
+  const report: any = {
+    service: 'Risse AI Chat API',
+    status: 'checking',
+    timestamp: new Date().toISOString(),
+    environment: {
+      hasGoogleKey: Boolean(googleApiKey),
+      googleKeyPreview: googleApiKey
+        ? `${googleApiKey.slice(0, 8)}... (${googleApiKey.length} chars)`
+        : 'MISSING (Set GOOGLE_GENERATIVE_AI_API_KEY on Vercel)',
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      supabaseUrlPreview: supabaseUrl || 'MISSING (Set SUPABASE_URL on Vercel)',
+      hasSupabaseKey: Boolean(supabaseKey),
+      supabaseKeyPreview: supabaseKey
+        ? `${supabaseKey.slice(0, 10)}... (${supabaseKey.length} chars)`
+        : 'MISSING (Set SUPABASE_SERVICE_ROLE_KEY on Vercel)',
+    },
+    liveTests: {},
+  };
+
+  // 1. Live Google Gemini Test
+  if (googleApiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: googleApiKey });
+      const testRes = await ai.models.generateContent({
+        model: 'gemini-3.5-flash-lite',
+        contents: 'test ping',
+      });
+      report.liveTests.gemini = {
+        status: 'SUCCESS',
+        model: 'gemini-3.5-flash-lite',
+        sampleResponse: testRes?.text?.trim()?.slice(0, 60) || 'OK',
+      };
+    } catch (geminiErr: any) {
+      report.liveTests.gemini = {
+        status: 'FAILED',
+        error: geminiErr?.message || String(geminiErr),
+        errorCode: geminiErr?.status || geminiErr?.statusCode || 'UNKNOWN',
+      };
+    }
+  } else {
+    report.liveTests.gemini = {
+      status: 'SKIPPED',
+      reason: 'GOOGLE_GENERATIVE_AI_API_KEY is not defined',
+    };
+  }
+
+  // 2. Live Supabase pgvector RPC Test
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const sb = createClient(supabaseUrl, supabaseKey);
+      const { data, error } = await sb.rpc('match_curriculum', {
+        query_embedding: Array(768).fill(0),
+        match_threshold: 0.40,
+        match_count: 1,
+      });
+
+      if (error) {
+        report.liveTests.supabase = {
+          status: 'RPC_ERROR',
+          error: error.message,
+        };
+      } else {
+        report.liveTests.supabase = {
+          status: 'SUCCESS',
+          matchesFound: Array.isArray(data) ? data.length : 0,
+        };
+      }
+    } catch (sbErr: any) {
+      report.liveTests.supabase = {
+        status: 'FAILED',
+        error: sbErr?.message || String(sbErr),
+      };
+    }
+  } else {
+    report.liveTests.supabase = {
+      status: 'SKIPPED',
+      reason: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not defined',
+    };
+  }
+
+  const allGood =
+    report.liveTests.gemini?.status === 'SUCCESS' &&
+    report.liveTests.supabase?.status === 'SUCCESS';
+
+  report.status = allGood ? 'HEALTHY' : 'DEGRADED_OR_CONFIG_ERROR';
+
+  return new Response(JSON.stringify(report, null, 2), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store, max-age=0',
+    },
+  });
+}
+
+// ── POST /api/chat: Streaming Chat Handler ────────────────────────────────────
+export async function POST(req: Request) {
+  let stage = 'credentials_check';
+  const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
+
+  try {
     if (!googleApiKey) {
-      console.error('[API /api/chat] Missing GOOGLE_GENERATIVE_AI_API_KEY environment variable.');
       return new Response(
         JSON.stringify({
           error:
-            'Missing Google Generative AI API Key. Please verify GOOGLE_GENERATIVE_AI_API_KEY in your Vercel Project Settings.',
+            'Missing Google Generative AI API Key on Vercel. Please add GOOGLE_GENERATIVE_AI_API_KEY to your Vercel Project Environment Variables and redeploy.',
+          stage: 'credentials_check',
+          debug: {
+            hasGoogleKey: false,
+            hasSupabaseUrl: Boolean(supabaseUrl),
+            hasSupabaseKey: Boolean(supabaseKey),
+          },
         }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         }
       );
     }
 
+    stage = 'parsing_payload';
     const body = await req.json().catch(() => ({}));
     const rawMessages = body.messages || [];
     const checkpointTitle = body.checkpointTitle || '';
     const moduleTitle = body.moduleTitle || body.parentModuleName || '';
 
-    // Normalize incoming messages to ensure compatibility with convertToModelMessages
+    stage = 'normalizing_messages';
     const normalizedMessages = rawMessages.map((m: any, idx: number) => {
       const textContent = m.content || m.text || '';
       return {
@@ -76,12 +184,13 @@ export async function POST(req: Request) {
 
     const modelMessages = await convertToModelMessages(normalizedMessages);
 
-    // Extract last user message for curriculum vector lookup
+    // Extract student's latest query
     const lastUserMessage = [...normalizedMessages]
       .reverse()
       .find((m: any) => m.role === 'user')?.content || '';
 
-    // Safe vector embedding & Supabase retrieval (never fails the request if 0 matches or RPC error)
+    // Safe vector embedding & Supabase retrieval
+    stage = 'curriculum_retrieval';
     let contextText = 'No specific curriculum match found.';
     if (lastUserMessage.trim() && supabaseUrl && supabaseKey) {
       try {
@@ -101,7 +210,6 @@ export async function POST(req: Request) {
         const queryVector = embedRes.embeddings?.[0]?.values;
 
         if (queryVector && queryVector.length > 0) {
-          // Lowered match_threshold to 0.40 and match_count: 3 to reliably capture foundational concepts
           const { data: chunks, error: rpcError } = await supabase.rpc('match_curriculum', {
             query_embedding: queryVector,
             match_threshold: 0.40,
@@ -113,16 +221,16 @@ export async function POST(req: Request) {
               .map((c: any) => `### ${c.module_title || 'Curriculum Reference'}\n${c.content}`)
               .join('\n\n---\n\n');
           } else if (rpcError) {
-            console.warn('[API /api/chat] Supabase match_curriculum RPC warning:', rpcError.message);
+            console.warn('[API /api/chat] Supabase match_curriculum warning:', rpcError.message);
           }
         }
       } catch (vectorError: any) {
-        // Fall back gracefully to base Socratic coaching without throwing HTTP 500
         console.warn('[API /api/chat] Vector retrieval non-fatal error:', vectorError?.message || vectorError);
       }
     }
 
-    // Assemble rich prompt combining updated System Rules with active module context
+    // Assemble prompt
+    stage = 'prompt_assembly';
     const fullSystemPrompt = `
 ${SYSTEM_RULES}
 
@@ -139,12 +247,12 @@ ${contextText}
 ==================================================
 `;
 
-    // Instantiate Google provider explicitly with resolved API key
+    // Instantiate Google provider and stream
+    stage = 'gemini_stream';
     const google = createGoogleGenerativeAI({
       apiKey: googleApiKey,
     });
 
-    // Stream response using Gemini 3.5 Flash Lite
     const result = streamText({
       model: google('gemini-3.5-flash-lite'),
       system: fullSystemPrompt,
@@ -159,10 +267,17 @@ ${contextText}
       },
     });
   } catch (error: any) {
-    console.error('[API /api/chat] Unhandled route error:', error);
+    console.error(`[API /api/chat Error during stage "${stage}"]:`, error);
     return new Response(
       JSON.stringify({
-        error: error?.message || 'Chat generation failed due to an unexpected error.',
+        error: error?.message || 'Chat generation failed due to an unexpected server error.',
+        stage,
+        details: error?.stack || String(error),
+        envStatus: {
+          hasGoogleKey: Boolean(googleApiKey),
+          hasSupabaseUrl: Boolean(supabaseUrl),
+          hasSupabaseKey: Boolean(supabaseKey),
+        },
       }),
       {
         status: 500,

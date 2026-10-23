@@ -37,13 +37,104 @@ function resolveCredentials() {
   return { googleApiKey, supabaseUrl, supabaseKey };
 }
 
+async function runLiveDiagnostics() {
+  const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
+
+  const report: any = {
+    service: 'Risse AI Chat API (Vercel Serverless)',
+    status: 'checking',
+    timestamp: new Date().toISOString(),
+    environment: {
+      hasGoogleKey: Boolean(googleApiKey),
+      googleKeyPreview: googleApiKey
+        ? `${googleApiKey.slice(0, 8)}... (${googleApiKey.length} chars)`
+        : 'MISSING (Add GOOGLE_GENERATIVE_AI_API_KEY to Vercel)',
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      supabaseUrlPreview: supabaseUrl || 'MISSING (Add SUPABASE_URL to Vercel)',
+      hasSupabaseKey: Boolean(supabaseKey),
+      supabaseKeyPreview: supabaseKey
+        ? `${supabaseKey.slice(0, 10)}... (${supabaseKey.length} chars)`
+        : 'MISSING (Add SUPABASE_SERVICE_ROLE_KEY to Vercel)',
+    },
+    liveTests: {},
+  };
+
+  if (googleApiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: googleApiKey });
+      const testRes = await ai.models.generateContent({
+        model: 'gemini-3.5-flash-lite',
+        contents: 'test ping',
+      });
+      report.liveTests.gemini = {
+        status: 'SUCCESS',
+        model: 'gemini-3.5-flash-lite',
+        sampleResponse: testRes?.text?.trim()?.slice(0, 60) || 'OK',
+      };
+    } catch (geminiErr: any) {
+      report.liveTests.gemini = {
+        status: 'FAILED',
+        error: geminiErr?.message || String(geminiErr),
+        errorCode: geminiErr?.status || geminiErr?.statusCode || 'UNKNOWN',
+      };
+    }
+  } else {
+    report.liveTests.gemini = {
+      status: 'SKIPPED',
+      reason: 'GOOGLE_GENERATIVE_AI_API_KEY is not defined',
+    };
+  }
+
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const sb = createClient(supabaseUrl, supabaseKey);
+      const { data, error } = await sb.rpc('match_curriculum', {
+        query_embedding: Array(768).fill(0),
+        match_threshold: 0.40,
+        match_count: 1,
+      });
+
+      if (error) {
+        report.liveTests.supabase = {
+          status: 'RPC_ERROR',
+          error: error.message,
+        };
+      } else {
+        report.liveTests.supabase = {
+          status: 'SUCCESS',
+          matchesFound: Array.isArray(data) ? data.length : 0,
+        };
+      }
+    } catch (sbErr: any) {
+      report.liveTests.supabase = {
+        status: 'FAILED',
+        error: sbErr?.message || String(sbErr),
+      };
+    }
+  } else {
+    report.liveTests.supabase = {
+      status: 'SKIPPED',
+      reason: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not defined',
+    };
+  }
+
+  const allGood =
+    report.liveTests.gemini?.status === 'SUCCESS' &&
+    report.liveTests.supabase?.status === 'SUCCESS';
+
+  report.status = allGood ? 'HEALTHY' : 'DEGRADED_OR_CONFIG_ERROR';
+  return report;
+}
+
 async function handleChatStream(body: any) {
   const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
 
   if (!googleApiKey) {
-    throw new Error(
-      'Missing Google Generative AI API Key. Please verify GOOGLE_GENERATIVE_AI_API_KEY in your Vercel Project Settings.'
+    const err: any = new Error(
+      'Missing Google Generative AI API Key on Vercel. Please add GOOGLE_GENERATIVE_AI_API_KEY to your Vercel Project Environment Variables.'
     );
+    err.stage = 'credentials_check';
+    throw err;
   }
 
   const rawMessages = body.messages || [];
@@ -144,6 +235,12 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  if (req.method === 'GET') {
+    const report = await runLiveDiagnostics();
+    res.status(200).json(report);
+    return;
+  }
+
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
@@ -163,14 +260,37 @@ export default async function handler(req: any, res: any) {
     result.pipeTextStreamToResponse(res);
   } catch (error: any) {
     console.error('[API /api/chat Serverless Error]:', error);
+    const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
     if (!res.headersSent) {
-      res.status(500).json({ error: error?.message || 'Chat generation failed' });
+      res.status(500).json({
+        error: error?.message || 'Chat generation failed',
+        stage: error?.stage || 'runtime_stream',
+        details: error?.stack || String(error),
+        envStatus: {
+          hasGoogleKey: Boolean(googleApiKey),
+          hasSupabaseUrl: Boolean(supabaseUrl),
+          hasSupabaseKey: Boolean(supabaseKey),
+        },
+      });
     }
   }
 }
 
 // ── Web Standard Request/Response Handler (Next.js App Router / Edge) ──────
+export async function GET() {
+  const report = await runLiveDiagnostics();
+  return new Response(JSON.stringify(report, null, 2), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store, max-age=0',
+    },
+  });
+}
+
 export async function POST(req: Request) {
+  const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
   try {
     const body = await req.json().catch(() => ({}));
     const result = await handleChatStream(body);
@@ -185,7 +305,16 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('[API /api/chat Web Error]:', error);
     return new Response(
-      JSON.stringify({ error: error?.message || 'Chat generation failed' }),
+      JSON.stringify({
+        error: error?.message || 'Chat generation failed',
+        stage: error?.stage || 'runtime_stream',
+        details: error?.stack || String(error),
+        envStatus: {
+          hasGoogleKey: Boolean(googleApiKey),
+          hasSupabaseUrl: Boolean(supabaseUrl),
+          hasSupabaseKey: Boolean(supabaseKey),
+        },
+      }),
       {
         status: 500,
         headers: {

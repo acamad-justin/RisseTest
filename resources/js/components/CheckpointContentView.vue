@@ -669,8 +669,18 @@ async function sendMessage() {
         let errMsg = `HTTP ${response.status}`;
         try {
           const errJson = await response.json();
-          if (errJson && errJson.error) errMsg = errJson.error;
-        } catch (_) {}
+          if (errJson) {
+            errMsg = errJson.error || errJson.message || JSON.stringify(errJson);
+            if (errJson.stage) {
+              errMsg = `[Stage: ${errJson.stage}] ${errMsg}`;
+            }
+          }
+        } catch (_) {
+          try {
+            const rawText = await response.text();
+            if (rawText) errMsg = `HTTP ${response.status}: ${rawText.slice(0, 150)}`;
+          } catch (__) {}
+        }
         throw new Error(errMsg);
       }
     } catch (err) {
@@ -687,7 +697,12 @@ async function sendMessage() {
     }
 
     if (!response.ok) {
-      throw new Error(`Chat API responded with ${response.status}`);
+      let finalErrMsg = `Chat API responded with ${response.status}`;
+      try {
+        const ej = await response.json();
+        if (ej && ej.error) finalErrMsg = ej.error;
+      } catch (_) {}
+      throw new Error(finalErrMsg);
     }
 
     if (!response.body) {
@@ -706,14 +721,9 @@ async function sendMessage() {
     }
   } catch (error) {
     console.error('Chat streaming failed:', error);
-    const isLocalEnv = typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
     chatHistory.value[aiMessageIdx].text =
       chatHistory.value[aiMessageIdx].text ||
-      (isLocalEnv
-        ? 'I am having trouble connecting to the curriculum server. Please make sure Vite (`npm run dev`) is running with your Supabase and Gemini keys in `.env.local`.'
-        : `I am having trouble connecting to the AI server: ${error?.message || 'Connection error'}. Please verify that your environment variables on Vercel (GOOGLE_GENERATIVE_AI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) are active.`);
+      `⚠️ AI Service Error: ${error?.message || 'Connection error'}\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
   } finally {
     chatHistory.value[aiMessageIdx].isStreaming = false;
     isStreaming.value = false;

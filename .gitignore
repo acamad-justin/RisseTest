@@ -71,3 +71,6 @@ desktop.ini
 # Temporary & backup files
 *.tmp
 *.bak
+
+.vercel
+.env*
