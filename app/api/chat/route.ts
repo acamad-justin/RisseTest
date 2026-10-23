@@ -2,14 +2,18 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
-import { streamText, convertToModelMessages } from 'ai';
 import { SYSTEM_RULES } from '../../../lib/systemRules';
 
-// Extend max serverless duration to 30s to prevent Vercel 10s timeout
 export const maxDuration = 30;
+
+// Dynamic import prevents Vercel ERR_REQUIRE_ESM crash
+async function getAiSdk() {
+  const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
+  const { streamText, convertToModelMessages } = await import('ai');
+  return { createGoogleGenerativeAI, streamText, convertToModelMessages };
+}
 
 function resolveCredentials() {
   const googleApiKey =
@@ -162,6 +166,9 @@ export async function POST(req: Request) {
         }
       );
     }
+
+    stage = 'loading_ai_sdk';
+    const { createGoogleGenerativeAI, streamText, convertToModelMessages } = await getAiSdk();
 
     stage = 'parsing_payload';
     const body = await req.json().catch(() => ({}));

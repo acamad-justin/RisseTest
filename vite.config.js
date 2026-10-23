@@ -84,7 +84,7 @@ export default defineConfig({
     resolve: {
         alias: {
             vue: 'vue/dist/vue.esm-bundler.js',
-            '@': path.resolve(__dirname, 'resources/js'),
+            '@': path.resolve(process.cwd(), 'resources/js'),
             '@lucide/vue': 'lucide-vue-next',
         },
     },

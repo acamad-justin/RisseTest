@@ -14,8 +14,8 @@
 .env.production
 .env.*.local
 .env.local
-.env.testing
-.env.dusk.*
+.env.vercel
+.env.*
 auth.json
 
 # Laravel Storage & Keys
