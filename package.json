@@ -1,0 +1,26 @@
+{
+    "private": true,
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "chat": "tsx scripts/chat-server.ts"
+    },
+    "devDependencies": {
+        "@types/dotenv": "^6.1.1",
+        "@vitejs/plugin-vue": "^6.0.10",
+        "axios": "^1.1.2",
+        "laravel-vite-plugin": "^3.2.0",
+        "lodash": "^4.17.19",
+        "postcss": "^8.1.14",
+        "vite": "^8.3.4"
+    },
+    "dependencies": {
+        "@ai-sdk/google": "^4.0.102",
+        "@google/genai": "^2.30.0",
+        "@supabase/supabase-js": "^2.118.0",
+        "ai": "^7.0.148",
+        "dotenv": "^18.0.8",
+        "lucide-vue-next": "^1.0.0",
+        "vue": "^3.5.44"
+    }
+}
