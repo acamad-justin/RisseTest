@@ -6,7 +6,7 @@
 /public/build
 /public/hot
 /public/storage
-/
+/dist
 
 # Environment & Sensitive configs
 .env

@@ -1,19 +1,22 @@
 <template>
-  <div class="risse-layout" :class="{ 'risse-layout--home': currentTab === 'Home' }">
-    <!-- Full astronomical star field background active on Home view -->
+  <div class="risse-layout" :class="{ 'risse-layout--home': currentTab === 'Home' || currentTab === 'DynamicHome' }">
+    <!-- Full astronomical star field background active on standard Home view -->
     <CosmicBackground v-if="currentTab === 'Home'" />
 
     <!-- Left Navigation Bar (Orange Pill) -->
     <Sidebar 
-      :active-tab="currentTab" 
+      :active-tab="currentTab === 'DynamicHome' ? 'Home' : currentTab" 
       @update:active-tab="handleTabChange"
       @open-settings="handleOpenSettings"
     />
 
     <!-- Main Content Area -->
     <main class="risse-main" role="main">
-      <!-- HOME VIEW (Constellation & Space) -->
-      <HomeView v-if="currentTab === 'Home'" @open-module="currentTab = 'Modules'" />
+      <!-- DYNAMIC HOME VIEW (Real-time Canvas Space, Parallax, Meteors, Star Chart) -->
+      <DynamicHomeView v-if="currentTab === 'DynamicHome'" />
+
+      <!-- STANDARD HOME VIEW (Constellation & Space) -->
+      <HomeView v-else-if="currentTab === 'Home'" @open-module="currentTab = 'Modules'" />
 
       <!-- NOTEBOOKS VIEW (Logs & Projects & Conversation Workspace) -->
       <NotebooksView v-else-if="currentTab === 'Notebooks'" />
@@ -123,6 +126,7 @@ import axios from 'axios';
 import Sidebar from './components/Sidebar.vue';
 import CosmicBackground from './components/layout/CosmicBackground.vue';
 import HomeView from './views/HomeView.vue';
+import DynamicHomeView from './views/DynamicHomeView.vue';
 import NotebooksView from './views/NotebooksView.vue';
 import ModulesPage from './components/ModulesPage.vue';
 import ModuleRoadmapView from './components/ModuleRoadmapView.vue';
@@ -135,8 +139,27 @@ import FeaturedProjects from './components/FeaturedProjects.vue';
 import EditProfileModal from './components/EditProfileModal.vue';
 import BadgeModal from './components/BadgeModal.vue';
 
+// ── URL-Driven Initial Tab Detection ──────────────────────────────────────
+function getInitialTabFromUrl() {
+  const path = window.location.pathname.toLowerCase();
+  const search = window.location.search.toLowerCase();
+  if (path.includes('dynamic') || search.includes('dynamic')) {
+    return 'DynamicHome';
+  }
+  if (path.includes('home') || search.includes('home')) {
+    return 'Home';
+  }
+  if (path.includes('notebook') || search.includes('notebook')) {
+    return 'Notebooks';
+  }
+  if (path.includes('profile') || search.includes('profile')) {
+    return 'Profile';
+  }
+  return 'Home';
+}
+
 // Navigation & View States
-const currentTab = ref('Modules');
+const currentTab = ref(getInitialTabFromUrl());
 const moduleViewState = ref('list'); // 'list' | 'roadmap' | 'checkpoint'
 
 const selectedModule = ref({
@@ -170,8 +193,12 @@ const profileData = reactive({
   featuredProjects: [],
 });
 
-// Fetch live profile from Laravel API
+// Fetch live profile from Laravel API & listen for popstate
 onMounted(async () => {
+  window.addEventListener('popstate', () => {
+    currentTab.value = getInitialTabFromUrl();
+  });
+
   try {
     const res = await axios.get('/api/profile');
     if (res.data) {
@@ -289,6 +316,18 @@ function handleTabChange(tab) {
   currentTab.value = tab;
   if (tab === 'Modules' && moduleViewState.value === 'checkpoint') {
     moduleViewState.value = 'list';
+  }
+  // Sync URL in history cleanly
+  if (tab === 'DynamicHome') {
+    window.history.pushState({}, '', '/dynamic-home');
+  } else if (tab === 'Home') {
+    window.history.pushState({}, '', '/');
+  } else if (tab === 'Notebooks') {
+    window.history.pushState({}, '', '/notebooks');
+  } else if (tab === 'Modules') {
+    window.history.pushState({}, '', '/modules');
+  } else if (tab === 'Profile') {
+    window.history.pushState({}, '', '/profile');
   }
 }
 
