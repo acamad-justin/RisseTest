@@ -53,10 +53,13 @@ if (fs.existsSync(publicImagesDir)) {
   fs.cpSync(publicImagesDir, distImagesDir, { recursive: true });
 }
 
-// Copy public/favicon.ico to dist/favicon.ico if exists
-const favicon = path.join(rootDir, 'public', 'favicon.ico');
-if (fs.existsSync(favicon)) {
-  fs.copyFileSync(favicon, path.join(distDir, 'favicon.ico'));
+// Copy public/favicon.ico, favicon.png, Logo.png to dist if exists
+const favIcons = ['favicon.ico', 'favicon.png', 'Logo.png'];
+for (const icon of favIcons) {
+  const src = path.join(rootDir, 'public', icon);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, path.join(distDir, icon));
+  }
 }
 
 // Generate index.html
@@ -69,7 +72,9 @@ const htmlContent = `<!DOCTYPE html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Profile - Risse</title>
+    <title>Risse</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/favicon.png">
 
     <!-- Google Fonts: Plus Jakarta Sans & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

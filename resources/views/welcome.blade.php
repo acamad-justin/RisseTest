@@ -3,7 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Profile - Risse</title>
+    <title>Risse</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/favicon.png">
 
     <!-- Google Fonts: Plus Jakarta Sans for ultra crisp modern aesthetic -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

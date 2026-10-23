@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, watch } from 'vue';
 import axios from 'axios';
 import Sidebar from './components/Sidebar.vue';
 import CosmicBackground from './components/layout/CosmicBackground.vue';
@@ -175,6 +175,48 @@ const isEditModalOpen = ref(false);
 const selectedBadge = ref(null);
 const toastMessage = ref('');
 
+// ── Dynamic Document Title Management ─────────────────────────────────────
+function updateDocumentTitle() {
+  let title = 'Risse';
+  if (currentTab.value === 'DynamicHome') {
+    title = 'Dynamic Star Chart | Risse';
+  } else if (currentTab.value === 'Home') {
+    title = 'Your Space | Risse';
+  } else if (currentTab.value === 'Notebooks') {
+    title = 'Notebooks | Risse';
+  } else if (currentTab.value === 'Modules') {
+    if (moduleViewState.value === 'checkpoint' && selectedCheckpoint.value) {
+      title = `${selectedCheckpoint.value} | Risse`;
+    } else if (moduleViewState.value === 'roadmap' && selectedModule.value?.title) {
+      title = `${selectedModule.value.title} | Risse`;
+    } else {
+      title = 'Modules | Risse';
+    }
+  } else if (currentTab.value === 'Profile') {
+    title = 'Profile | Risse';
+  }
+  document.title = title;
+}
+
+watch(
+  [currentTab, moduleViewState, selectedCheckpoint, selectedModule],
+  () => {
+    updateDocumentTitle();
+  },
+  { immediate: true }
+);
+
+function ensureFavicon() {
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = 'image/png';
+  link.href = '/favicon.png';
+}
+
 // Clean default profile state with zero mock data
 const profileData = reactive({
   user: {
@@ -195,6 +237,7 @@ const profileData = reactive({
 
 // Fetch live profile from Laravel API & listen for popstate
 onMounted(async () => {
+  ensureFavicon();
   window.addEventListener('popstate', () => {
     currentTab.value = getInitialTabFromUrl();
   });

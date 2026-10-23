@@ -656,6 +656,9 @@ async function sendMessage() {
     };
 
     let response;
+    const isLocal = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
     try {
       response = await fetch('/api/chat', {
         method: 'POST',
@@ -663,15 +666,24 @@ async function sendMessage() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        let errMsg = `HTTP ${response.status}`;
+        try {
+          const errJson = await response.json();
+          if (errJson && errJson.error) errMsg = errJson.error;
+        } catch (_) {}
+        throw new Error(errMsg);
       }
     } catch (err) {
-      // Direct Vite server fallback (port 5173)
-      response = await fetch('http://localhost:5173/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      if (isLocal) {
+        // Direct Vite dev server fallback (port 5173) for local development only
+        response = await fetch('http://localhost:5173/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        throw err;
+      }
     }
 
     if (!response.ok) {
@@ -694,9 +706,14 @@ async function sendMessage() {
     }
   } catch (error) {
     console.error('Chat streaming failed:', error);
+    const isLocalEnv = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
     chatHistory.value[aiMessageIdx].text =
       chatHistory.value[aiMessageIdx].text ||
-      'I am having trouble connecting to the curriculum server. Please make sure Vite (`npm run dev`) is running with your Supabase and Gemini keys in `.env.local`.';
+      (isLocalEnv
+        ? 'I am having trouble connecting to the curriculum server. Please make sure Vite (`npm run dev`) is running with your Supabase and Gemini keys in `.env.local`.'
+        : `I am having trouble connecting to the AI server: ${error?.message || 'Connection error'}. Please verify that your environment variables on Vercel (GOOGLE_GENERATIVE_AI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) are active.`);
   } finally {
     chatHistory.value[aiMessageIdx].isStreaming = false;
     isStreaming.value = false;
