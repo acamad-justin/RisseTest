@@ -201,6 +201,7 @@ function onLogDeleted() {
         :project="contextProject"
         @toggle-nav="toggleNav"
         @deleted="onLogDeleted"
+        @back="backToNotebooks"
       />
 
       <!-- Project opened with no Logs -->
@@ -239,7 +240,7 @@ function onLogDeleted() {
           @click="backToNotebooks"
         >
           <ArrowLeft :size="14" aria-hidden="true" />
-          Back to Notebooks
+          Back to Standalone Logs
         </button>
       </div>
 

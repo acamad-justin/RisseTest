@@ -17,7 +17,7 @@
  * All mutations go through the shared notebooks store — no local copies.
  */
 import { ref, computed } from 'vue'
-import { Notebook, PanelLeftClose, Plus, MoreVertical, X } from '@lucide/vue'
+import { Notebook, Plus, MoreVertical, X } from '@lucide/vue'
 import { useNotebooksStore } from '@/stores/notebooksStore.js'
 import { useDismissable } from '@/composables/useDismissable.js'
 
@@ -107,26 +107,16 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   >
     <div class="navp__inner">
 
-      <!-- ── Top: Notebooks + collapse ─────────────────────────── -->
+      <!-- ── Top: Standalone Logs ─────────────────────────── -->
       <div class="navp__top">
         <button
           class="navp__back"
           type="button"
-          aria-label="Back to Notebooks overview"
+          aria-label="Back to Standalone Logs overview"
           @click="emit('back')"
         >
           <Notebook :size="14" aria-hidden="true" />
-          <span>Notebooks</span>
-        </button>
-
-        <button
-          class="navp__collapse"
-          type="button"
-          aria-label="Collapse logs panel"
-          :aria-expanded="!collapsed"
-          @click="emit('collapse')"
-        >
-          <PanelLeftClose :size="15" aria-hidden="true" />
+          <span>Standalone Logs</span>
         </button>
       </div>
 
@@ -138,9 +128,6 @@ function fmtDate(iso) { return store.fmtDate(iso) }
         </template>
         <template v-else>
           <span class="navp__context-label navp__context-label--standalone">Standalone Log</span>
-          <p class="navp__context-note">
-            Not in a Project yet — use <strong>Move</strong> in the header to group it.
-          </p>
         </template>
       </div>
 
@@ -263,6 +250,13 @@ function fmtDate(iso) { return store.fmtDate(iso) }
             </div>
           </template>
         </div>
+      </div>
+
+      <!-- ── Bottom context note ───────────────────────────────── -->
+      <div v-if="!project" class="navp__bottom-note">
+        <p class="navp__context-note">
+          Not in a Project yet — use <strong>Move</strong> in the header to group it.
+        </p>
       </div>
 
     </div>
@@ -414,7 +408,7 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 8px 14px;
+  padding: 0 12px 14px;
   scrollbar-width: thin;
   scrollbar-color: #e0e0ee transparent;
 }
@@ -425,13 +419,13 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #9999bb;
-  padding: 0 8px 6px;
+  padding: 0 4px 6px;
 }
 
 .navp__list-empty {
   font-size: 11.5px;
   color: #aaaacc;
-  padding: 6px 8px;
+  padding: 6px 4px;
   line-height: 1.5;
 }
 
@@ -458,7 +452,7 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   background: transparent;
   border: none;
   border-radius: 9px;
-  padding: 8px 6px 8px 10px;
+  padding: 8px 10px;
   cursor: pointer;
 }
 
@@ -487,6 +481,15 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   font-size: 9px;
   color: #b0b0cc;
   white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  text-align: right;
+}
+
+.navp__bottom-note {
+  padding: 12px 14px;
+  border-top: 1px solid #f0f0f8;
+  background: #fafafc;
   flex-shrink: 0;
 }
 

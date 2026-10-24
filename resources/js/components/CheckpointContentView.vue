@@ -76,8 +76,6 @@
             <transition name="dropdown-fade">
               <div v-if="isKebabOpen" class="checkpoint-dropdown-menu" @click.stop>
                 <button type="button" class="checkpoint-dropdown-item" @click="handleAction('Share')">Share Lesson</button>
-                <button type="button" class="checkpoint-dropdown-item" @click="handleAction('Bookmark')">Bookmark</button>
-                <button type="button" class="checkpoint-dropdown-item" @click="handleAction('Complete')">Mark as Done</button>
               </div>
             </transition>
           </div>
@@ -109,14 +107,30 @@
     </div>
 
     <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text) -->
-    <aside class="chatbot-panel-card" aria-label="Risse AI Chat Assistant">
+    <aside 
+      class="chatbot-panel-card" 
+      :class="{ 'chatbot-panel-card--maximized': isChatMaximized }"
+      aria-label="Risse AI Chat Assistant"
+    >
       <div class="chatbot-header-controls">
         <span class="chat-header-spacer"></span>
-        <button type="button" class="btn-expand-chat" title="Full screen" aria-label="Full screen">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button 
+          type="button" 
+          class="btn-expand-chat" 
+          :title="isChatMaximized ? 'Restore normal view' : 'Maximize AI'" 
+          :aria-label="isChatMaximized ? 'Restore normal view' : 'Maximize AI'"
+          @click="isChatMaximized = !isChatMaximized"
+        >
+          <svg v-if="!isChatMaximized" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 3h6v6"/>
             <path d="M9 21H3v-6"/>
             <path d="M21 3l-7 7"/>
+            <path d="M3 21l7-7"/>
+          </svg>
+          <svg v-else width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 14h6v6"/>
+            <path d="M20 10h-6V4"/>
+            <path d="M14 10l7-7"/>
             <path d="M3 21l7-7"/>
           </svg>
         </button>
@@ -187,15 +201,15 @@
 
       <!-- Bottom Chat Input Area matching screenshot -->
       <form class="chatbot-input-box" @submit.prevent="sendMessage">
-        <input 
-          type="text" 
+        <textarea 
           v-model="userQuery" 
           :disabled="isStreaming"
-          placeholder="Ask Risse" 
-          class="chat-text-input" 
+          placeholder="Ask Risse..." 
+          class="chat-text-input chat-text-textarea" 
           id="chat-input-query"
-          autocomplete="off"
-        />
+          rows="1"
+          @keydown.enter.exact.prevent="sendMessage"
+        ></textarea>
 
         <div class="chat-input-actions">
           <!-- Attachment Paperclip -->
@@ -253,6 +267,7 @@ const isStreaming = ref(false);
 const chatMessagesContainer = ref(null);
 const isStarred = ref(false);
 const isKebabOpen = ref(false);
+const isChatMaximized = ref(false);
 
 watch(() => props.checkpointTitle, () => {
   chatHistory.value = [];
@@ -1092,8 +1107,11 @@ function formatMessageText(text) {
 }
 
 .ai-message {
-  background: transparent;
-  padding: 4px 2px;
+  background: #FCFCFC;
+  border: 1px solid #EDEDF2;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .ai-greeting {
@@ -1159,9 +1177,9 @@ function formatMessageText(text) {
   background: linear-gradient(180deg, #ffffff 50%, #fef3c7 100%);
   border: 1.5px solid #e2e8f0;
   border-radius: 18px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
   box-shadow: 0 4px 12px rgba(254, 240, 138, 0.2);
@@ -1176,6 +1194,27 @@ function formatMessageText(text) {
   font-family: inherit;
   color: #1f2937;
   outline: none;
+}
+
+.chat-text-textarea {
+  resize: none;
+  max-height: 120px;
+  min-height: 36px;
+  overflow-y: auto;
+  line-height: 1.45;
+  scrollbar-width: thin;
+  padding: 4px 0;
+}
+
+.chatbot-panel-card--maximized {
+  position: fixed !important;
+  inset: 20px !important;
+  width: auto !important;
+  max-width: none !important;
+  height: auto !important;
+  z-index: 1000 !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 20px !important;
 }
 
 .chat-text-input::placeholder {

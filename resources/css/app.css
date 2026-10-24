@@ -1,5 +1,15 @@
 @import './variables.css';
 
+/* Local Webfont: Momo Trust Display */
+@font-face {
+  font-family: 'Momo Trust Display';
+  font-style: normal;
+  font-weight: 400 800;
+  src: url('/fonts/momo-trust-display.woff2') format('woff2'),
+       url('/fonts/momo-trust-display.woff') format('woff');
+  font-display: swap;
+}
+
 /* Modern, crisp Design System matching Risse 1:1 - No-Scroll Compact Viewport */
 :root {
   --primary-orange: #ff7a00;
@@ -17,8 +27,9 @@
   --tag-bg: #e6eaed;
   --tag-text: #374151;
   --thumbnail-bg: #d8dde3;
-  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --radius-sidebar: 28px;
+  --font-family: 'Lexend', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-family-display: 'Momo Trust Display', 'Lexend', system-ui, sans-serif;
+  --radius-sidebar: 26px;
   --radius-card: 18px;
   --radius-avatar: 14px;
   --radius-pill: 9999px;
@@ -48,7 +59,7 @@ body {
   line-height: 1.4;
 }
 
-/* App Container Layout - Exactly 100vh with ambient glow */
+/* App Container Layout - Exactly 100vh with optimal Top, Bottom, Left margins */
 .risse-layout {
   display: flex;
   height: 100vh;
@@ -56,37 +67,102 @@ body {
   width: 100%;
   background: radial-gradient(circle at 92% 92%, rgba(254, 240, 138, 0.2) 0%, rgba(254, 205, 211, 0.14) 38%, #f6f7f9 72%);
   background-color: var(--bg-page);
-  padding: 12px 32px 12px 14px;
-  gap: 32px;
+  padding: 18px 28px 18px 18px;
+  gap: 28px;
   box-sizing: border-box;
   overflow: hidden;
 }
 
-/* Orange Sidebar Pill */
+/* Orange Sidebar Pill with reduced height & increased width */
 .risse-sidebar {
-  width: 190px;
-  min-width: 190px;
+  width: 230px;
+  min-width: 230px;
   background: var(--primary-orange);
   border-radius: var(--radius-sidebar);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 24px 14px 16px 14px;
-  height: calc(100vh - 24px);
+  padding: 20px 0 16px 14px;
+  height: calc(100vh - 36px);
   box-shadow: 0 10px 30px rgba(255, 122, 0, 0.22);
-  transition: all 0.3s ease;
+  transition: width 0.28s cubic-bezier(0.2, 0, 0, 1),
+              min-width 0.28s cubic-bezier(0.2, 0, 0, 1),
+              padding 0.28s ease;
   z-index: 50;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Collapsed sidebar state */
+.risse-sidebar.is-collapsed {
+  width: 72px;
+  min-width: 72px;
+  padding: 20px 8px 16px 8px;
+}
+
+/* Sidebar Top Row with Logo & Collapse Toggle Button */
+.risse-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  padding: 0 14px 0 4px;
+}
+
+.risse-sidebar.is-collapsed .risse-sidebar-header {
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .risse-logo {
-  font-size: 24px;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: -0.3px;
-  margin-bottom: 24px;
-  padding-left: 10px;
+  display: flex;
+  align-items: center;
   user-select: none;
+}
+
+.risse-logo-img {
+  height: 21px;
+  width: auto;
+  max-width: 100px;
+  object-fit: contain;
+  display: block;
+}
+
+.risse-logo-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
+}
+
+.risse-logo--collapsed {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.risse-collapse-btn {
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.18s ease, transform 0.18s ease;
+  flex-shrink: 0;
+}
+
+.risse-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+  transform: scale(1.05);
 }
 
 .risse-nav-list {
@@ -94,45 +170,79 @@ body {
   flex-direction: column;
   gap: 8px;
   list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 .risse-nav-item {
   width: 100%;
 }
 
+/* Notebook Tab Sticker Styling for Sidebar Nav - ZERO gap on right edge */
 .risse-nav-btn {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 12px 14px 12px 16px;
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
   color: #ffffff;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 0.18s ease, box-shadow 0.18s ease, border-radius 0.18s ease;
   font-family: inherit;
   text-align: left;
+  position: relative;
 }
 
+/* On hover: looks like notebook tab stickers poking out with NO gap on the right */
 .risse-nav-btn:hover {
-  background-color: rgba(255, 255, 255, 0.14);
-  transform: translateX(2px);
+  background: #ea580c;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  transform: none;
+  box-shadow: -3px 2px 10px rgba(0, 0, 0, 0.16);
 }
 
+/* Active tab sticker with NO gap on the right */
 .risse-nav-btn.active {
-  background-color: #d65300;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  background: #d65300;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: -3px 3px 12px rgba(0, 0, 0, 0.22);
   font-weight: 600;
+  transform: none;
+}
+
+/* Collapsed nav buttons */
+.risse-sidebar.is-collapsed .risse-nav-btn {
+  justify-content: center;
+  padding: 11px 0;
+  border-radius: 14px;
+  transform: none !important;
+}
+
+.risse-sidebar.is-collapsed .risse-nav-btn:hover,
+.risse-sidebar.is-collapsed .risse-nav-btn.active {
+  border-radius: 14px;
+  transform: scale(1.06) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .risse-nav-icon {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   stroke-width: 2.2;
   flex-shrink: 0;
 }
@@ -141,7 +251,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 0 4px;
+  padding: 0 14px 0 4px;
+}
+
+.risse-sidebar.is-collapsed .risse-sidebar-bottom {
+  justify-content: center;
 }
 
 .risse-settings-btn {
@@ -178,6 +292,7 @@ body {
 }
 
 .risse-page-title {
+  font-family: var(--font-family-display);
   font-size: 28px;
   font-weight: 800;
   color: #181d24;
@@ -399,17 +514,23 @@ body {
   transform: translateY(-1px);
 }
 
-/* Achievements Section */
+/* Achievements Section - generous spacing and dedicated badge columns */
 .achievements-wrapper {
-  margin-top: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .badge-item {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: center;
+  width: 90px;
   cursor: pointer;
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 }
 
 .badge-item:hover {
@@ -441,11 +562,15 @@ body {
 }
 
 .badge-label {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: 8px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #1f2937;
   text-align: center;
+  line-height: 1.3;
+  width: 100%;
+  word-break: normal;
+  display: block;
 }
 
 /* Featured Projects Section - Scaled Down To Prevent Scrolling */

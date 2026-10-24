@@ -235,13 +235,14 @@ function onPractice(id) {
 
 .dynamic-home__stats {
   flex-shrink: 0;
-  width: 100px;
+  width: 140px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: flex-start;
-  gap: 28px;
-  padding-top: 8px;
+  gap: 32px;
+  padding-top: 12px;
+  padding-right: 8px;
 }
 
 /* ─── Stat block ───────────────────────────────────────────────────────── */
@@ -250,28 +251,23 @@ function onPractice(id) {
 }
 
 .stat__label {
-  font-size: 11px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.65);
-  line-height: 1.3;
+  font-family: 'Lexend', var(--font-family-sans, sans-serif);
+  font-size: 14.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }
 
 .stat__number {
-  font-size: 30px;
+  font-family: 'Lexend', var(--font-family-sans, sans-serif);
+  font-size: 40px;
   font-weight: 700;
   color: #ffffff;
   line-height: 1.0;
   letter-spacing: -0.03em;
-  margin-top: 2px;
+  margin-top: 4px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-}
-
-.dynamic-home__badge-label {
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.3);
-  margin-top: auto;
 }
 
 /* ─── Responsive ────────────────────────────────────────────────────────── */

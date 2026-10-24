@@ -278,18 +278,11 @@ onBeforeUnmount(() => {
   background-color: #0b0d2a;
 }
 
-/* ── Deep space gradient base ── */
+/* ── Deep space background base ── */
 .nebula-base {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    #0b0d2a 0%,
-    #0e1035 22%,
-    #130e33 46%,
-    #1a0e2e 68%,
-    #100818 100%
-  );
+  background: url('/bg-cosmic.jpg') center bottom / cover no-repeat, #0b0d2a;
 }
 
 /* ── Ambient animated nebulae clouds ── */

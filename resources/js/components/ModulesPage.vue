@@ -164,8 +164,26 @@
       </div>
 
       <div class="explore-toolbar">
-        <!-- Binoculars / Inspect button -->
-        <button type="button" class="toolbar-btn" title="Inspect" aria-label="Inspect">
+        <!-- Search input toggled by binoculars -->
+        <div v-if="showSearch" class="explore-search-wrap">
+          <input
+            v-model="searchQuery"
+            type="search"
+            class="explore-search-input"
+            placeholder="Search modules..."
+            autofocus
+          />
+        </div>
+
+        <!-- Binoculars / Search button -->
+        <button 
+          type="button" 
+          class="toolbar-btn" 
+          :class="{ 'is-active': showSearch }"
+          title="Search Modules" 
+          aria-label="Search Modules"
+          @click="showSearch = !showSearch"
+        >
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10 10h4"/>
             <path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/>
@@ -269,28 +287,144 @@
 
         <!-- Empty state when favorites filter has no matches -->
         <div v-if="displayedModules.length === 0" class="no-modules-placeholder">
-          <p>No favorited modules found.</p>
-          <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false">Show All Modules</button>
+          <p>No favorited or matching modules found.</p>
+          <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false; searchQuery = ''">Show All Modules</button>
         </div>
       </div>
     </div>
+
+    <!-- All Enrolled & Finished Modal -->
+    <Transition name="overlay-fade">
+      <div
+        v-if="showAllEnrolledModal"
+        class="all-enrolled-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="All Enrolled and Finished Modules"
+        @click.self="showAllEnrolledModal = false"
+      >
+        <div class="all-enrolled-modal">
+          <div class="all-enrolled-header">
+            <div>
+              <h2 class="all-enrolled-title">All Enrolled & Finished Modules</h2>
+              <p class="all-enrolled-subtitle">View all courses you are currently taking or have completed</p>
+            </div>
+            <button class="btn-close-modal" type="button" aria-label="Close" @click="showAllEnrolledModal = false">✕</button>
+          </div>
+
+          <!-- Filter Tabs -->
+          <div class="all-enrolled-tabs">
+            <button
+              type="button"
+              class="all-enrolled-tab"
+              :class="{ 'is-active': enrolledFilter === 'all' }"
+              @click="enrolledFilter = 'all'"
+            >
+              All ({{ enrolledList.length }})
+            </button>
+            <button
+              type="button"
+              class="all-enrolled-tab"
+              :class="{ 'is-active': enrolledFilter === 'in-progress' }"
+              @click="enrolledFilter = 'in-progress'"
+            >
+              In Progress ({{ enrolledList.filter(e => (e.progressPercent || 0) < 100).length }})
+            </button>
+            <button
+              type="button"
+              class="all-enrolled-tab"
+              :class="{ 'is-active': enrolledFilter === 'finished' }"
+              @click="enrolledFilter = 'finished'"
+            >
+              Finished ({{ enrolledList.filter(e => (e.progressPercent || 0) >= 100).length }})
+            </button>
+          </div>
+
+          <!-- Cards Grid -->
+          <div v-if="filteredAllEnrolled.length" class="all-enrolled-grid">
+            <div
+              v-for="enrolled in filteredAllEnrolled"
+              :key="enrolled.id"
+              class="enrolled-card"
+              :class="`card-${enrolled.theme || 'yellow'}`"
+              @click="$emit('open-module', enrolled); showAllEnrolledModal = false"
+            >
+              <div class="card-content-top">
+                <div class="card-title-row">
+                  <h3 class="enrolled-card-title">{{ enrolled.title }}</h3>
+                  <span class="status-pill" :class="(enrolled.progressPercent || 0) >= 100 ? 'status-pill--done' : 'status-pill--prog'">
+                    {{ (enrolled.progressPercent || 0) >= 100 ? 'Finished' : 'In Progress' }}
+                  </span>
+                </div>
+                <p class="enrolled-card-subtitle">{{ enrolled.subtitle }}</p>
+              </div>
+              <div class="enrolled-progress-row">
+                <div class="progress-bar-track" :class="{ 'track-translucent': enrolled.theme !== 'yellow' }">
+                  <div
+                    class="progress-bar-fill"
+                    :class="{
+                      'fill-blue': enrolled.theme === 'yellow',
+                      'fill-lavender': enrolled.theme === 'purple',
+                      'fill-pink': enrolled.theme === 'pink'
+                    }"
+                    :style="{ width: `${enrolled.progressPercent || 0}%` }"
+                  ></div>
+                </div>
+                <span class="progress-ratio">{{ enrolled.currentStep }}/{{ enrolled.totalSteps }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="all-enrolled-empty">
+            <p>No modules found in this category.</p>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 
 const emit = defineEmits(['notify', 'open-module']);
 
 const expandedId = ref(null);
 const showOnlyFavorites = ref(false);
+const showSearch = ref(false);
+const searchQuery = ref('');
+const showAllEnrolledModal = ref(false);
+const enrolledFilter = ref('all');
 const activeCardMenuId = ref(null);
 const currentEnrolledPage = ref(0);
 const CARDS_PER_PAGE = 4;
 
-// Currently Enrolled List (Populated from API or interactive enrollments)
-const enrolledList = ref([]);
+function getInitialEnrolled() {
+  try {
+    const raw = localStorage.getItem('risse_enrolled_modules');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return [];
+}
+
+// Currently Enrolled List (persisted to localStorage)
+const enrolledList = ref(getInitialEnrolled());
+
+watch(enrolledList, (val) => {
+  try {
+    localStorage.setItem('risse_enrolled_modules', JSON.stringify(val));
+  } catch (e) {}
+}, { deep: true });
+
+const filteredAllEnrolled = computed(() => {
+  if (enrolledFilter.value === 'in-progress') {
+    return enrolledList.value.filter(e => (e.progressPercent || 0) < 100);
+  }
+  if (enrolledFilter.value === 'finished') {
+    return enrolledList.value.filter(e => (e.progressPercent || 0) >= 100);
+  }
+  return enrolledList.value;
+});
 
 // Carousel pagination computed properties
 const totalPages = computed(() => Math.ceil(enrolledList.value.length / CARDS_PER_PAGE) || 1);
@@ -449,12 +583,21 @@ const modulesList = ref([
   },
 ]);
 
-// Computed list filtered by favorites when filter is active
+// Computed list filtered by favorites and search query
 const displayedModules = computed(() => {
+  let list = modulesList.value;
   if (showOnlyFavorites.value) {
-    return modulesList.value.filter(m => m.isStarred);
+    list = list.filter(m => m.isStarred);
   }
-  return modulesList.value;
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.trim().toLowerCase();
+    list = list.filter(m => 
+      m.title.toLowerCase().includes(q) ||
+      (m.skillsAcquired && m.skillsAcquired.toLowerCase().includes(q)) ||
+      (m.level && m.level.toLowerCase().includes(q))
+    );
+  }
+  return list;
 });
 
 onMounted(async () => {
@@ -462,7 +605,7 @@ onMounted(async () => {
   try {
     const res = await axios.get('/api/modules');
     if (res.data) {
-      if (res.data.enrolled !== undefined) {
+      if (res.data.enrolled !== undefined && (!enrolledList.value || !enrolledList.value.length)) {
         enrolledList.value = res.data.enrolled;
       }
       if (res.data.explore && res.data.explore.length > 0) {
@@ -509,12 +652,7 @@ function toggleFavoritesFilter() {
 }
 
 function handleSeeAll() {
-  if (showOnlyFavorites.value) {
-    showOnlyFavorites.value = false;
-    emit('notify', 'Showing all modules');
-  } else {
-    emit('notify', `Showing ${enrolledList.value.length} currently enrolled modules`);
-  }
+  showAllEnrolledModal.value = true;
 }
 
 // Enroll / Start Click Handler
@@ -593,6 +731,7 @@ async function handleModuleClick(module) {
 }
 
 .modules-title {
+  font-family: var(--font-family-display, 'Momo Trust Display', sans-serif);
   font-size: 28px;
   font-weight: 800;
   color: #181d24;
@@ -1077,7 +1216,7 @@ async function handleModuleClick(module) {
 /* Module Card Item */
 .module-card-item {
   background: #ffffff;
-  border: 1px solid #edf0f4;
+  border: 1px solid #A2A2A2;
   border-radius: 16px;
   padding: 12px 18px;
   display: grid;
@@ -1307,5 +1446,171 @@ async function handleModuleClick(module) {
   .module-skills-col {
     display: none;
   }
+}
+
+/* ── Search Input in Explore Toolbar ── */
+.explore-search-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.explore-search-input {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #1f2937;
+  outline: none;
+  width: 190px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s ease, width 0.2s ease;
+}
+
+.explore-search-input:focus {
+  border-color: #ff7a00;
+  width: 220px;
+}
+
+/* ── All Enrolled & Finished Modal ── */
+.all-enrolled-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.all-enrolled-modal {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 28px;
+  width: min(880px, 92vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  border: 1px solid #e2e8f0;
+}
+
+.all-enrolled-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.all-enrolled-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.all-enrolled-subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.btn-close-modal {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-close-modal:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.all-enrolled-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 10px;
+}
+
+.all-enrolled-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.all-enrolled-tab:hover {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.all-enrolled-tab.is-active {
+  background: #ff7a00;
+  color: #ffffff;
+  border-color: #ff7a00;
+}
+
+.all-enrolled-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 4px;
+  max-height: calc(85vh - 170px);
+}
+
+.all-enrolled-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13.5px;
+}
+
+.status-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: auto;
+}
+
+.status-pill--done {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-pill--prog {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
 }
 </style>

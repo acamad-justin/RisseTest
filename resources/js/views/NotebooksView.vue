@@ -18,9 +18,17 @@ import ProjectsSection       from '@/components/notebooks/ProjectsSection.vue'
 import CreateProjectModal    from '@/components/notebooks/CreateProjectModal.vue'
 import NotebookActionMenu    from '@/components/notebooks/NotebookActionMenu.vue'
 import ConversationWorkspace from '@/components/conversation/ConversationWorkspace.vue'
+import NotebookPromptView    from '@/components/notebooks/NotebookPromptView.vue'
 
 import { useNotebooksStore } from '@/stores/notebooksStore.js'
 import { Search } from '@lucide/vue'
+
+const props = defineProps({
+  initialView: { type: String, default: 'overview' },
+  userName:    { type: String, default: 'Adriel' },
+})
+
+const emit = defineEmits(['view-changed'])
 
 const store = useNotebooksStore()
 
@@ -129,9 +137,49 @@ function onNewProject() {
 }
 
 // ── Workspace navigation ──────────────────────────────────────────────────
-const activeView      = ref('overview') // 'overview' | 'workspace'
+const activeView      = ref(props.initialView || 'overview') // 'overview' | 'prompt' | 'workspace'
 const activeProjectId = ref(null)
 const activeLogId     = ref(null)
+
+watch(() => props.initialView, (val) => {
+  if (val) activeView.value = val
+})
+
+watch(activeView, (val) => {
+  emit('view-changed', val)
+})
+
+function onPromptSubmit({ text, attachment, projectId }) {
+  const title = text ? (text.length > 36 ? text.slice(0, 36) + '…' : text) : 'New Log'
+  const log = store.createLog({ title, projectId })
+
+  // Add initial user query message to log
+  const now = new Date().toISOString()
+  let userContent = text
+  if (attachment?.content) {
+    userContent = `[Attached File: ${attachment.name}]\n\`\`\`\n${attachment.content.slice(0, 10000)}\n\`\`\`\n\n${text || 'Please inspect the attached file and help me understand or improve it.'}`
+  } else if (attachment) {
+    userContent = `[Attached File: ${attachment.name} (${attachment.size})]\n\n${text || 'Please review this file.'}`
+  }
+
+  const userMessage = {
+    id: `id-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    role: 'user',
+    content: userContent,
+    displayContent: text || `[Attached File: ${attachment?.name}]`,
+    attachment,
+    createdAt: now,
+  }
+
+  log.messages.push(userMessage)
+  log.updatedAt = now
+  log.preview = (text || attachment?.name || '').slice(0, 120)
+  store.persist?.()
+
+  activeProjectId.value = projectId
+  activeLogId.value = log.id
+  activeView.value = 'workspace'
+}
 
 function onCreateProject(data) {
   const project = store.createProject(data)
@@ -178,8 +226,19 @@ function onDelete(id) { store.deleteLog(id) }
 </script>
 
 <template>
+  <!-- Prompt Chatbox View: "Where will curiosity take you, [Name]?" -->
+  <NotebookPromptView
+    v-if="activeView === 'prompt'"
+    :user-name="userName"
+    :projects="store.projects"
+    @submit="onPromptSubmit"
+    @back="handleBackToOverview"
+    @open-search="activeView = 'overview'; searchVisible = true"
+  />
+
+  <!-- Active Conversation Workspace -->
   <ConversationWorkspace
-    v-if="activeView === 'workspace'"
+    v-else-if="activeView === 'workspace'"
     :initial-project-id="activeProjectId"
     :initial-log-id="activeLogId"
     @back="handleBackToOverview"
@@ -195,6 +254,7 @@ function onDelete(id) { store.deleteLog(id) }
       @toggle-select="onToggleSelect"
       @cancel-select="onCancelSelect"
       @open-action-menu="onOpenActionMenu"
+      @open-prompt="activeView = 'prompt'"
     />
 
     <!-- ── Search bar ── -->

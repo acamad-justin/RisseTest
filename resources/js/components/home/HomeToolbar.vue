@@ -5,21 +5,22 @@
  * Matches the reference screenshot: pill input with muted indigo/purple tint,
  * search icon on the right side, two small icon-only buttons.
  */
-import { Search, Bell, UserRound } from '@lucide/vue'
+import { Binoculars, Bell, UserRound } from 'lucide-vue-next'
 
-defineProps({
+const props = defineProps({
   modelValue: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'search'])
 
-function onInput(e) { emit('update:modelValue', e.target.value) }
-function clear()    { emit('update:modelValue', '') }
+function onInput(e)  { emit('update:modelValue', e.target.value) }
+function clear()     { emit('update:modelValue', '') }
+function onSearch()  { emit('search', props.modelValue) }
 </script>
 
 <template>
   <div class="toolbar">
-    <!-- Search pill — icon sits on the right as per screenshot -->
+    <!-- Search pill — matching image reference: solid purple pill, no internal border/outline -->
     <label class="toolbar__search" for="concept-search" aria-label="Search">
       <input
         id="concept-search"
@@ -30,6 +31,7 @@ function clear()    { emit('update:modelValue', '') }
         aria-label="Search concepts"
         autocomplete="off"
         @input="onInput"
+        @keydown.enter="onSearch"
       />
       <!-- Clear button when text is present -->
       <button
@@ -40,7 +42,14 @@ function clear()    { emit('update:modelValue', '') }
         tabindex="-1"
         @click="clear"
       >✕</button>
-      <Search class="toolbar__search-icon" :size="14" aria-hidden="true" />
+      <button
+        class="toolbar__search-btn"
+        type="button"
+        aria-label="Search"
+        @click.stop="onSearch"
+      >
+        <Binoculars class="toolbar__search-icon" :size="17" aria-hidden="true" />
+      </button>
     </label>
 
     <!-- Notification -->
@@ -49,7 +58,7 @@ function clear()    { emit('update:modelValue', '') }
       type="button"
       aria-label="Notifications"
     >
-      <Bell :size="16" aria-hidden="true" />
+      <Bell :size="20" aria-hidden="true" />
     </button>
 
     <!-- Profile -->
@@ -58,7 +67,7 @@ function clear()    { emit('update:modelValue', '') }
       type="button"
       aria-label="Profile"
     >
-      <UserRound :size="16" aria-hidden="true" />
+      <UserRound :size="20" aria-hidden="true" />
     </button>
   </div>
 </template>
@@ -67,30 +76,33 @@ function clear()    { emit('update:modelValue', '') }
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex-shrink: 0;
+  margin-right: 28px;
 }
 
-/* ── Search pill ── */
+/* ── Search pill (image reference: solid purple, no border/outline) ── */
 .toolbar__search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(60, 45, 110, 0.65);   /* muted indigo-purple */
-  border: 1px solid rgba(160, 140, 220, 0.22);
+  gap: 16px;
+  background: #5044b8;   /* solid vibrant purple matching reference */
+  border: none;
+  outline: none;
   border-radius: 999px;
-  padding: 0 12px;
-  height: 32px;
-  width: 248px;
+  padding: 0 16px;
+  height: 38px;
+  width: 300px;
   cursor: text;
-  transition: background 150ms ease, border-color 150ms ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+  transition: background 150ms ease, box-shadow 150ms ease;
 }
 
 .toolbar__search:focus-within {
-  background: rgba(70, 55, 130, 0.80);
-  border-color: rgba(180, 160, 240, 0.45);
-  outline: 2px solid rgba(180, 160, 240, 0.30);
-  outline-offset: 1px;
+  background: #5c4ec8;
+  border: none;
+  outline: none;
+  box-shadow: 0 4px 14px rgba(80, 68, 184, 0.35);
 }
 
 .toolbar__input {
@@ -98,13 +110,15 @@ function clear()    { emit('update:modelValue', '') }
   background: transparent;
   border: none;
   outline: none;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 11.5px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 400;
   min-width: 0;
 }
 
 .toolbar__input::placeholder {
-  color: rgba(200, 185, 255, 0.42);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .toolbar__input::-webkit-search-cancel-button { display: none; }
@@ -112,8 +126,8 @@ function clear()    { emit('update:modelValue', '') }
 .toolbar__clear {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 10px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
   cursor: pointer;
   padding: 2px;
   line-height: 1;
@@ -122,32 +136,53 @@ function clear()    { emit('update:modelValue', '') }
 }
 .toolbar__clear:hover { color: #fff; }
 
+.toolbar__search-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #ffffff;
+  border-radius: 50%;
+  transition: transform 120ms ease, opacity 120ms ease;
+  flex-shrink: 0;
+}
+.toolbar__search-btn:hover {
+  transform: scale(1.15);
+  opacity: 0.9;
+}
+
 .toolbar__search-icon {
-  color: rgba(200, 185, 255, 0.55);
+  color: #ffffff;
   flex-shrink: 0;
 }
 
-/* ── Icon buttons ── */
+/* ── Icon buttons (no circular border, increased size to 40px) ── */
 .toolbar__icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.80);
+  color: rgba(255, 255, 255, 0.90);
   cursor: pointer;
-  transition: background 150ms ease, color 150ms ease;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
   flex-shrink: 0;
 }
 
-.toolbar__icon-btn:hover,
+.toolbar__icon-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
 .toolbar__icon-btn:focus-visible {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  outline: 2px solid rgba(255, 255, 255, 0.25);
+  outline: 2px solid rgba(255, 255, 255, 0.35);
   outline-offset: 1px;
 }
 </style>

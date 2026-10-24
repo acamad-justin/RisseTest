@@ -53,8 +53,15 @@ if (fs.existsSync(publicImagesDir)) {
   fs.cpSync(publicImagesDir, distImagesDir, { recursive: true });
 }
 
-// Copy public/favicon.ico, favicon.png, Logo.png to dist if exists
-const favIcons = ['favicon.ico', 'favicon.png', 'Logo.png'];
+// Copy public/fonts to dist/fonts if exists
+const publicFontsDir = path.join(rootDir, 'public', 'fonts');
+const distFontsDir = path.join(distDir, 'fonts');
+if (fs.existsSync(publicFontsDir)) {
+  fs.cpSync(publicFontsDir, distFontsDir, { recursive: true });
+}
+
+// Copy public/favicon.ico, favicon.png, Logo.png, BG.png, bg-cosmic.jpg to dist if exists
+const favIcons = ['favicon.ico', 'favicon.png', 'Logo.png', 'BG.png', 'bg-cosmic.jpg'];
 for (const icon of favIcons) {
   const src = path.join(rootDir, 'public', icon);
   if (fs.existsSync(src)) {
@@ -76,10 +83,12 @@ const htmlContent = `<!DOCTYPE html>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="apple-touch-icon" href="/favicon.png">
 
-    <!-- Google Fonts: Plus Jakarta Sans & Inter -->
+    <!-- Fonts: Lexend + Momo Trust Display -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=momo-trust-display:400,700,800&display=swap" rel="stylesheet">
 
 ${cssTags}
 </head>

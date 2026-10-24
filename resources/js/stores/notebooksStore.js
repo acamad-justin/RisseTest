@@ -20,8 +20,9 @@ function getInitialLogs() {
     const raw = localStorage.getItem('risse_notebooks_logs')
     if (raw) {
       const parsed = JSON.parse(raw)
-      const hasMock = parsed.some(l => l.id?.startsWith('log-sumbot') || l.id?.startsWith('log-rob-'))
-      if (!hasMock) return parsed
+      if (Array.isArray(parsed)) {
+        return parsed.filter(l => !l.id?.startsWith('log-sumbot') && !l.id?.startsWith('log-rob-'))
+      }
     }
   } catch (e) {}
   return []
@@ -32,8 +33,9 @@ function getInitialProjects() {
     const raw = localStorage.getItem('risse_notebooks_projects')
     if (raw) {
       const parsed = JSON.parse(raw)
-      const hasMock = parsed.some(p => p.id?.startsWith('project-sumbot'))
-      if (!hasMock) return parsed
+      if (Array.isArray(parsed)) {
+        return parsed.filter(p => !p.id?.startsWith('project-sumbot'))
+      }
     }
   } catch (e) {}
   return []
@@ -57,6 +59,7 @@ const storeInstance = reactive({
   // state
   logs,
   projects,
+  persist,
   // computed
   sortedLogs: computed(() =>
     [...logs.value].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))

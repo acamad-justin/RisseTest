@@ -16,10 +16,19 @@
       <DynamicHomeView v-if="currentTab === 'DynamicHome'" />
 
       <!-- STANDARD HOME VIEW (Constellation & Space) -->
-      <HomeView v-else-if="currentTab === 'Home'" @open-module="currentTab = 'Modules'" />
+      <HomeView 
+        v-else-if="currentTab === 'Home'" 
+        @open-module="currentTab = 'Modules'"
+        @open-notebook-prompt="openNotebookPrompt"
+      />
 
       <!-- NOTEBOOKS VIEW (Logs & Projects & Conversation Workspace) -->
-      <NotebooksView v-else-if="currentTab === 'Notebooks'" />
+      <NotebooksView 
+        v-else-if="currentTab === 'Notebooks'"
+        :initial-view="notebooksViewMode"
+        :user-name="userFirstName"
+        @view-changed="notebooksViewMode = $event"
+      />
 
       <!-- MODULES VIEWS FLOW -->
       <template v-else-if="currentTab === 'Modules'">
@@ -121,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 import Sidebar from './components/Sidebar.vue';
 import CosmicBackground from './components/layout/CosmicBackground.vue';
@@ -160,7 +169,14 @@ function getInitialTabFromUrl() {
 
 // Navigation & View States
 const currentTab = ref(getInitialTabFromUrl());
+const notebooksViewMode = ref('overview'); // 'overview' | 'prompt' | 'workspace'
 const moduleViewState = ref('list'); // 'list' | 'roadmap' | 'checkpoint'
+
+function openNotebookPrompt() {
+  notebooksViewMode.value = 'prompt';
+  currentTab.value = 'Notebooks';
+  window.history.pushState({}, '', '/notebooks');
+}
 
 const selectedModule = ref({
   id: 1,
@@ -217,8 +233,18 @@ function ensureFavicon() {
   link.href = '/favicon.png';
 }
 
-// Clean default profile state with zero mock data
-const profileData = reactive({
+function getInitialProfile() {
+  try {
+    const raw = localStorage.getItem('risse_profile_data');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return null;
+}
+
+const savedProfile = getInitialProfile();
+
+// Clean default profile state with zero mock data (restores from localStorage if available)
+const profileData = reactive(savedProfile || {
   user: {
     name: 'ADRIEL JUSTIN DELA CRUZ',
     school: 'Rizal Polytechnic de Muntinlupa',
@@ -234,6 +260,18 @@ const profileData = reactive({
   achievements: [],
   featuredProjects: [],
 });
+
+const userFirstName = computed(() => {
+  const full = profileData.user?.name || 'Adriel';
+  const first = full.trim().split(/\s+/)[0] || 'Adriel';
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+});
+
+watch(profileData, (val) => {
+  try {
+    localStorage.setItem('risse_profile_data', JSON.stringify(val));
+  } catch (e) {}
+}, { deep: true });
 
 // Fetch live profile from Laravel API & listen for popstate
 onMounted(async () => {
@@ -357,6 +395,9 @@ function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
 
 function handleTabChange(tab) {
   currentTab.value = tab;
+  if (tab === 'Notebooks') {
+    notebooksViewMode.value = 'overview';
+  }
   if (tab === 'Modules' && moduleViewState.value === 'checkpoint') {
     moduleViewState.value = 'list';
   }

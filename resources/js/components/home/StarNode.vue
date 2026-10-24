@@ -118,16 +118,17 @@ function r(concept) {
   outline: none;
 }
 
-/* Soft text with dark stroke for readability on the gradient bg */
+/* Soft text with reduced dark outline for clean, crisp readability */
 .star-node__label {
-  fill: rgba(255, 255, 255, 0.92);
-  font-family: var(--font-family-sans);
+  fill: #ffffff;
+  font-family: 'Lexend', var(--font-family-sans, sans-serif);
+  font-weight: 500;
   letter-spacing: 0.01em;
   pointer-events: none;
   user-select: none;
   paint-order: stroke fill;
-  stroke: rgba(5, 3, 20, 0.65);
-  stroke-width: 3px;
+  stroke: rgba(6, 4, 18, 0.45);
+  stroke-width: 1px;
   stroke-linejoin: round;
 }
 

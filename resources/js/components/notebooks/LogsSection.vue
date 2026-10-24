@@ -7,7 +7,7 @@
  * This component only renders what it receives and forwards
  * page-change events upward.
  */
-import { computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'
 import LogRow from './LogRow.vue'
 
@@ -20,6 +20,24 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['open-log', 'rename', 'move', 'delete', 'page-change'])
+
+const activeMenuLogId = ref(null)
+
+function toggleMenu(logId) {
+  activeMenuLogId.value = activeMenuLogId.value === logId ? null : logId
+}
+
+function closeAllMenus() {
+  activeMenuLogId.value = null
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeAllMenus)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeAllMenus)
+})
 
 const pageNumbers = computed(() => {
   const pages = []
@@ -43,7 +61,10 @@ const pageNumbers = computed(() => {
         :key="log.id"
         :log="log"
         :projects="projects"
+        :menu-open="activeMenuLogId === log.id"
         role="listitem"
+        @toggle-menu="toggleMenu(log.id)"
+        @close-menu="activeMenuLogId = null"
         @open="$emit('open-log', $event)"
         @rename="(id, title) => $emit('rename', id, title)"
         @move="(logId, projId) => $emit('move', logId, projId)"
@@ -134,7 +155,7 @@ const pageNumbers = computed(() => {
 
 .logs-section__count {
   font-size: 12px;
-  color: var(--risse-orange);
+  color: #A2A2A2;
   font-weight: 500;
 }
 

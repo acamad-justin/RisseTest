@@ -74,6 +74,40 @@ defineEmits(['select-badge']);
 </script>
 
 <style scoped>
+.achievements-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.badge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 88px;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.badge-item:hover {
+  transform: translateY(-3px) scale(1.04);
+}
+
+.badge-container {
+  width: 76px;
+  height: 76px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 14px rgba(168, 85, 247, 0.25));
+  margin-bottom: 8px;
+}
+
 .holo-shimmer-border {
   position: absolute;
   inset: -3px;
@@ -99,9 +133,9 @@ defineEmits(['select-badge']);
 
 .badge-core {
   position: relative;
-  width: 78px;
-  height: 78px;
-  border-radius: 22px;
+  width: 66px;
+  height: 66px;
+  border-radius: 18px;
   background: radial-gradient(circle at center, #2e1065 0%, #0f0728 100%);
   display: flex;
   align-items: center;
@@ -115,6 +149,18 @@ defineEmits(['select-badge']);
   width: 100%;
   height: 100%;
   filter: drop-shadow(0 0 6px rgba(232, 121, 249, 0.6));
+}
+
+.badge-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #1f2937;
+  text-align: center;
+  line-height: 1.3;
+  width: 100%;
+  word-break: break-word;
+  white-space: normal;
+  display: block;
 }
 
 .empty-achievements-notice {

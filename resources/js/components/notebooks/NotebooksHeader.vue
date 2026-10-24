@@ -16,6 +16,7 @@ const emit = defineEmits([
   'toggle-select',
   'cancel-select',
   'open-action-menu',
+  'open-prompt',
 ])
 
 const searchVisible = ref(false)
@@ -28,7 +29,7 @@ function toggleSearch() {
 
 <template>
   <header class="nb-header">
-    <h1 class="nb-header__title">Notebooks</h1>
+    <h1 class="nb-header__title">Standalone Logs</h1>
 
     <div class="nb-header__controls">
       <!-- Search icon -->
@@ -75,8 +76,7 @@ function toggleSearch() {
         class="nb-header__plus-btn"
         type="button"
         aria-label="New item"
-        aria-haspopup="menu"
-        @click="$emit('open-action-menu', $event)"
+        @click="$emit('open-prompt')"
       >
         <Plus :size="17" aria-hidden="true" />
       </button>

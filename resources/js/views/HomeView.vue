@@ -26,6 +26,8 @@ import {
 
 import { constellationConceptMap } from '@/mocks/constellationData.js'
 
+const emit = defineEmits(['open-module', 'open-notebook-prompt'])
+
 // ── Search ────────────────────────────────────────────────────────────────
 const searchQuery = ref('')
 
@@ -116,16 +118,13 @@ function onPractice(id) {
           <p class="stat__label">Concepts</p>
           <p class="stat__number">{{ learnerSummary.masteredCount }}</p>
         </div>
-
-        <!-- Demo notice -->
-        <p class="home__demo-badge" aria-label="Demo data notice">demo</p>
       </aside>
     </div>
 
     <!-- Floating action button (FAB) -->
     <ExploreButton
       :concepts="concepts"
-      @explore="onExplore"
+      @click-mascot="$emit('open-notebook-prompt')"
     />
   </div>
 </template>
@@ -144,6 +143,7 @@ function onPractice(id) {
   overflow: hidden;     /* prevent the page from scrolling; map is the focus */
   box-sizing: border-box;
   padding: 0;
+  font-family: var(--font-family-sans, 'Lexend', sans-serif);
 }
 
 /* ─── Header row ───────────────────────────────────────────────────────── */
@@ -152,13 +152,14 @@ function onPractice(id) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 36px 32px 0 40px;
+  padding: 32px 32px 0 36px;
   flex-shrink: 0;
 }
 
 .home__title {
-  font-size: 30px;
-  font-weight: 700;
+  font-family: var(--font-family-display, 'Momo Trust Display', sans-serif);
+  font-size: 32px;
+  font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.025em;
   line-height: 1;
@@ -185,13 +186,14 @@ function onPractice(id) {
 
 .home__stats {
   flex-shrink: 0;
-  width: 100px;
+  width: 140px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: flex-start;
-  gap: 28px;
-  padding-top: 8px;
+  gap: 32px;
+  padding-top: 12px;
+  padding-right: 8px;
 }
 
 /* ─── Individual stat block ─────────────────────────────────────────────── */
@@ -200,28 +202,22 @@ function onPractice(id) {
 }
 
 .stat__label {
-  font-size: 11px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.60);
-  line-height: 1.3;
+  font-family: 'Lexend', var(--font-family-sans, sans-serif);
+  font-size: 14.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }
 
 .stat__number {
-  font-size: 30px;
+  font-family: 'Lexend', var(--font-family-sans, sans-serif);
+  font-size: 40px;
   font-weight: 700;
   color: #ffffff;
   line-height: 1.0;
   letter-spacing: -0.03em;
-  margin-top: 2px;
-}
-
-/* ─── Demo badge ────────────────────────────────────────────────────────── */
-.home__demo-badge {
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.20);
-  margin-top: auto;
+  margin-top: 4px;
 }
 
 /* ─── Responsive ────────────────────────────────────────────────────────── */

@@ -9,9 +9,10 @@ import { MoreVertical, Pencil, MoveRight, Trash2, X } from '@lucide/vue'
 const props = defineProps({
   log:      { type: Object, required: true },
   projects: { type: Array,  default: () => [] },
+  menuOpen: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['open', 'rename', 'move', 'delete'])
+const emit = defineEmits(['open', 'rename', 'move', 'delete', 'toggle-menu', 'close-menu'])
 
 // ── Date helper ───────────────────────────────────────────────────────────
 function fmtDate(iso) {
@@ -20,28 +21,27 @@ function fmtDate(iso) {
 }
 
 // ── Three-dot menu ────────────────────────────────────────────────────────
-const menuOpen       = ref(false)
 const showRename     = ref(false)
 const showMoveSelect = ref(false)
 const renameValue    = ref('')
 
 function openMenu(e) {
   e.stopPropagation()
-  menuOpen.value       = true
   showRename.value     = false
   showMoveSelect.value = false
+  emit('toggle-menu')
 }
 
 function closeMenu() {
-  menuOpen.value       = false
   showRename.value     = false
   showMoveSelect.value = false
+  emit('close-menu')
 }
 
 function startRename() {
   renameValue.value = props.log.title
   showRename.value  = true
-  menuOpen.value    = false
+  emit('close-menu')
 }
 
 function submitRename() {
@@ -51,7 +51,7 @@ function submitRename() {
 
 function startMove() {
   showMoveSelect.value = true
-  menuOpen.value       = false
+  emit('close-menu')
 }
 
 function moveToProject(projectId) {
@@ -61,7 +61,7 @@ function moveToProject(projectId) {
 
 function confirmDelete() {
   if (window.confirm(`Delete "${props.log.title}"?`)) emit('delete', props.log.id)
-  menuOpen.value = false
+  emit('close-menu')
 }
 </script>
 

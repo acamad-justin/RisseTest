@@ -41,7 +41,7 @@ const props = defineProps({
   project: { type: Object, default: null },
 })
 
-const emit = defineEmits(['toggle-nav', 'deleted'])
+const emit = defineEmits(['toggle-nav', 'deleted', 'back'])
 
 const store  = useNotebooksStore()
 
@@ -173,6 +173,8 @@ async function send() {
     attachmentMeta = {
       name: selectedFile.value.name,
       size: selectedFile.value.size,
+      type: selectedFile.value.type || 'file',
+      content: selectedFile.value.content || '',
     }
     if (selectedFile.value.content) {
       userContent = `[Attached File: ${selectedFile.value.name}]\n\`\`\`\n${selectedFile.value.content.slice(0, 10000)}\n\`\`\`\n\n${text || 'Please inspect the attached file and help me understand or improve it.'}`
@@ -198,6 +200,7 @@ async function send() {
   props.log.messages.push(userMessage)
   props.log.updatedAt = now
   props.log.preview = (text || attachmentMeta?.name || '').slice(0, 120)
+  store.persist?.()
 
   input.value = ''
   nextTick(() => {
@@ -205,7 +208,17 @@ async function send() {
     scrollBottomNow()
   })
 
-  // 3. Create AI placeholder message
+  await generateAiReply()
+}
+
+async function generateAiReply() {
+  if (isAiStreaming.value) return
+  const msgs = props.log.messages
+  if (!msgs || !msgs.length) return
+  const lastMsg = msgs[msgs.length - 1]
+  if (lastMsg.role !== 'user') return
+
+  // Create AI placeholder message
   const aiMsgId = `id-${Date.now() + 1}-${Math.random().toString(36).slice(2, 7)}`
   const aiMessage = reactive({
     id: aiMsgId,
@@ -220,7 +233,7 @@ async function send() {
 
   nextTick(() => scrollBottomNow())
 
-  // 4. Request streaming AI response from /api/chat
+  // Request streaming AI response from /api/chat
   try {
     const formattedMessages = props.log.messages
       .filter(m => m.id !== aiMsgId)
@@ -288,6 +301,7 @@ async function send() {
     aiMessage.isStreaming = false
     isAiStreaming.value = false
     props.log.updatedAt = new Date().toISOString()
+    store.persist?.()
     nextTick(() => scrollToBottom('auto'))
   }
 }
@@ -359,6 +373,12 @@ watch(
     await nextTick()
     if (inputEl.value) inputEl.value.style.height = 'auto'
     scrollToBottom('auto')
+
+    // Automatically stream AI response if opened with an unanswered user message
+    const msgs = props.log.messages
+    if (msgs && msgs.length > 0 && msgs[msgs.length - 1].role === 'user') {
+      generateAiReply()
+    }
   },
   { immediate: true },
 )
@@ -381,8 +401,7 @@ watch(
 )
 
 function goBack() {
-  if (props.project) router.push(`/projects/${props.project.id}`)
-  else router.push('/notebooks')
+  emit('back')
 }
 
 function fmtTime(iso) {
@@ -426,9 +445,8 @@ function formatMessageText(text) {
         <ArrowLeft :size="16" aria-hidden="true" />
       </button>
 
-      <div class="convo__header-titles">
-        <span class="convo__log-label">Log</span>
-        <span v-if="project" class="convo__project-crumb">/ {{ project.title }}</span>
+      <div v-if="project" class="convo__header-titles">
+        <span class="convo__project-crumb">{{ project.title }}</span>
       </div>
 
       <!-- Inline rename replaces the title while editing -->
@@ -907,11 +925,12 @@ function formatMessageText(text) {
   border-bottom-right-radius: 4px;
 }
 
-/* Risse bubble: restrained near-white panel, dark text */
+/* Risse bubble: #FCFCFC chat response */
 .convo__msg--risse .convo__bubble {
-  background: #f5f5fb;
+  background: #FCFCFC;
   color: #2a2a4a;
   border-bottom-left-radius: 4px;
+  border: 1px solid #ECECF2;
 }
 
 .convo__bubble-text {

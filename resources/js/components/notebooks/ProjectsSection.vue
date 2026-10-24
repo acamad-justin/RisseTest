@@ -122,7 +122,7 @@ const pageNumbers = computed(() => {
 
 .projects-section__count {
   font-size: 12px;
-  color: var(--risse-orange);
+  color: #A2A2A2;
   font-weight: 500;
 }
 
