@@ -629,6 +629,7 @@ function formatMessageText(text) {
         <input
           ref="fileEl"
           class="sr-only"
+          style="display: none;"
           type="file"
           accept=".txt,.md,.js,.ts,.py,.c,.cpp,.h,.hpp,.json,.csv,.html,.css,.vue,.xml,.yaml,.yml,.ino,.pdf,image/*"
           tabindex="-1"

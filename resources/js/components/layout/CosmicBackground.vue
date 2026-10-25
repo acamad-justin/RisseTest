@@ -84,7 +84,7 @@ const stars = computed(() => {
   inset: 0;
   width: 100%;
   height: 100%;
-  background-image: url('/bg-cosmic.jpg'), url('/BG.png');
+  background-image: url('/images/backgrounds/bg-cosmic.jpg'), url('/images/backgrounds/BG.png');
   background-size: cover;
   background-position: center bottom;
   background-repeat: no-repeat;

@@ -9,6 +9,7 @@ import { X, Sparkles } from '@lucide/vue'
 
 const props = defineProps({
   concepts: { type: Array, required: true },
+  isChatOpen: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['click-mascot'])
@@ -22,6 +23,7 @@ function onClick() {
   <!-- FAB — RisseCharacter mascot without background -->
   <button
     class="fab"
+    :class="{ 'fab--hidden': isChatOpen }"
     type="button"
     aria-label="Ask Risse"
     title="Ask Risse"
@@ -29,7 +31,7 @@ function onClick() {
     id="btn-explore-character"
   >
     <img 
-      :src="'/images/risse-character.webp'" 
+      :src="'/images/characters/risse-character.webp'" 
       alt="Ask Risse" 
       class="fab__character"
     />
@@ -50,13 +52,21 @@ function onClick() {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.4s ease 0.15s, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.15s;
+  transform-origin: center center;
 }
 
 .fab:hover,
 .fab:focus-visible {
   transform: scale(1.15) translateY(-4px);
   outline: none;
+}
+
+.fab.fab--hidden {
+  opacity: 0;
+  transform: scale(0.8) !important;
+  pointer-events: none;
+  transition: opacity 0.4s ease 0s, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0s;
 }
 
 .fab__character {

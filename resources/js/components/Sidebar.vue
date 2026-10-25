@@ -7,10 +7,10 @@
     <div class="risse-sidebar-top">
       <div class="risse-sidebar-header">
         <div v-if="!isCollapsed" class="risse-logo">
-          <img :src="'/images/risse_white.png'" alt="Risse" class="risse-logo-img" />
+          <img :src="'/images/logos/risse_white.png'" alt="Risse" class="risse-logo-img" />
         </div>
         <div v-else class="risse-logo risse-logo--collapsed">
-          <img :src="'/images/logo_white_sm.png'" alt="Risse" class="risse-logo-icon" />
+          <img :src="'/images/logos/logo_white_sm.png'" alt="Risse" class="risse-logo-icon" />
         </div>
 
         <button 

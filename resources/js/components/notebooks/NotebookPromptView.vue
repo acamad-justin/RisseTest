@@ -10,14 +10,16 @@
  * Connecting directly to the conversation workspace upon user submission.
  */
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { Send, Paperclip, ChevronDown, Check, Binoculars } from 'lucide-vue-next'
+import { Send, Paperclip, ChevronDown, Check, ChevronLeft, MoreVertical } from 'lucide-vue-next'
 
 const props = defineProps({
-  userName: { type: String, default: 'Adriel' },
-  projects: { type: Array, default: () => [] },
+  userName:     { type: String, default: 'Adriel' },
+  projects:     { type: Array, default: () => [] },
+  canClose:     { type: Boolean, default: false },
+  isSubmitting: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['submit', 'back', 'open-search'])
+const emit = defineEmits(['submit', 'back', 'open-search', 'open-menu', 'close'])
 
 const query = ref('')
 const textareaEl = ref(null)
@@ -92,6 +94,7 @@ function onKeydown(e) {
 
 // ── Submit ─────────────────────────────────────────────────────────────────
 function onSubmit() {
+  if (props.isSubmitting) return
   const text = query.value.trim()
   if (!text && !attachedFile.value) return
 
@@ -100,9 +103,6 @@ function onSubmit() {
     attachment: attachedFile.value,
     projectId: selectedProjectId.value,
   })
-
-  query.value = ''
-  attachedFile.value = null
 }
 
 function selectProject(projId) {
@@ -110,13 +110,28 @@ function selectProject(projId) {
   projectMenuOpen.value = false
 }
 
-// Close project menu on outside click
+// Close project menu on outside click & escape handler
 function onDocClick() {
   projectMenuOpen.value = false
 }
 
+function handleClose(e) {
+  e?.stopPropagation?.()
+  if (!props.isSubmitting) {
+    emit('back')
+    emit('close')
+  }
+}
+
+function onGlobalKeydown(e) {
+  if (e.key === 'Escape' && props.canClose && !props.isSubmitting) {
+    handleClose(e)
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onGlobalKeydown)
   nextTick(() => {
     textareaEl.value?.focus()
   })
@@ -124,37 +139,45 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onGlobalKeydown)
 })
 </script>
 
 <template>
   <div class="nb-prompt-root">
-    <!-- ── Top bar: soundwave on left, search on right ── -->
-    <header class="nb-prompt-header">
-      <div class="prompt-soundwave" title="Voice / Audio assistant indicator" aria-label="Audio mode">
-        <span class="sound-bar sound-bar--1"></span>
-        <span class="sound-bar sound-bar--2"></span>
-        <span class="sound-bar sound-bar--3"></span>
-      </div>
-
-      <div class="prompt-header-actions">
+    <div class="nb-prompt-content">
+      <!-- ── Top bar: Back chevron on left, three-dots menu icon on right ── -->
+      <header class="nb-prompt-header">
         <button
           type="button"
-          class="prompt-icon-btn"
-          title="Search concepts and logs"
-          aria-label="Search"
-          @click="$emit('open-search')"
+          class="prompt-icon-btn prompt-icon-btn--back"
+          title="Back"
+          aria-label="Back"
+          @click.stop="handleClose"
+          id="btn-prompt-back"
         >
-          <Binoculars :size="18" aria-hidden="true" />
+          <ChevronLeft :size="24" aria-hidden="true" />
         </button>
-      </div>
-    </header>
 
-    <!-- ── Centered Prompt Box & Greeting ── -->
-    <main class="nb-prompt-main">
-      <h1 class="prompt-heading">
-        Where will curiosity take you, {{ userName }}?
-      </h1>
+        <div class="prompt-header-actions">
+          <button
+            type="button"
+            class="prompt-icon-btn prompt-icon-btn--menu"
+            title="More options"
+            aria-label="More options"
+            @click.stop="$emit('open-menu')"
+            id="btn-prompt-menu"
+          >
+            <MoreVertical :size="20" aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+
+      <!-- ── Centered Prompt Box & Greeting ── -->
+      <main class="nb-prompt-main">
+        <h1 class="prompt-heading">
+          Where will curiosity take you, {{ userName }}?
+        </h1>
 
       <div class="prompt-card">
         <!-- Text input area -->
@@ -234,6 +257,7 @@ onBeforeUnmount(() => {
               ref="fileInputEl"
               type="file"
               class="sr-only"
+              style="display: none;"
               accept=".txt,.md,.js,.ts,.py,.c,.cpp,.h,.hpp,.json,.csv,.html,.css,.vue,.xml,.yaml,.yml,.ino,.pdf,image/*"
               tabindex="-1"
               aria-hidden="true"
@@ -253,18 +277,23 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="prompt-btn-send"
-              :class="{ 'prompt-btn-send--active': query.trim() || attachedFile }"
-              :disabled="!query.trim() && !attachedFile"
+              :class="{
+                'prompt-btn-send--active': query.trim() || attachedFile,
+                'prompt-btn-send--loading': isSubmitting,
+              }"
+              :disabled="(!query.trim() && !attachedFile) || isSubmitting"
               title="Send to Risse AI"
               aria-label="Send query"
               @click="onSubmit"
             >
-              <Send :size="16" aria-hidden="true" />
+              <span v-if="isSubmitting" class="prompt-spinner"></span>
+              <Send v-else :size="16" aria-hidden="true" />
             </button>
           </div>
         </div>
       </div>
     </main>
+    </div>
   </div>
 </template>
 
@@ -276,125 +305,125 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: #ffffff;
-  border-radius: var(--radius-card, 18px);
-  border: 1px solid var(--border-card, #eef1f4);
-  box-shadow: var(--shadow-subtle);
+  background: transparent;
+  border-radius: 0;
   overflow: hidden;
   box-sizing: border-box;
 }
 
-/* ── Top bar ── */
+.nb-prompt-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Top bar: h-16 px-8 flex items-center justify-between shrink-0 ── */
 .nb-prompt-header {
+  height: 64px; /* h-16 = 4rem = 64px */
+  padding: 0 32px; /* px-8 = 2rem = 32px */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 32px 0 32px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  box-sizing: border-box;
 }
 
-/* ıll Soundwave indicator matching screenshot */
-.prompt-soundwave {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 20px;
-  padding: 4px;
-  cursor: default;
-  user-select: none;
+.prompt-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 35;
 }
-
-.sound-bar {
-  width: 3.5px;
-  background: #1e1e2f;
-  border-radius: 999px;
-  transition: height 0.2s ease;
-}
-
-.sound-bar--1 { height: 10px; }
-.sound-bar--2 { height: 16px; }
-.sound-bar--3 { height: 8px; }
-
-.prompt-soundwave:hover .sound-bar--1 { height: 15px; }
-.prompt-soundwave:hover .sound-bar--2 { height: 11px; }
-.prompt-soundwave:hover .sound-bar--3 { height: 18px; }
 
 .prompt-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: transparent;
   border: none;
-  color: #1e1e2f;
+  color: #525252;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .prompt-icon-btn:hover {
-  background: #f4f4fa;
-  transform: scale(1.05);
+  background: #f4f4f5;
+  color: #171717;
+  transform: scale(1.04);
 }
 
-/* ── Centered Main Area ── */
+/* ── Center Chat Area: flex-1 flex flex-col items-center justify-center px-6 with -mt-12 and pb-16 ── */
 .nb-prompt-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  margin-top: -30px; /* Optical center balance */
+  padding: 0 24px; /* px-6 */
+  margin-top: -48px; /* -mt-12 for optical vertical centering above dead-center */
+  padding-bottom: 64px; /* pb-16 */
+  box-sizing: border-box;
+  width: 100%;
 }
 
+/* Centered heading: "Where will curiosity take you, Adriel?" text-2xl font-medium text-neutral-800 */
 .prompt-heading {
-  font-size: 26px;
-  font-weight: 600;
-  color: #1a1a2e;
+  font-family: var(--font-family-sans, 'Lexend', sans-serif);
+  font-size: 1.5rem; /* text-2xl = 24px */
+  font-weight: 500;   /* font-medium */
+  color: #262626;     /* text-neutral-800 */
   letter-spacing: -0.015em;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   text-align: center;
 }
 
-/* ── Glowing Warm Card matching screenshot ── */
+/* Centered Chat Input Card: w-full max-w-3xl, softer border-neutral-200/80, bg-gradient-to-b from-white via-white to-orange-50/60 */
 .prompt-card {
   width: 100%;
-  max-width: 730px;
-  background: linear-gradient(180deg, #ffffff 40%, #fff7eb 100%);
-  border: 1.5px solid #fed7aa;
-  border-radius: 26px;
-  box-shadow: 0 4px 22px rgba(254, 215, 170, 0.32), 0 1px 3px rgba(0, 0, 0, 0.03);
-  padding: 20px 24px 14px 24px;
+  max-width: 48rem; /* max-w-3xl = 768px */
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 50%, rgba(255, 247, 237, 0.6) 100%);
+  border: 1px solid rgba(229, 229, 229, 0.8); /* border border-neutral-200/80 */
+  border-radius: 16px;       /* rounded-2xl */
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); /* shadow-sm */
+  padding: 18px 20px 14px 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
 }
 
 .prompt-card:focus-within {
   border-color: #ff9933;
-  box-shadow: 0 6px 28px rgba(255, 153, 51, 0.38), 0 2px 5px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 16px rgba(255, 153, 51, 0.14), 0 1px 3px 0 rgba(0, 0, 0, 0.05);
 }
 
 .prompt-textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   max-height: 140px;
   resize: none;
   background: transparent;
   border: none;
   outline: none;
   font-size: 15px;
-  font-family: inherit;
-  color: #1a1a2e;
+  font-family: var(--font-family-sans, 'Lexend', sans-serif);
+  color: #171717;
   line-height: 1.5;
   scrollbar-width: thin;
 }
 
 .prompt-textarea::placeholder {
-  color: #71717a;
+  color: #737373;
   font-weight: 400;
 }
 
@@ -440,12 +469,12 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-/* Solid orange Log pill */
+/* Solid orange pill button "Log" */
 .pill-log {
   background: #ff7a00;
   color: #ffffff;
-  border-radius: 999px;
-  padding: 4px 16px;
+  border-radius: 9999px;
+  padding: 4.5px 16px;
   font-size: 12px;
   font-weight: 600;
   display: inline-flex;
@@ -453,30 +482,32 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
-/* Outlined orange Project dropdown pill */
+/* Outlined pill dropdown "Project v" on the left */
 .pill-dropdown-wrap {
   position: relative;
 }
 
 .pill-project {
-  background: transparent;
-  border: 1.2px solid #ff7a00;
-  color: #ff7a00;
-  border-radius: 999px;
-  padding: 3.5px 14px;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  color: #525252;
+  border-radius: 9999px;
+  padding: 4px 14px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: all 0.15s ease;
   max-width: 240px;
 }
 
 .pill-project:hover,
 .pill-project--selected {
-  background: rgba(255, 122, 0, 0.08);
+  background: #fafafa;
+  border-color: #d4d4d4;
+  color: #171717;
 }
 
 .pill-project span {
@@ -491,11 +522,11 @@ onBeforeUnmount(() => {
   bottom: calc(100% + 8px);
   left: 0;
   background: #ffffff;
-  border: 1px solid #fed7aa;
-  border-radius: 14px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
   padding: 6px;
   min-width: 200px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
   z-index: 50;
   max-height: 220px;
   overflow-y: auto;
@@ -507,29 +538,31 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 7px 12px;
+  padding: 8px 12px;
   border: none;
-  border-radius: 8px;
   background: transparent;
-  color: #1e1e2f;
-  font-size: 12.5px;
-  font-weight: 500;
-  text-align: left;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #334155;
   cursor: pointer;
+  text-align: left;
   transition: background 0.15s ease;
 }
 
 .project-dropdown-item:hover {
-  background: #fff6eb;
+  background: #fff7eb;
   color: #ff7a00;
 }
 
 .project-dropdown-item--active {
+  background: #fff7eb;
   color: #ff7a00;
   font-weight: 600;
 }
 
 .project-dropdown-divider {
+  height: 1px;
+  background: #f1f5f9;
   height: 1px;
   background: #f1f5f9;
   margin: 4px 0;
@@ -577,6 +610,33 @@ onBeforeUnmount(() => {
 
 .prompt-btn-send--active {
   color: #ff7a00;
+}
+
+.prompt-btn-send--loading {
+  cursor: wait;
+}
+
+.prompt-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 122, 0, 0.25);
+  border-top-color: #ff7a00;
+  border-radius: 50%;
+  animation: promptSpin 0.6s linear infinite;
+  display: inline-block;
+}
+
+@keyframes promptSpin {
+  to { transform: rotate(360deg); }
+}
+
+.prompt-icon-btn--close {
+  color: #64748b;
+}
+
+.prompt-icon-btn--close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .prompt-btn-send:hover:not(:disabled) {

@@ -37,11 +37,7 @@ const emit = defineEmits(['back', 'new-log', 'select-log', 'collapse'])
 const store = useNotebooksStore()
 
 // ── Recent Logs (derived from the shared collection, newest first) ─────────
-const logs = computed(() =>
-  props.project
-    ? store.logsForProject(props.project.id)
-    : store.sortedLogs,
-)
+const logs = computed(() => store.sortedLogs)
 
 // ── Per-entry action menu ──────────────────────────────────────────────────
 const menuForId = ref(null)
@@ -142,13 +138,14 @@ function fmtDate(iso) { return store.fmtDate(iso) }
         <p class="navp__list-label">Recent Logs</p>
 
         <p v-if="!logs.length" class="navp__list-empty">
-          {{ project ? 'No logs in this Project yet.' : 'No logs yet.' }}
+          No logs yet.
         </p>
 
         <div
           v-for="log in logs"
           :key="log.id"
           class="navp__entry"
+          :class="{ 'navp__entry--menu-open': menuForId === log.id }"
           role="listitem"
         >
           <!-- Inline rename -->
@@ -408,7 +405,7 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 12px 14px;
+  padding: 0 12px 100px;
   scrollbar-width: thin;
   scrollbar-color: #e0e0ee transparent;
 }
@@ -433,13 +430,17 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   position: relative;
   display: flex;
   align-items: stretch;
-  flex-wrap: wrap;           /* open actions wrap to their own row below */
+  flex-wrap: nowrap;
   gap: 2px;
   min-width: 0;
   border-radius: 9px;
   transition: background 150ms ease;
 }
 .navp__entry:hover { background: #f0f0f8; }
+.navp__entry--menu-open {
+  z-index: 50;
+  background: #f0f0f8;
+}
 
 .navp__entry-main {
   flex: 1;
@@ -494,10 +495,11 @@ function fmtDate(iso) { return store.fmtDate(iso) }
 }
 
 /* ── Entry menu ───────────────────────────────────────────────────────── */
-/* The wrapper is transparent to layout so the ⋯ button stays in the entry
-   row while the actions card becomes a full-width row below it. */
 .navp__entry-menu-wrap {
-  display: contents;
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .navp__entry-menu-btn {
@@ -526,16 +528,19 @@ function fmtDate(iso) { return store.fmtDate(iso) }
   outline: none;
 }
 
-/* Actions expand in flow — never clipped by the scrolling Recent Logs list. */
+/* Actions popup menu: floats cleanly on top without pushing other logs down */
 .navp__entry-actions {
-  flex: 0 0 100%;
-  min-width: 0;
-  margin: 2px 2px 7px;
-  background: #fff;
-  border: 1px solid #e8e8f0;
-  border-radius: 10px;
-  padding: 4px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 4px;
+  width: 164px;
+  z-index: 100;
+  margin: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.16), 0 4px 10px -2px rgba(0, 0, 0, 0.08);
 }
 
 .navp__action {

@@ -24,8 +24,9 @@ import { useNotebooksStore } from '@/stores/notebooksStore.js'
 import { Search } from '@lucide/vue'
 
 const props = defineProps({
-  initialView: { type: String, default: 'overview' },
-  userName:    { type: String, default: 'Adriel' },
+  initialView:  { type: String, default: 'overview' },
+  initialLogId: { type: [String, Number], default: null },
+  userName:     { type: String, default: 'Adriel' },
 })
 
 const emit = defineEmits(['view-changed'])
@@ -144,6 +145,13 @@ const activeLogId     = ref(null)
 watch(() => props.initialView, (val) => {
   if (val) activeView.value = val
 })
+
+watch(() => props.initialLogId, (val) => {
+  if (val) {
+    activeLogId.value = val
+    activeView.value = 'workspace'
+  }
+}, { immediate: true })
 
 watch(activeView, (val) => {
   emit('view-changed', val)

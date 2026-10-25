@@ -5,7 +5,7 @@
  * Matches the reference screenshot: pill input with muted indigo/purple tint,
  * search icon on the right side, two small icon-only buttons.
  */
-import { Binoculars, Bell, UserRound } from 'lucide-vue-next'
+import { Search, Bell, UserRound } from 'lucide-vue-next'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -48,7 +48,7 @@ function onSearch()  { emit('search', props.modelValue) }
         aria-label="Search"
         @click.stop="onSearch"
       >
-        <Binoculars class="toolbar__search-icon" :size="17" aria-hidden="true" />
+        <Search class="toolbar__search-icon" :size="17" aria-hidden="true" />
       </button>
     </label>
 

@@ -60,8 +60,8 @@ if (fs.existsSync(publicFontsDir)) {
   fs.cpSync(publicFontsDir, distFontsDir, { recursive: true });
 }
 
-// Copy public/favicon.ico, favicon.png, Logo.png, BG.png, bg-cosmic.jpg to dist if exists
-const favIcons = ['favicon.ico', 'favicon.png', 'Logo.png', 'BG.png', 'bg-cosmic.jpg'];
+// Copy public/favicon.ico, favicon.png to dist if exists
+const favIcons = ['favicon.ico', 'favicon.png'];
 for (const icon of favIcons) {
   const src = path.join(rootDir, 'public', icon);
   if (fs.existsSync(src)) {

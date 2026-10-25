@@ -88,7 +88,7 @@ body {
   transition: width 0.28s cubic-bezier(0.2, 0, 0, 1),
               min-width 0.28s cubic-bezier(0.2, 0, 0, 1),
               padding 0.28s ease;
-  z-index: 50;
+  z-index: 100;
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -809,8 +809,18 @@ body {
     grid-template-columns: 1fr;
     gap: 20px;
   }
-  
-  .stats-row {
-    padding: 10px 0;
-  }
+}
+
+/* Utility: visually hidden for screen readers or programmatic file inputs */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  display: none !important;
 }

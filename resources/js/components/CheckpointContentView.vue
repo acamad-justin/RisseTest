@@ -1,5 +1,5 @@
 <template>
-  <div class="checkpoint-page-container">
+  <div class="checkpoint-page-container" :class="{ 'is-chat-maximized': isChatMaximized }">
     <!-- Left Column: Header (Back, Module Tag, Title, Meta) + Star/Kebab (outside chatbox) + Lesson Lecture -->
     <div class="checkpoint-main-column">
       <header class="checkpoint-header">
@@ -202,12 +202,14 @@
       <!-- Bottom Chat Input Area matching screenshot -->
       <form class="chatbot-input-box" @submit.prevent="sendMessage">
         <textarea 
+          ref="chatInputTextarea"
           v-model="userQuery" 
           :disabled="isStreaming"
           placeholder="Ask Risse..." 
           class="chat-text-input chat-text-textarea" 
           id="chat-input-query"
           rows="1"
+          @input="autoGrowInput"
           @keydown.enter.exact.prevent="sendMessage"
         ></textarea>
 
@@ -262,6 +264,7 @@ const props = defineProps({
 const emit = defineEmits(['back', 'notify', 'complete-checkpoint']);
 
 const userQuery = ref('');
+const chatInputTextarea = ref(null);
 const chatHistory = ref([]);
 const isStreaming = ref(false);
 const chatMessagesContainer = ref(null);
@@ -269,9 +272,27 @@ const isStarred = ref(false);
 const isKebabOpen = ref(false);
 const isChatMaximized = ref(false);
 
+function autoGrowInput() {
+  const el = chatInputTextarea.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  // Up to 4 lines of text on uncollapsed AI (~92px), then scroll
+  const maxLines = isChatMaximized.value ? 7 : 4;
+  const maxHeight = maxLines * 20 + 12;
+  el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+}
+
+watch(isChatMaximized, () => {
+  nextTick(() => {
+    autoGrowInput();
+    scrollToBottom();
+  });
+});
+
 watch(() => props.checkpointTitle, () => {
   chatHistory.value = [];
   userQuery.value = '';
+  if (chatInputTextarea.value) chatInputTextarea.value.style.height = 'auto';
 });
 
 // Dynamic lesson data tailored to the specific topic & parent module
@@ -635,6 +656,7 @@ async function sendMessage() {
   if (!userQuery.value.trim() || isStreaming.value) return;
   const q = userQuery.value.trim();
   userQuery.value = '';
+  if (chatInputTextarea.value) chatInputTextarea.value.style.height = 'auto';
 
   // 1. Append user's message
   chatHistory.value.push({ sender: 'user', text: q });
@@ -786,6 +808,13 @@ function formatMessageText(text) {
   width: 100%;
   overflow: hidden;
   box-sizing: border-box;
+  transition: grid-template-columns 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+              gap 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.checkpoint-page-container.is-chat-maximized {
+  grid-template-columns: 0fr 1fr;
+  gap: 0;
 }
 
 .checkpoint-main-column {
@@ -793,7 +822,15 @@ function formatMessageText(text) {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
+  transition: opacity 0.28s ease, transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.checkpoint-page-container.is-chat-maximized .checkpoint-main-column {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-30px);
 }
 
 /* Header */
@@ -1038,8 +1075,15 @@ function formatMessageText(text) {
   justify-content: space-between;
   padding: 20px;
   height: 100%;
+  min-width: 0;
   overflow: hidden;
   box-sizing: border-box;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.checkpoint-page-container.is-chat-maximized .chatbot-panel-card {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  border-color: #e2e8f0;
 }
 
 .chatbot-header-controls {
@@ -1104,6 +1148,8 @@ function formatMessageText(text) {
   line-height: 1.5;
   border-radius: 16px;
   color: #1f2937;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .ai-message {
@@ -1198,23 +1244,18 @@ function formatMessageText(text) {
 
 .chat-text-textarea {
   resize: none;
-  max-height: 120px;
-  min-height: 36px;
+  min-height: 24px;
+  max-height: 92px; /* up to 4 lines of text on uncollapsed AI, then scroll */
   overflow-y: auto;
   line-height: 1.45;
   scrollbar-width: thin;
   padding: 4px 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.chatbot-panel-card--maximized {
-  position: fixed !important;
-  inset: 20px !important;
-  width: auto !important;
-  max-width: none !important;
-  height: auto !important;
-  z-index: 1000 !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4) !important;
-  border-radius: 20px !important;
+.checkpoint-page-container.is-chat-maximized .chat-text-textarea {
+  max-height: 160px;
 }
 
 .chat-text-input::placeholder {

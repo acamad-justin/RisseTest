@@ -145,19 +145,18 @@ export const conceptMap = Object.fromEntries(concepts.map(c => [c.id, c]))
  * Each undirected pair appears once.
  */
 export const connections = [
-  // Solid — established relationships
-  { from: 'outputs',         to: 'actuation',        type: 'solid' },
-  { from: 'outputs',         to: 'control-loops',    type: 'solid' },
-  { from: 'pid',             to: 'control-loops',    type: 'solid' },
-  { from: 'pid',             to: 'tuning',           type: 'solid' },
-  { from: 'tuning',          to: 'control-loops',    type: 'solid' },
-  { from: 'control-loops',   to: 'microcontrollers', type: 'solid' },
+  // Active Solid Lines
+  { from: 'actuation',        to: 'outputs',          type: 'solid' },
+  { from: 'outputs',          to: 'control-loops',    type: 'solid' },
+  { from: 'control-loops',    to: 'microcontrollers', type: 'solid' },
+  { from: 'pid',              to: 'control-loops',    type: 'solid' },
+  { from: 'pid',              to: 'tuning',           type: 'solid' },
+  { from: 'tuning',           to: 'control-loops',    type: 'solid' },
 
-  // Exploratory — weaker / dashed
-  { from: 'robot-components', to: 'microcontrollers', type: 'exploratory' },
+  // Inactive Dashed Lines
   { from: 'robot-components', to: 'inputs',           type: 'exploratory' },
+  { from: 'inputs',           to: 'sensing',          type: 'exploratory' },
   { from: 'microcontrollers', to: 'sensing',          type: 'exploratory' },
-  { from: 'sensing',          to: 'inputs',           type: 'exploratory' },
 ]
 
 // ── Projects ───────────────────────────────────────────────────────────────

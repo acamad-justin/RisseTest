@@ -1,5 +1,10 @@
 <template>
-  <div class="risse-layout" :class="{ 'risse-layout--home': currentTab === 'Home' || currentTab === 'DynamicHome' }">
+  <div 
+    class="risse-layout" 
+    :class="{ 
+      'risse-layout--home': currentTab === 'Home' || currentTab === 'DynamicHome'
+    }"
+  >
     <!-- Full astronomical star field background active on standard Home view -->
     <CosmicBackground v-if="currentTab === 'Home'" />
 
@@ -7,6 +12,7 @@
     <Sidebar 
       :active-tab="currentTab === 'DynamicHome' ? 'Home' : currentTab" 
       @update:active-tab="handleTabChange"
+      @update:activeTab="handleTabChange"
       @open-settings="handleOpenSettings"
     />
 
@@ -18,14 +24,16 @@
       <!-- STANDARD HOME VIEW (Constellation & Space) -->
       <HomeView 
         v-else-if="currentTab === 'Home'" 
+        :is-chat-open="isChatOpen"
         @open-module="currentTab = 'Modules'"
-        @open-notebook-prompt="openNotebookPrompt"
+        @open-mascot-prompt="openChat"
       />
 
       <!-- NOTEBOOKS VIEW (Logs & Projects & Conversation Workspace) -->
       <NotebooksView 
         v-else-if="currentTab === 'Notebooks'"
         :initial-view="notebooksViewMode"
+        :initial-log-id="targetLogId"
         :user-name="userFirstName"
         @view-changed="notebooksViewMode = $event"
       />
@@ -105,7 +113,33 @@
           </div>
         </div>
       </div>
+
     </main>
+
+    <!-- Seamless Full-Screen Edge-to-Edge Circular Reveal Overlay (Safely guarded against accidental white screen) -->
+    <div 
+      v-show="isOverlayVisible"
+      class="home-prompt-overlay"
+      :class="{ 
+        'is-open': isChatOpen,
+        'is-transferring': isTransferringPrompt 
+      }"
+    >
+      <div 
+        class="chat-reveal-inner"
+        :class="{ 'is-open': isChatOpen }"
+      >
+        <NotebookPromptView
+          :user-name="userFirstName"
+          :projects="notebooksStore.projects"
+          :can-close="!isTransferringPrompt"
+          :is-submitting="isTransferringPrompt"
+          @close="closeChat"
+          @back="closeChat"
+          @submit="handleHomePromptSubmit"
+        />
+      </div>
+    </div>
 
     <!-- Edit Profile Modal -->
     <EditProfileModal 
@@ -137,6 +171,8 @@ import CosmicBackground from './components/layout/CosmicBackground.vue';
 import HomeView from './views/HomeView.vue';
 import DynamicHomeView from './views/DynamicHomeView.vue';
 import NotebooksView from './views/NotebooksView.vue';
+import NotebookPromptView from './components/notebooks/NotebookPromptView.vue';
+import { useNotebooksStore } from './stores/notebooksStore.js';
 import ModulesPage from './components/ModulesPage.vue';
 import ModuleRoadmapView from './components/ModuleRoadmapView.vue';
 import CheckpointContentView from './components/CheckpointContentView.vue';
@@ -147,6 +183,8 @@ import AchievementsSection from './components/AchievementsSection.vue';
 import FeaturedProjects from './components/FeaturedProjects.vue';
 import EditProfileModal from './components/EditProfileModal.vue';
 import BadgeModal from './components/BadgeModal.vue';
+
+const notebooksStore = useNotebooksStore();
 
 // ── URL-Driven Initial Tab Detection ──────────────────────────────────────
 function getInitialTabFromUrl() {
@@ -170,7 +208,76 @@ function getInitialTabFromUrl() {
 // Navigation & View States
 const currentTab = ref(getInitialTabFromUrl());
 const notebooksViewMode = ref('overview'); // 'overview' | 'prompt' | 'workspace'
+const targetLogId = ref(null);
+
+// Circular Reveal Overlay States
+const isChatOpen = ref(false);
+const isOverlayVisible = ref(false);
+const isTransferringPrompt = ref(false);
 const moduleViewState = ref('list'); // 'list' | 'roadmap' | 'checkpoint'
+
+function openChat() {
+  isOverlayVisible.value = true;
+  requestAnimationFrame(() => {
+    isChatOpen.value = true;
+  });
+  isTransferringPrompt.value = false;
+}
+
+function closeChat() {
+  isChatOpen.value = false;
+  setTimeout(() => {
+    if (!isChatOpen.value) {
+      isOverlayVisible.value = false;
+    }
+  }, 650);
+}
+
+function handleHomePromptSubmit({ text, attachment, projectId }) {
+  if (isTransferringPrompt.value) return;
+  isTransferringPrompt.value = true;
+
+  // 1. Create the new log in store
+  const title = text ? (text.length > 36 ? text.slice(0, 36) + '…' : text) : 'New Log';
+  const log = notebooksStore.createLog({ title, projectId });
+
+  const now = new Date().toISOString();
+  let userContent = text;
+  if (attachment?.content) {
+    userContent = `[Attached File: ${attachment.name}]\n\`\`\`\n${attachment.content.slice(0, 10000)}\n\`\`\`\n\n${text || 'Please inspect the attached file and help me understand or improve it.'}`;
+  } else if (attachment) {
+    userContent = `[Attached File: ${attachment.name} (${attachment.size})]\n\n${text || 'Please review this file.'}`;
+  }
+
+  const userMessage = {
+    id: `id-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    role: 'user',
+    content: userContent,
+    displayContent: text || `[Attached File: ${attachment?.name}]`,
+    attachment,
+    createdAt: now,
+  };
+
+  log.messages.push(userMessage);
+  log.updatedAt = now;
+  log.preview = (text || attachment?.name || '').slice(0, 120);
+  notebooksStore.persist?.();
+
+  targetLogId.value = log.id;
+  notebooksViewMode.value = 'workspace';
+
+  // 2. Redirect to notebooks page (updates sidebar pill & history) while overlay stays covering
+  currentTab.value = 'Notebooks';
+  window.history.pushState({}, '', '/notebooks');
+
+  // 3. Keep the prompt view covering calmly, then smoothly transition overlay out to reveal the chatbox
+  setTimeout(() => {
+    isChatOpen.value = false;
+    setTimeout(() => {
+      isTransferringPrompt.value = false;
+    }, 550);
+  }, 400);
+}
 
 function openNotebookPrompt() {
   notebooksViewMode.value = 'prompt';
@@ -277,6 +384,8 @@ watch(profileData, (val) => {
 onMounted(async () => {
   ensureFavicon();
   window.addEventListener('popstate', () => {
+    isChatOpen.value = false;
+    isOverlayVisible.value = false;
     currentTab.value = getInitialTabFromUrl();
   });
 
@@ -394,6 +503,8 @@ function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
 }
 
 function handleTabChange(tab) {
+  isChatOpen.value = false;
+  isOverlayVisible.value = false;
   currentTab.value = tab;
   if (tab === 'Notebooks') {
     notebooksViewMode.value = 'overview';
@@ -492,5 +603,74 @@ function showToast(msg) {
 @keyframes slideUp {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* ─── Circular Reveal Overlay Transition (Safely Guarded, Zero Flicker) ─── */
+.home-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  background: #ffffff;
+  z-index: 40; /* Sits beneath persistent sidebar (z-index: 100) */
+  padding-left: 260px; /* Offset for floating sidebar so workspace content is centered */
+  overflow: hidden;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  will-change: clip-path;
+  opacity: 0;
+  pointer-events: none;
+
+  /* Closed State (Default): circle(0px at bottom-right mascot), pointer-events: none */
+  clip-path: circle(0px at calc(100% - 48px) calc(100% - 48px));
+  -webkit-clip-path: circle(0px at calc(100% - 48px) calc(100% - 48px));
+  transition: clip-path 0.55s cubic-bezier(0.4, 0, 0.2, 1) 0.15s,
+              -webkit-clip-path 0.55s cubic-bezier(0.4, 0, 0.2, 1) 0.15s,
+              opacity 0.25s ease;
+}
+
+/* Open State: circle(150% at bottom-right mascot), pointer-events: auto */
+.home-prompt-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  clip-path: circle(150% at calc(100% - 48px) calc(100% - 48px));
+  -webkit-clip-path: circle(150% at calc(100% - 48px) calc(100% - 48px));
+  transition: clip-path 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0s,
+              -webkit-clip-path 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0s,
+              opacity 0.2s ease;
+}
+
+/* Inner Chat UI Wrapper */
+.home-prompt-overlay .chat-reveal-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  will-change: opacity, transform;
+
+  /* Closed State (Default): fades out immediately over 0.2s */
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease-in 0s, transform 0.2s ease-in 0s;
+}
+
+/* Open State: waits 0.35s for white circle expansion before fading in smoothly */
+.home-prompt-overlay .chat-reveal-inner.is-open {
+  opacity: 1;
+  transform: translateY(0px);
+  transition: opacity 0.35s ease-out 0.35s, transform 0.35s ease-out 0.35s;
+}
+
+/* Transfer to Notebooks on Submit */
+.home-prompt-overlay.is-transferring {
+  opacity: 0;
+  transition: opacity 0.4s ease-out 0s;
+  pointer-events: none;
 }
 </style>

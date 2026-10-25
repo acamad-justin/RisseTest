@@ -26,7 +26,11 @@ import {
 
 import { constellationConceptMap } from '@/mocks/constellationData.js'
 
-const emit = defineEmits(['open-module', 'open-notebook-prompt'])
+const props = defineProps({
+  isChatOpen: { type: Boolean, default: false },
+})
+
+const emit = defineEmits(['open-module', 'open-mascot-prompt'])
 
 // ── Search ────────────────────────────────────────────────────────────────
 const searchQuery = ref('')
@@ -124,7 +128,8 @@ function onPractice(id) {
     <!-- Floating action button (FAB) -->
     <ExploreButton
       :concepts="concepts"
-      @click-mascot="$emit('open-notebook-prompt')"
+      :is-chat-open="isChatOpen"
+      @click-mascot="$emit('open-mascot-prompt')"
     />
   </div>
 </template>

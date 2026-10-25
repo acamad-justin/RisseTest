@@ -282,7 +282,7 @@ onBeforeUnmount(() => {
 .nebula-base {
   position: absolute;
   inset: 0;
-  background: url('/bg-cosmic.jpg') center bottom / cover no-repeat, #0b0d2a;
+  background: url('/images/backgrounds/bg-cosmic.jpg') center bottom / cover no-repeat, #0b0d2a;
 }
 
 /* ── Ambient animated nebulae clouds ── */
