@@ -28,7 +28,7 @@ function chatApiPlugin() {
                             }
                             const json = body ? JSON.parse(body) : {};
 
-                            const mod = await server.ssrLoadModule('./app/api/chat/route.ts');
+                            const mod = await server.ssrLoadModule('../backend/app/api/chat/route.ts');
                             const webReq = new Request('http://localhost:5173/api/chat', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -76,6 +76,7 @@ export default defineConfig({
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],
+            publicDirectory: '../backend/public',
             refresh: true,
         }),
         vue({

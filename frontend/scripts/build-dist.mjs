@@ -6,12 +6,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-const buildDir = path.join(rootDir, 'public', 'build');
+const backendPublic = path.resolve(rootDir, '..', 'backend', 'public');
+const buildDir = fs.existsSync(path.join(rootDir, 'public', 'build'))
+  ? path.join(rootDir, 'public', 'build')
+  : path.join(backendPublic, 'build');
+
 const manifestPath = path.join(buildDir, 'manifest.json');
 const distDir = path.join(rootDir, 'dist');
 
 if (!fs.existsSync(manifestPath)) {
-  console.error('[build-dist] Error: public/build/manifest.json not found. Did vite build run?');
+  console.error('[build-dist] Error: manifest.json not found in ' + buildDir + '. Did vite build run?');
   process.exit(1);
 }
 
@@ -39,31 +43,37 @@ if (fs.existsSync(distDir)) {
 }
 fs.mkdirSync(distDir, { recursive: true });
 
-// Copy public/build/assets to dist/assets
+// Copy build/assets to dist/assets
 const buildAssetsDir = path.join(buildDir, 'assets');
 const distAssetsDir = path.join(distDir, 'assets');
 if (fs.existsSync(buildAssetsDir)) {
   fs.cpSync(buildAssetsDir, distAssetsDir, { recursive: true });
 }
 
-// Copy public/images to dist/images if exists
-const publicImagesDir = path.join(rootDir, 'public', 'images');
+// Copy images to dist/images if exists
+const publicImagesDir = fs.existsSync(path.join(rootDir, 'public', 'images'))
+  ? path.join(rootDir, 'public', 'images')
+  : path.join(backendPublic, 'images');
 const distImagesDir = path.join(distDir, 'images');
 if (fs.existsSync(publicImagesDir)) {
   fs.cpSync(publicImagesDir, distImagesDir, { recursive: true });
 }
 
-// Copy public/fonts to dist/fonts if exists
-const publicFontsDir = path.join(rootDir, 'public', 'fonts');
+// Copy fonts to dist/fonts if exists
+const publicFontsDir = fs.existsSync(path.join(rootDir, 'public', 'fonts'))
+  ? path.join(rootDir, 'public', 'fonts')
+  : path.join(backendPublic, 'fonts');
 const distFontsDir = path.join(distDir, 'fonts');
 if (fs.existsSync(publicFontsDir)) {
   fs.cpSync(publicFontsDir, distFontsDir, { recursive: true });
 }
 
-// Copy public/favicon.ico, favicon.png to dist if exists
+// Copy favicon.ico, favicon.png to dist if exists
 const favIcons = ['favicon.ico', 'favicon.png'];
 for (const icon of favIcons) {
-  const src = path.join(rootDir, 'public', icon);
+  const src = fs.existsSync(path.join(rootDir, 'public', icon))
+    ? path.join(rootDir, 'public', icon)
+    : path.join(backendPublic, icon);
   if (fs.existsSync(src)) {
     fs.copyFileSync(src, path.join(distDir, icon));
   }
@@ -101,3 +111,15 @@ ${cssTags}
 
 fs.writeFileSync(path.join(distDir, 'index.html'), htmlContent, 'utf8');
 console.log('[build-dist] ✓ Successfully generated dist/ with index.html and assets for Vercel deployment.');
+
+// Mirror to root dist/ directory for root deployments
+const rootDistDir = path.resolve(rootDir, '..', 'dist');
+try {
+  if (fs.existsSync(rootDistDir)) {
+    fs.rmSync(rootDistDir, { recursive: true, force: true });
+  }
+  fs.cpSync(distDir, rootDistDir, { recursive: true });
+  console.log('[build-dist] ✓ Mirrored to root dist/ directory.');
+} catch (e) {
+  // non-fatal
+}

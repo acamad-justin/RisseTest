@@ -1,12 +1,12 @@
 # Dependencies
-/node_modules
-/vendor
+node_modules/
+vendor/
 
 # Build & compiled assets
-/public/build
-/public/hot
-/public/storage
-/dist
+**/public/build
+**/public/hot
+**/public/storage
+dist/
 
 # Environment & Sensitive configs
 .env
