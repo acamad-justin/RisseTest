@@ -86,7 +86,7 @@ function onSearch()  { emit('search', props.modelValue) }
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #5044b8;   /* solid vibrant purple matching reference */
+  background: #7678edd5;
   border: none;
   outline: none;
   border-radius: 999px;
@@ -98,19 +98,13 @@ function onSearch()  { emit('search', props.modelValue) }
   transition: background 150ms ease, box-shadow 150ms ease;
 }
 
-.toolbar__search:focus-within {
-  background: #5c4ec8;
-  border: none;
-  outline: none;
-  box-shadow: 0 4px 14px rgba(80, 68, 184, 0.35);
-}
 
 .toolbar__input {
   flex: 1;
   background: transparent;
   border: none;
   outline: none;
-  color: #ffffff;
+  color: #fcfcfc;
   font-size: 12px;
   font-family: inherit;
   font-weight: 400;
@@ -148,6 +142,7 @@ function onSearch()  { emit('search', props.modelValue) }
   border-radius: 50%;
   transition: transform 120ms ease, opacity 120ms ease;
   flex-shrink: 0;
+  
 }
 .toolbar__search-btn:hover {
   transform: scale(1.15);

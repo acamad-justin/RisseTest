@@ -345,10 +345,6 @@ function onDelete(id) { store.deleteLog(id) }
   flex: 1;
   height: 100%;
   min-height: 0;
-  background: #ffffff;
-  border-radius: var(--radius-card, 18px);
-  border: 1px solid var(--border-card, #eef1f4);
-  box-shadow: var(--shadow-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden;       /* only .nb-page__content scrolls */
