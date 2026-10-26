@@ -33,19 +33,21 @@
 
     <!-- Top Section: Currently Enrolled Cards Carousel (Max 4 Cards Visible) -->
     <div class="enrolled-carousel-wrapper">
-      <!-- Carousel Previous Arrow Button -->
+      <!-- Left Gradient Prev Arrow (Visible past page 0) -->
       <button 
         v-if="currentEnrolledPage > 0" 
         type="button" 
-        class="carousel-nav-arrow btn-carousel-prev" 
+        class="carousel-gradient-edge edge-prev" 
         @click="prevCarouselPage"
         title="Show previous enrolled cards" 
         aria-label="Previous cards"
         id="btn-carousel-prev"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
+        <span class="carousel-chevron">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </span>
       </button>
 
       <!-- If no modules enrolled yet -->
@@ -62,101 +64,111 @@
         </div>
       </div>
 
-      <!-- 4 Maximum Cards Grid -->
-      <div v-else class="enrolled-cards-grid" id="enrolled-cards-container">
-        <div 
-          v-for="enrolled in displayedEnrolledCards" 
-          :key="enrolled.id"
-          class="enrolled-card"
-          :class="`card-${enrolled.theme || 'yellow'}`" 
-          :id="`enrolled-card-${enrolled.id}`" 
-          @click="$emit('open-module', enrolled)"
-          role="button"
-          tabindex="0"
-          :title="`Open ${enrolled.title}`"
-        >
-          <div class="card-content-top">
-            <div class="card-title-row">
-              <h3 class="enrolled-card-title">{{ enrolled.title }}</h3>
-              
-              <!-- Kebab menu button (3 dots) shown on hover instead of right arrow -->
-              <div class="card-kebab-wrapper" @click.stop>
-                <button 
-                  type="button" 
-                  class="btn-card-kebab" 
-                  @click.stop="toggleCardMenu(enrolled.id)"
-                  :class="{ 'is-menu-open': activeCardMenuId === enrolled.id }"
-                  title="Module options"
-                  :aria-label="`Options for ${enrolled.title}`"
-                  :id="`btn-kebab-${enrolled.id}`"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="2.2"/>
-                    <circle cx="12" cy="12" r="2.2"/>
-                    <circle cx="12" cy="19" r="2.2"/>
-                  </svg>
-                </button>
-
-                <!-- Dropdown Popover with Unenroll option -->
-                <transition name="dropdown-fade">
-                  <div 
-                    v-if="activeCardMenuId === enrolled.id" 
-                    class="card-kebab-dropdown" 
-                    @click.stop
-                  >
+      <!-- 4 Maximum Cards Grid with Slide Transition -->
+      <div v-else class="enrolled-cards-viewport">
+        <Transition :name="transitionName" mode="out-in">
+          <div 
+            :key="currentEnrolledPage" 
+            class="enrolled-cards-grid" 
+            id="enrolled-cards-container"
+          >
+            <div 
+              v-for="enrolled in displayedEnrolledCards" 
+              :key="enrolled.id"
+              class="enrolled-card"
+              :class="`card-${enrolled.theme || 'yellow'}`" 
+              :id="`enrolled-card-${enrolled.id}`" 
+              @click="$emit('open-module', enrolled)"
+              role="button"
+              tabindex="0"
+              :title="`Open ${enrolled.title}`"
+            >
+              <div class="card-content-top">
+                <div class="card-title-row">
+                  <h3 class="enrolled-card-title">{{ enrolled.title }}</h3>
+                  
+                  <!-- Kebab menu button -->
+                  <div class="card-kebab-wrapper" @click.stop>
                     <button 
                       type="button" 
-                      class="dropdown-item-unenroll" 
-                      @click.stop="handleUnenroll(enrolled)"
-                      :id="`btn-unenroll-${enrolled.id}`"
+                      class="btn-card-kebab" 
+                      @click.stop="toggleCardMenu(enrolled.id)"
+                      :class="{ 'is-menu-open': activeCardMenuId === enrolled.id }"
+                      title="Module options"
+                      :aria-label="`Options for ${enrolled.title}`"
+                      :id="`btn-kebab-${enrolled.id}`"
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="5" r="2.2"/>
+                        <circle cx="12" cy="12" r="2.2"/>
+                        <circle cx="12" cy="19" r="2.2"/>
                       </svg>
-                      <span>Unenroll</span>
                     </button>
+
+                    <!-- Dropdown Popover with Unenroll option -->
+                    <transition name="dropdown-fade">
+                      <div 
+                        v-if="activeCardMenuId === enrolled.id" 
+                        class="card-kebab-dropdown" 
+                        @click.stop
+                      >
+                        <button 
+                          type="button" 
+                          class="dropdown-item-unenroll" 
+                          @click.stop="handleUnenroll(enrolled)"
+                          :id="`btn-unenroll-${enrolled.id}`"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                          <span>Unenroll</span>
+                        </button>
+                      </div>
+                    </transition>
                   </div>
-                </transition>
+                </div>
+                <p class="enrolled-card-subtitle">{{ enrolled.subtitle }}</p>
+              </div>
+
+              <div class="enrolled-progress-row">
+                <div class="progress-bar-track" :class="{ 'track-translucent': enrolled.theme !== 'yellow' }">
+                  <div 
+                    class="progress-bar-fill" 
+                    :class="{
+                      'fill-blue': enrolled.theme === 'yellow',
+                      'fill-lavender': enrolled.theme === 'purple',
+                      'fill-pink': enrolled.theme === 'pink'
+                    }" 
+                    :style="{ width: `${enrolled.progressPercent || 0}%` }"
+                  ></div>
+                </div>
+                <span class="progress-ratio">{{ enrolled.currentStep }}/{{ enrolled.totalSteps }}</span>
               </div>
             </div>
-            <p class="enrolled-card-subtitle">{{ enrolled.subtitle }}</p>
           </div>
-
-          <div class="enrolled-progress-row">
-            <div class="progress-bar-track" :class="{ 'track-translucent': enrolled.theme !== 'yellow' }">
-              <div 
-                class="progress-bar-fill" 
-                :class="{
-                  'fill-blue': enrolled.theme === 'yellow',
-                  'fill-lavender': enrolled.theme === 'purple',
-                  'fill-pink': enrolled.theme === 'pink'
-                }" 
-                :style="{ width: `${enrolled.progressPercent || 0}%` }"
-              ></div>
-            </div>
-            <span class="progress-ratio">{{ enrolled.currentStep }}/{{ enrolled.totalSteps }}</span>
-          </div>
-        </div>
+        </Transition>
       </div>
 
-      <!-- Carousel Next Button (at rightmost, scrolls through enrolled cards) -->
+      <!-- Right Gradient Next Arrow (Visible when >4 enrolled modules exist) -->
       <button 
         v-if="totalPages > 1" 
         type="button" 
-        class="carousel-nav-arrow btn-carousel-next" 
+        class="carousel-gradient-edge edge-next" 
         @click="nextCarouselPage"
         :title="currentEnrolledPage < totalPages - 1 ? 'Show next 4 enrolled cards' : 'Back to first cards'" 
         aria-label="Next cards"
         id="btn-carousel-next"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
+        <span class="carousel-chevron">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
       </button>
     </div>
 
-    <!-- Explore Header Row (Fixed, Non-Scrollable) -->
+    <!-- Explore Header Row -->
     <div class="explore-header-row">
       <div class="explore-heading-group">
         <h2 class="explore-heading">Explore</h2>
@@ -164,7 +176,6 @@
       </div>
 
       <div class="explore-toolbar">
-        <!-- Search input toggled by binoculars -->
         <div v-if="showSearch" class="explore-search-wrap">
           <input
             v-model="searchQuery"
@@ -175,7 +186,6 @@
           />
         </div>
 
-        <!-- Binoculars / Search button -->
         <button 
           type="button" 
           class="toolbar-btn" 
@@ -193,7 +203,6 @@
           </svg>
         </button>
 
-        <!-- Filters button -->
         <button type="button" class="toolbar-btn" title="Filter" aria-label="Filter" @click="toggleFavoritesFilter">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="4" x2="20" y1="6" y2="6"/>
@@ -202,7 +211,6 @@
           </svg>
         </button>
 
-        <!-- Sort button -->
         <button type="button" class="toolbar-btn" title="Sort" aria-label="Sort">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="7 10 12 5 17 10"/>
@@ -221,12 +229,10 @@
           class="module-card-item"
           :id="`module-item-${module.id}`"
         >
-          <!-- Left: Thumbnail Placeholder -->
           <div class="module-thumbnail-box">
             <div class="thumbnail-inner"></div>
           </div>
 
-          <!-- Middle-Left: Title, Level Badge & Learning Steps -->
           <div class="module-info-col">
             <h4 class="module-title-text">{{ module.title }}</h4>
             <div class="module-meta-row">
@@ -235,13 +241,11 @@
             </div>
           </div>
 
-          <!-- Middle: Acquired Skills & Badge -->
           <div class="module-skills-col">
             <p class="acquired-skills-text">Skills Acquired: {{ module.skillsAcquired }}</p>
             <p class="badge-target-text">Badge: {{ module.badge }}</p>
           </div>
 
-          <!-- Right: Arrow, Working Favorite Star & Action (Enroll / Start) -->
           <div class="module-actions-col">
             <button 
               type="button" 
@@ -256,7 +260,6 @@
             </button>
 
             <div class="actions-bottom-row">
-              <!-- Working Favorite Star Toggle Button -->
               <button 
                 type="button" 
                 class="btn-favorite-toggle" 
@@ -271,7 +274,6 @@
                 </svg>
               </button>
 
-              <!-- Enroll / Start Action Button -->
               <button 
                 type="button" 
                 class="btn-enroll-module" 
@@ -285,7 +287,6 @@
           </div>
         </article>
 
-        <!-- Empty state when favorites filter has no matches -->
         <div v-if="displayedModules.length === 0" class="no-modules-placeholder">
           <p>No favorited or matching modules found.</p>
           <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false; searchQuery = ''">Show All Modules</button>
@@ -312,7 +313,6 @@
             <button class="btn-close-modal" type="button" aria-label="Close" @click="showAllEnrolledModal = false">✕</button>
           </div>
 
-          <!-- Filter Tabs -->
           <div class="all-enrolled-tabs">
             <button
               type="button"
@@ -340,7 +340,6 @@
             </button>
           </div>
 
-          <!-- Cards Grid -->
           <div v-if="filteredAllEnrolled.length" class="all-enrolled-grid">
             <div
               v-for="enrolled in filteredAllEnrolled"
@@ -398,6 +397,7 @@ const enrolledFilter = ref('all');
 const activeCardMenuId = ref(null);
 const currentEnrolledPage = ref(0);
 const CARDS_PER_PAGE = 4;
+const transitionName = ref('slide-left');
 
 function getInitialEnrolled() {
   try {
@@ -407,7 +407,6 @@ function getInitialEnrolled() {
   return [];
 }
 
-// Currently Enrolled List (persisted to localStorage)
 const enrolledList = ref(getInitialEnrolled());
 
 watch(enrolledList, (val) => {
@@ -426,7 +425,6 @@ const filteredAllEnrolled = computed(() => {
   return enrolledList.value;
 });
 
-// Carousel pagination computed properties
 const totalPages = computed(() => Math.ceil(enrolledList.value.length / CARDS_PER_PAGE) || 1);
 
 const displayedEnrolledCards = computed(() => {
@@ -435,14 +433,16 @@ const displayedEnrolledCards = computed(() => {
 });
 
 function nextCarouselPage() {
+  transitionName.value = 'slide-left';
   if (currentEnrolledPage.value < totalPages.value - 1) {
     currentEnrolledPage.value++;
   } else {
-    currentEnrolledPage.value = 0; // Wrap around to first 4 cards
+    currentEnrolledPage.value = 0;
   }
 }
 
 function prevCarouselPage() {
+  transitionName.value = 'slide-right';
   if (currentEnrolledPage.value > 0) {
     currentEnrolledPage.value--;
   } else {
@@ -458,21 +458,17 @@ function closeCardMenu() {
   activeCardMenuId.value = null;
 }
 
-// Unenroll Handler
 async function handleUnenroll(enrolled) {
   const targetId = enrolled.id;
   const targetTitle = enrolled.title;
   activeCardMenuId.value = null;
 
-  // Remove from enrolledList
   enrolledList.value = enrolledList.value.filter(e => e.id !== targetId);
 
-  // If current page is beyond total pages, adjust
   if (currentEnrolledPage.value >= totalPages.value) {
     currentEnrolledPage.value = Math.max(0, totalPages.value - 1);
   }
 
-  // Sync Explore modules action text
   const modInExplore = modulesList.value.find(m => m.id === targetId || m.title === targetTitle);
   if (modInExplore) {
     modInExplore.actionText = 'Enroll';
@@ -489,12 +485,9 @@ async function handleUnenroll(enrolled) {
         currentEnrolledPage.value = Math.max(0, totalPages.value - 1);
       }
     }
-  } catch (e) {
-    // Local state already updated
-  }
+  } catch (e) {}
 }
 
-// Explore Modules List
 const modulesList = ref([
   {
     id: 999,
@@ -583,7 +576,6 @@ const modulesList = ref([
   },
 ]);
 
-// Computed list filtered by favorites and search query
 const displayedModules = computed(() => {
   let list = modulesList.value;
   if (showOnlyFavorites.value) {
@@ -625,7 +617,6 @@ function toggleExpand(id) {
   expandedId.value = expandedId.value === id ? null : id;
 }
 
-// Toggle Favorites
 async function toggleFavorite(module) {
   module.isStarred = !module.isStarred;
   emit('notify', module.isStarred 
@@ -637,12 +628,9 @@ async function toggleFavorite(module) {
       moduleId: module.id, 
       isStarred: module.isStarred 
     });
-  } catch (e) {
-    // Local state already updated
-  }
+  } catch (e) {}
 }
 
-// Toggle Favorites Filter in header
 function toggleFavoritesFilter() {
   showOnlyFavorites.value = !showOnlyFavorites.value;
   emit('notify', showOnlyFavorites.value 
@@ -655,12 +643,9 @@ function handleSeeAll() {
   showAllEnrolledModal.value = true;
 }
 
-// Enroll / Start Click Handler
 async function handleModuleClick(module) {
   if (module.actionText === 'Enroll') {
     module.actionText = 'Start';
-    
-    // Check if already in enrolledList
     const existing = enrolledList.value.find(e => e.id === module.id || e.title === module.title);
     if (!existing) {
       const match = (module.steps || '').match(/\d+/);
@@ -678,7 +663,6 @@ async function handleModuleClick(module) {
         badge: module.badge,
       };
       
-      // Add directly to Currently Enrolled at 0%
       enrolledList.value.push(newCard);
     }
 
@@ -689,11 +673,8 @@ async function handleModuleClick(module) {
       if (res.data && res.data.enrolled !== undefined) {
         enrolledList.value = res.data.enrolled;
       }
-    } catch (e) {
-      // Local state is already updated
-    }
+    } catch (e) {}
   } else {
-    // Open module progression roadmap view
     const enrolledObj = enrolledList.value.find(e => e.id === module.id || e.title === module.title);
     const payload = enrolledObj || {
       id: module.id,
@@ -796,43 +777,63 @@ async function handleModuleClick(module) {
   color: #111827;
 }
 
-/* Top Enrolled Section: 4 Max Cards Carousel & Navigation */
+/* Enrolled Carousel Outer Wrapper */
 .enrolled-carousel-wrapper {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
   margin: 0 36px 18px 30px;
   flex-shrink: 0;
   width: auto;
+  border-radius: 20px;
+}
+
+/* Viewport that clips sliding cards */
+.enrolled-cards-viewport {
+  width: 100%;
+  overflow: hidden;
   position: relative;
-}
-
-.carousel-nav-arrow {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: none;
-  color: #334155;
+  min-height: 112px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
-  flex-shrink: 0;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 0;
 }
 
-.carousel-nav-arrow:hover {
-  background: #ffffff;
-  color: #0f172a;
-  transform: scale(1.06);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+/* Fixed 4-column structure */
+.enrolled-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 
-.carousel-nav-arrow:active {
-  transform: scale(0.96);
+/* Slide Left / Right Animation Transitions */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.35s cubic-bezier(0.2, 0, 0, 1), opacity 0.35s cubic-bezier(0.2, 0, 0, 1);
+  width: 100%;
+}
+
+.slide-left-enter-from {
+  opacity: 0;
+  transform: translateX(45px) scale(0.98);
+}
+
+.slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(-45px) scale(0.98);
+}
+
+.slide-right-enter-from {
+  opacity: 0;
+  transform: translateX(-45px) scale(0.98);
+}
+
+.slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(45px) scale(0.98);
 }
 
 /* Empty state for currently enrolled */
@@ -863,12 +864,6 @@ async function handleModuleClick(module) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  animation: pulse-badge 2.5s infinite ease-in-out;
-}
-
-@keyframes pulse-badge {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
 }
 
 .empty-enrolled-content {
@@ -896,14 +891,7 @@ async function handleModuleClick(module) {
   font-weight: 700;
 }
 
-.enrolled-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-  flex: 1;
-  min-width: 0;
-}
-
+/* Enrolled Card Styling */
 .enrolled-card {
   border-radius: 18px;
   padding: 16px 18px;
@@ -924,7 +912,75 @@ async function handleModuleClick(module) {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
 }
 
-/* Card Kebab Menu Container */
+/* Gradient edge overlays */
+.carousel-gradient-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  border: none;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  z-index: 25;
+  padding: 0 14px;
+  opacity: 0.95;
+  transition: opacity 0.2s ease;
+  user-select: none;
+}
+
+.edge-next {
+  right: 0;
+  justify-content: flex-end;
+  border-top-right-radius: 18px;
+  border-bottom-right-radius: 18px;
+  background: linear-gradient(
+    to right,
+    rgba(246, 247, 249, 0) 0%,
+    rgba(246, 247, 249, 0.5) 30%,
+    rgba(246, 247, 249, 0.92) 75%,
+    rgba(246, 247, 249, 1) 100%
+  );
+}
+
+.edge-prev {
+  left: 0;
+  justify-content: flex-start;
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
+  background: linear-gradient(
+    to left,
+    rgba(246, 247, 249, 0) 0%,
+    rgba(246, 247, 249, 0.5) 30%,
+    rgba(246, 247, 249, 0.92) 75%,
+    rgba(246, 247, 249, 1) 100%
+  );
+}
+
+.carousel-gradient-edge:hover {
+  opacity: 1;
+}
+
+.carousel-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f2937;
+  filter: drop-shadow(0 1px 3px rgba(255, 255, 255, 0.9));
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
+
+.edge-next:hover .carousel-chevron {
+  transform: translateX(3px) scale(1.1);
+  color: #F18701;
+}
+
+.edge-prev:hover .carousel-chevron {
+  transform: translateX(-3px) scale(1.1);
+  color: #F18701;
+}
+
+/* Card Kebab Menu */
 .card-kebab-wrapper {
   position: relative;
   display: flex;
@@ -944,7 +1000,6 @@ async function handleModuleClick(module) {
   transition: opacity 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
 }
 
-/* Show kebab menu while hovering the card, or when dropdown is open */
 .enrolled-card:hover .btn-card-kebab,
 .btn-card-kebab.is-menu-open {
   opacity: 0.85;
@@ -1013,7 +1068,7 @@ async function handleModuleClick(module) {
   transform: scale(0.95) translateY(-4px);
 }
 
-/* Yellow Card Theme */
+/* Themes */
 .card-yellow {
   background: #f5a623;
   color: #1f2937;
@@ -1031,7 +1086,6 @@ async function handleModuleClick(module) {
   color: #6366f1;
 }
 
-/* Purple Card Theme */
 .card-purple {
   background: linear-gradient(110deg, #241142 0%, #361763 45%, #4f1d8c 80%, #6d28d9 100%);
   color: #ffffff;
@@ -1049,7 +1103,6 @@ async function handleModuleClick(module) {
   color: #c4b5fd;
 }
 
-/* Pink Card Theme */
 .card-pink {
   background: linear-gradient(110deg, #831843 0%, #9d174d 45%, #be185d 80%, #ec4899 100%);
   color: #ffffff;
@@ -1188,7 +1241,7 @@ async function handleModuleClick(module) {
   transform: translateY(-1px);
 }
 
-/* THE ONLY SCROLLABLE AREA */
+/* Scrollable Explore Container */
 .explore-scroll-container {
   flex: 1;
   min-height: 0;
@@ -1228,14 +1281,14 @@ async function handleModuleClick(module) {
   background: #ffffff;
   border: 1px solid #A2A2A2;
   border-radius: 16px;
-  padding: 20px 24px;                    /* Increased from 12px 18px to add more vertical height */
+  padding: 20px 24px;
   display: grid;
-  grid-template-columns: 150px 1.2fr 1.6fr auto; /* Increased thumbnail column from 130px to 150px */
+  grid-template-columns: 150px 1.2fr 1.6fr auto;
   align-items: center;
-  gap: 22px;                             /* Slightly increased gap for better breathing room */
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04); /* Slightly enhanced shadow to match the bigger presence */
+  gap: 22px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-  margin: 0 30px 16px 30px;              /* Added 16px bottom margin to space out the cards vertically */
+  margin: 0 30px 16px 30px;
 }
 
 .module-card-item:hover {
@@ -1361,7 +1414,6 @@ async function handleModuleClick(module) {
   gap: 10px;
 }
 
-/* Working Favorite Star Toggle Button */
 .btn-favorite-toggle {
   background: transparent;
   border: none;
@@ -1395,7 +1447,6 @@ async function handleModuleClick(module) {
   transform: scale(1.25);
 }
 
-/* Action Button (Enroll / Start) */
 .btn-enroll-module {
   background: #F18701;
   color: #ffffff;
@@ -1419,7 +1470,6 @@ async function handleModuleClick(module) {
   background: #F18701;
 }
 
-/* Empty filter state */
 .no-modules-placeholder {
   text-align: center;
   padding: 36px 20px;
@@ -1459,7 +1509,6 @@ async function handleModuleClick(module) {
   }
 }
 
-/* ── Search Input in Explore Toolbar ── */
 .explore-search-wrap {
   display: flex;
   align-items: center;
@@ -1483,7 +1532,6 @@ async function handleModuleClick(module) {
   width: 220px;
 }
 
-/* ── All Enrolled & Finished Modal ── */
 .all-enrolled-overlay {
   position: fixed;
   inset: 0;
