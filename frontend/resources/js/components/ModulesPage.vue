@@ -15,7 +15,7 @@
           :aria-label="showOnlyFavorites ? 'Show All Modules' : 'Filter Favorites'"
           id="btn-filter-favorites"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" :fill="showOnlyFavorites ? '#ff7a00' : '#1f2937'">
+          <svg width="28" height="28" viewBox="0 0 24 24" :fill="showOnlyFavorites ? '#ff7a00' : '#1f2937'">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
         </button>
@@ -726,14 +726,14 @@ async function handleModuleClick(module) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
+  margin: 0 36px 14px 30px;
   flex-shrink: 0;
 }
 
 .modules-title {
   font-family: var(--font-family-display, 'Momo Trust Display', sans-serif);
-  font-size: 28px;
-  font-weight: 800;
+  font-size: 50px;
+  font-weight: 400;
   color: #181d24;
   letter-spacing: -0.5px;
   margin: 0;
@@ -742,7 +742,7 @@ async function handleModuleClick(module) {
 .modules-header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .btn-icon-star {
@@ -750,16 +750,21 @@ async function handleModuleClick(module) {
   border: none;
   cursor: pointer;
   color: #1f2937;
-  padding: 6px;
+  padding: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 12px;
   transition: transform 0.2s, color 0.2s, background-color 0.2s;
 }
 
+.btn-icon-star svg {
+  width: 28px;
+  height: 28px;
+}
+
 .btn-icon-star:hover {
-  transform: scale(1.15);
+  transform: scale(1.12);
   color: #ff7a00;
   background-color: rgba(255, 122, 0, 0.08);
 }
@@ -772,14 +777,17 @@ async function handleModuleClick(module) {
 .btn-see-all {
   background: #ffffff;
   border: 1px solid #d1d5db;
-  border-radius: 10px;
-  padding: 6px 16px;
-  font-size: 13px;
+  border-radius: 12px;
+  padding: 10px 22px;
+  font-size: 16px;
   font-weight: 600;
   color: #374151;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-see-all:hover {
@@ -793,9 +801,9 @@ async function handleModuleClick(module) {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
+  margin: 0 36px 18px 30px;
   flex-shrink: 0;
-  width: 100%;
+  width: auto;
   position: relative;
 }
 
@@ -890,7 +898,7 @@ async function handleModuleClick(module) {
 
 .enrolled-cards-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
   flex: 1;
   min-width: 0;
@@ -1144,6 +1152,7 @@ async function handleModuleClick(module) {
   font-weight: 800;
   color: #ff7a00;
   margin: 0;
+  margin-left: 80px;
 }
 
 .filter-indicator-badge {
@@ -1159,6 +1168,7 @@ async function handleModuleClick(module) {
   display: flex;
   align-items: center;
   gap: 14px;
+  margin-right: 60px;
 }
 
 .toolbar-btn {
@@ -1209,7 +1219,7 @@ async function handleModuleClick(module) {
 .explore-modules-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding-bottom: 16px;
 }
 
@@ -1218,13 +1228,14 @@ async function handleModuleClick(module) {
   background: #ffffff;
   border: 1px solid #A2A2A2;
   border-radius: 16px;
-  padding: 12px 18px;
+  padding: 20px 24px;                    /* Increased from 12px 18px to add more vertical height */
   display: grid;
-  grid-template-columns: 130px 1.2fr 1.6fr auto;
+  grid-template-columns: 150px 1.2fr 1.6fr auto; /* Increased thumbnail column from 130px to 150px */
   align-items: center;
-  gap: 18px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  gap: 22px;                             /* Slightly increased gap for better breathing room */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04); /* Slightly enhanced shadow to match the bigger presence */
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  margin: 0 30px 16px 30px;              /* Added 16px bottom margin to space out the cards vertically */
 }
 
 .module-card-item:hover {
@@ -1255,8 +1266,8 @@ async function handleModuleClick(module) {
 }
 
 .module-title-text {
-  font-size: 15.5px;
-  font-weight: 700;
+  font-size: 25px;
+  font-weight: 400;
   color: #181d24;
   margin: 0;
   letter-spacing: -0.2px;
@@ -1386,7 +1397,7 @@ async function handleModuleClick(module) {
 
 /* Action Button (Enroll / Start) */
 .btn-enroll-module {
-  background: #ff7a00;
+  background: #F18701;
   color: #ffffff;
   border: none;
   border-radius: 9999px;
@@ -1405,7 +1416,7 @@ async function handleModuleClick(module) {
 }
 
 .btn-start {
-  background: #ff7a00;
+  background: #F18701;
 }
 
 /* Empty filter state */
