@@ -12,9 +12,9 @@
 
 /* Modern, crisp Design System matching Risse 1:1 - No-Scroll Compact Viewport */
 :root {
-  --primary-orange: #ff7a00;
+  --primary-orange: #F18701;
   --primary-orange-hover: #ff8c1a;
-  --primary-orange-active: #d65300;
+  --primary-orange-active: #F35B04;
   --primary-orange-glow: rgba(255, 122, 0, 0.25);
   --bg-page: #f6f7f9;
   --bg-card: #ffffff;
@@ -83,7 +83,7 @@ body {
   flex-direction: column;
   justify-content: space-between;
   padding: 20px 0 16px 14px;
-  height: calc(100vh - 36px);
+  height: calc(100vh - 65px);
   box-shadow: 0 10px 30px rgba(255, 122, 0, 0.22);
   transition: width 0.28s cubic-bezier(0.2, 0, 0, 1),
               min-width 0.28s cubic-bezier(0.2, 0, 0, 1),
@@ -92,6 +92,7 @@ body {
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
+  margin: auto 0 auto 23px;
 }
 
 /* Collapsed sidebar state */
@@ -106,7 +107,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 22px;
+  margin-bottom: 80px;
   padding: 0 14px 0 4px;
 }
 
@@ -116,6 +117,12 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
+  margin-right: 0;
+}
+
+.risse-sidebar.is-collapsed .risse-collapse-btn {
+  margin-top: 0;
+  margin-right: 0;
 }
 
 .risse-logo {
@@ -130,6 +137,8 @@ body {
   max-width: 100px;
   object-fit: contain;
   display: block;
+  padding-left: 15px;
+  margin-top: 15px;
 }
 
 .risse-logo-icon {
@@ -158,6 +167,8 @@ body {
   justify-content: center;
   transition: background-color 0.18s ease, transform 0.18s ease;
   flex-shrink: 0;
+  margin-top: 8px;
+  margin-right: 15px;
 }
 
 .risse-collapse-btn:hover {
@@ -204,9 +215,9 @@ body {
 
 /* On hover: looks like notebook tab stickers poking out with NO gap on the right */
 .risse-nav-btn:hover {
-  background: #ea580c;
-  border-top-left-radius: 20px;
-  border-bottom-left-radius: 20px;
+  background: #F35B044D;
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   transform: none;
@@ -215,9 +226,9 @@ body {
 
 /* Active tab sticker with NO gap on the right */
 .risse-nav-btn.active {
-  background: #d65300;
-  border-top-left-radius: 20px;
-  border-bottom-left-radius: 20px;
+  background: #F35B04;
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   box-shadow: -3px 3px 12px rgba(0, 0, 0, 0.22);
@@ -269,6 +280,8 @@ body {
   align-items: center;
   justify-content: center;
   transition: transform 0.3s ease, background-color 0.2s ease;
+  margin-right: 10px;
+  margin-bottom: 10px;
 }
 
 .risse-settings-btn:hover {
