@@ -54,6 +54,8 @@ function onClick() {
   padding: 0;
   transition: opacity 0.4s ease 0.15s, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.15s;
   transform-origin: center center;
+  padding-right: 40px;
+  padding-bottom: 20px;
 }
 
 .fab:hover,

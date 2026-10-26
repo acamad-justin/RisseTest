@@ -153,6 +153,7 @@ function onPractice(id) {
 
 /* ─── Header row ───────────────────────────────────────────────────────── */
 .home__header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -163,7 +164,7 @@ function onPractice(id) {
 
 .home__title {
   font-family: var(--font-family-display, 'Momo Trust Display', sans-serif);
-  font-size: 32px;
+  font-size: 50px;
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.025em;
@@ -197,8 +198,8 @@ function onPractice(id) {
   align-items: flex-end;
   justify-content: flex-start;
   gap: 32px;
-  padding-top: 12px;
-  padding-right: 8px;
+  padding-top: 50px;
+  padding-right: 40px;
 }
 
 /* ─── Individual stat block ─────────────────────────────────────────────── */
@@ -208,11 +209,14 @@ function onPractice(id) {
 
 .stat__label {
   font-family: 'Lexend', var(--font-family-sans, sans-serif);
-  font-size: 14.5px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.72);
-  line-height: 1.35;
-  letter-spacing: -0.01em;
+  font-size: 18.54px;
+  font-weight: 400;
+  font-style: normal;
+  color: #ffffff;
+  line-height: 120%;
+  letter-spacing: 0%;
+  text-align: right;
+  vertical-align: middle;
 }
 
 .stat__number {

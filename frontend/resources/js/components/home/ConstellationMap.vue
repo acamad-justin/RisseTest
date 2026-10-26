@@ -250,11 +250,11 @@ const exploratoryEdges = computed(() => props.connections.filter(e => e.type ===
   overflow: visible;
 }
 
-/* ── Recall Card Panel — bottom-right corner ── */
+/* ── Recall Card Panel — above the Explore/FAB button ── */
 .cmap__recall-panel {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
+  position: fixed;
+  bottom: 120px;   /* clears the FAB (58px img + 20px padding-bottom + 28px bottom + 14px gap) */
+  right: 60px;     /* aligns with the FAB's right edge */
   z-index: calc(var(--z-dropdown, 100) + 5);
   pointer-events: auto;
 }
