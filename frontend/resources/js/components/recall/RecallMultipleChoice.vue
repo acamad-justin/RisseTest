@@ -60,7 +60,9 @@ defineEmits(['update:selectedOption'])
   align-items: center;
   gap: 14px;
   width: 100%;
-  padding: 16px 20px;
+  max-width: 1329px;
+  height: 85px;
+  padding: 0 20px;
   box-sizing: border-box;
 
   background: #ffffff;
@@ -83,20 +85,29 @@ defineEmits(['update:selectedOption'])
 
 /* ── Option label (A / B / C / D) ────────────────────────────────────── */
 .rmc__label {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: 'Lexend', sans-serif;
+  font-size: 25px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  vertical-align: middle;
   color: #b0aac0;
   flex-shrink: 0;
-  width: 20px;
+  width: 28px;
   transition: color 150ms ease;
 }
 
 /* ── Option text ──────────────────────────────────────────────────────── */
 .rmc__text {
-  font-size: 15px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 25px;
   font-weight: 400;
+  font-style: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  vertical-align: middle;
   color: #8a85a0;
-  line-height: 1.45;
   transition: color 150ms ease;
 }
 
@@ -114,7 +125,7 @@ defineEmits(['update:selectedOption'])
 @media (max-width: 680px) {
   .rmc { gap: 10px; margin-top: 18px; }
   .rmc__option { padding: 13px 16px; gap: 12px; }
-  .rmc__label { font-size: 13px; }
-  .rmc__text { font-size: 13.5px; }
+  .rmc__label { font-size: 20px; }
+  .rmc__text { font-size: 20px; }
 }
 </style>
