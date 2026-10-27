@@ -2,7 +2,7 @@
  * notebooksStore.js — shared reactive state for the Notebooks feature.
  *
  * Implemented as a singleton Vue 3 reactive store composable.
- * Zero mock data — real learner logs and projects persisted to localStorage.
+ * Learner logs and projects persisted per authenticated user in localStorage.
  */
 import { ref, computed, reactive, watch } from 'vue'
 
@@ -15,9 +15,45 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 }
 
-function getInitialLogs() {
+function getActiveEmail() {
   try {
-    const raw = localStorage.getItem('risse_notebooks_logs')
+    const activeId = localStorage.getItem('risse_active_user_id')
+    if (activeId) {
+      const rawAccounts = localStorage.getItem('risse_registered_accounts')
+      if (rawAccounts) {
+        const accounts = JSON.parse(rawAccounts)
+        const user = accounts.find(a => a.id === activeId)
+        if (user && user.email) return user.email.toLowerCase().trim()
+      }
+    }
+  } catch (e) {}
+  return ''
+}
+
+function getSafeEmailKey(email) {
+  if (!email || typeof email !== 'string') return ''
+  return email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')
+}
+
+function getLogsKey(email) {
+  const safe = getSafeEmailKey(email)
+  return safe ? `risse_email_${safe}_notebooks_logs` : 'risse_notebooks_logs'
+}
+
+function getProjectsKey(email) {
+  const safe = getSafeEmailKey(email)
+  return safe ? `risse_email_${safe}_notebooks_projects` : 'risse_notebooks_projects'
+}
+
+function getInitialLogs(email = getActiveEmail()) {
+  if (!email) return []
+  try {
+    const userKey = getLogsKey(email)
+    let raw = localStorage.getItem(userKey)
+    // Backward compatibility: legacy keys only for adriel@risse.edu
+    if (!raw && email === 'adriel@risse.edu') {
+      raw = localStorage.getItem('risse_user_usr_adriel_notebooks_logs') || localStorage.getItem('risse_notebooks_logs')
+    }
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -28,9 +64,14 @@ function getInitialLogs() {
   return []
 }
 
-function getInitialProjects() {
+function getInitialProjects(email = getActiveEmail()) {
+  if (!email) return []
   try {
-    const raw = localStorage.getItem('risse_notebooks_projects')
+    const userKey = getProjectsKey(email)
+    let raw = localStorage.getItem(userKey)
+    if (!raw && email === 'adriel@risse.edu') {
+      raw = localStorage.getItem('risse_user_usr_adriel_notebooks_projects') || localStorage.getItem('risse_notebooks_projects')
+    }
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -41,25 +82,73 @@ function getInitialProjects() {
   return []
 }
 
-// Clean state without mock data
-const logs = ref(getInitialLogs())
-const projects = ref(getInitialProjects())
+const currentEmail = ref(getActiveEmail())
+const logs = ref(getInitialLogs(currentEmail.value))
+const projects = ref(getInitialProjects(currentEmail.value))
 
 function persist() {
+  const email = currentEmail.value || getActiveEmail()
+  if (!email) return // Do not persist unauthenticated logs into someone's account
   try {
-    localStorage.setItem('risse_notebooks_logs', JSON.stringify(logs.value))
-    localStorage.setItem('risse_notebooks_projects', JSON.stringify(projects.value))
+    localStorage.setItem(getLogsKey(email), JSON.stringify(logs.value))
+    localStorage.setItem(getProjectsKey(email), JSON.stringify(projects.value))
+    if (email === 'adriel@risse.edu') {
+      localStorage.setItem('risse_notebooks_logs', JSON.stringify(logs.value))
+      localStorage.setItem('risse_notebooks_projects', JSON.stringify(projects.value))
+    }
   } catch (e) {}
 }
 
 watch(logs, persist, { deep: true })
 watch(projects, persist, { deep: true })
 
+/**
+ * Switch the notebooks store data to the specified email or active authenticated user
+ */
+function switchUser(target) {
+  let targetEmail = ''
+  if (typeof target === 'string') {
+    if (target.includes('@')) {
+      targetEmail = target.toLowerCase().trim()
+    } else if (target) {
+      // Lookup email by userId
+      try {
+        const rawAccounts = localStorage.getItem('risse_registered_accounts')
+        if (rawAccounts) {
+          const accounts = JSON.parse(rawAccounts)
+          const user = accounts.find(a => a.id === target)
+          if (user && user.email) targetEmail = user.email.toLowerCase().trim()
+        }
+      } catch (_) {}
+    }
+  } else if (target && target.email) {
+    targetEmail = target.email.toLowerCase().trim()
+  } else {
+    targetEmail = getActiveEmail()
+  }
+
+  if (currentEmail.value === targetEmail) return
+
+  // Persist old email's data under the old email key before switching
+  if (currentEmail.value) {
+    try {
+      localStorage.setItem(getLogsKey(currentEmail.value), JSON.stringify(logs.value))
+      localStorage.setItem(getProjectsKey(currentEmail.value), JSON.stringify(projects.value))
+    } catch (_) {}
+  }
+
+  currentEmail.value = targetEmail
+  logs.value = getInitialLogs(targetEmail)
+  projects.value = getInitialProjects(targetEmail)
+}
+
 const storeInstance = reactive({
   // state
   logs,
   projects,
+  currentEmail,
   persist,
+  switchUser,
   // computed
   sortedLogs: computed(() =>
     [...logs.value].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
