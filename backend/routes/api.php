@@ -14,12 +14,32 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-function getProfileData() {
-    $file = storage_path('app/profile_data.json');
+function getSafeEmailKey(Request $request) {
+    $email = $request->header('X-User-Email') 
+        ?? $request->input('user_email') 
+        ?? $request->input('email')
+        ?? null;
+    if ($email && is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return preg_replace('/[^a-z0-9]/', '_', strtolower(trim($email)));
+    }
+    return 'default';
+}
+
+function getProfileData($emailKey = 'default') {
+    $file = storage_path("app/profile_data_{$emailKey}.json");
     if (file_exists($file)) {
         $json = json_decode(file_get_contents($file), true);
         if ($json && isset($json['user'])) {
             return $json;
+        }
+    }
+    if ($emailKey === 'adriel_risse_edu' || $emailKey === 'default') {
+        $legacy = storage_path('app/profile_data.json');
+        if (file_exists($legacy)) {
+            $json = json_decode(file_get_contents($legacy), true);
+            if ($json && isset($json['user'])) {
+                return $json;
+            }
         }
     }
     
@@ -45,24 +65,26 @@ function getProfileData() {
     return $default;
 }
 
-function saveProfileData($data) {
-    $file = storage_path('app/profile_data.json');
+function saveProfileData($data, $emailKey = 'default') {
+    $file = storage_path("app/profile_data_{$emailKey}.json");
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
 }
 
-Route::get('/profile', function () {
-    return response()->json(getProfileData());
+Route::get('/profile', function (Request $request) {
+    $k = getSafeEmailKey($request);
+    return response()->json(getProfileData($k));
 });
 
 Route::post('/profile/update', function (Request $request) {
-    $data = getProfileData();
+    $k = getSafeEmailKey($request);
+    $data = getProfileData($k);
     $input = $request->all();
     if (isset($input['user'])) {
         $data['user'] = array_merge($data['user'], $input['user']);
     } else {
         $data['user'] = array_merge($data['user'], $input);
     }
-    saveProfileData($data);
+    saveProfileData($data, $k);
     return response()->json([
         'status' => 'success',
         'message' => 'Profile updated successfully',
@@ -71,7 +93,8 @@ Route::post('/profile/update', function (Request $request) {
 });
 
 Route::post('/profile/award-badge', function (Request $request) {
-    $data = getProfileData();
+    $k = getSafeEmailKey($request);
+    $data = getProfileData($k);
     $input = $request->all();
     if (empty($input)) {
         $input = json_decode($request->getContent(), true) ?? [];
@@ -102,7 +125,7 @@ Route::post('/profile/award-badge', function (Request $request) {
         }
     }
 
-    saveProfileData($data);
+    saveProfileData($data, $k);
     return response()->json([
         'status' => 'success',
         'message' => 'Achievement awarded successfully!',
@@ -118,12 +141,21 @@ Route::post('/profile/reset', function () {
     return response()->json(getProfileData());
 });
 
-function getModulesData() {
-    $file = storage_path('app/modules_data.json');
+function getModulesData($emailKey = 'default') {
+    $file = storage_path("app/modules_data_{$emailKey}.json");
     if (file_exists($file)) {
         $json = json_decode(file_get_contents($file), true);
         if ($json && isset($json['enrolled']) && isset($json['explore'])) {
             return $json;
+        }
+    }
+    if ($emailKey === 'adriel_risse_edu' || $emailKey === 'default') {
+        $legacy = storage_path('app/modules_data.json');
+        if (file_exists($legacy)) {
+            $json = json_decode(file_get_contents($legacy), true);
+            if ($json && isset($json['enrolled']) && isset($json['explore'])) {
+                return $json;
+            }
         }
     }
     
@@ -223,22 +255,24 @@ function getModulesData() {
     return $default;
 }
 
-function saveModulesData($data) {
-    $file = storage_path('app/modules_data.json');
+function saveModulesData($data, $emailKey = 'default') {
+    $file = storage_path("app/modules_data_{$emailKey}.json");
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
 }
 
-Route::get('/modules', function () {
-    return response()->json(getModulesData());
+Route::get('/modules', function (Request $request) {
+    $k = getSafeEmailKey($request);
+    return response()->json(getModulesData($k));
 });
 
 Route::post('/modules/enroll', function (Request $request) {
+    $k = getSafeEmailKey($request);
     $input = $request->all();
     if (empty($input)) {
         $input = json_decode($request->getContent(), true) ?? [];
     }
     $moduleId = $input['moduleId'] ?? $request->input('moduleId');
-    $data = getModulesData();
+    $data = getModulesData($k);
     
     $targetModule = null;
     foreach ($data['explore'] as &$mod) {
@@ -282,7 +316,7 @@ Route::post('/modules/enroll', function (Request $request) {
         }
     }
     
-    saveModulesData($data);
+    saveModulesData($data, $k);
     
     return response()->json([
         'status' => 'success',
@@ -294,6 +328,7 @@ Route::post('/modules/enroll', function (Request $request) {
 });
 
 Route::post('/modules/progress', function (Request $request) {
+    $k = getSafeEmailKey($request);
     $input = $request->all();
     if (empty($input)) {
         $input = json_decode($request->getContent(), true) ?? [];
@@ -302,7 +337,7 @@ Route::post('/modules/progress', function (Request $request) {
     $step = isset($input['step']) ? (int)$input['step'] : null;
     $path = $input['path'] ?? null;
     
-    $data = getModulesData();
+    $data = getModulesData($k);
     $updatedModule = null;
     
     foreach ($data['enrolled'] as &$enr) {
@@ -335,7 +370,7 @@ Route::post('/modules/progress', function (Request $request) {
     }
     unset($enr);
     
-    saveModulesData($data);
+    saveModulesData($data, $k);
     
     return response()->json([
         'status' => 'success',
@@ -345,13 +380,14 @@ Route::post('/modules/progress', function (Request $request) {
 });
 
 Route::post('/modules/favorite', function (Request $request) {
+    $k = getSafeEmailKey($request);
     $input = $request->all();
     if (empty($input)) {
         $input = json_decode($request->getContent(), true) ?? [];
     }
     $moduleId = $input['moduleId'] ?? $request->input('moduleId');
     $isStarred = $input['isStarred'] ?? $request->input('isStarred');
-    $data = getModulesData();
+    $data = getModulesData($k);
     
     foreach ($data['explore'] as &$mod) {
         if ($mod['id'] == $moduleId) {
@@ -361,7 +397,7 @@ Route::post('/modules/favorite', function (Request $request) {
     }
     unset($mod);
     
-    saveModulesData($data);
+    saveModulesData($data, $k);
     
     return response()->json([
         'status' => 'success',
@@ -372,6 +408,7 @@ Route::post('/modules/favorite', function (Request $request) {
 });
 
 Route::post('/modules/unenroll', function (Request $request) {
+    $k = getSafeEmailKey($request);
     $moduleId = $request->input('moduleId') 
         ?? $request->json('moduleId') 
         ?? ($request->isJson() ? ($request->json()->all()['moduleId'] ?? null) : null);
@@ -379,7 +416,7 @@ Route::post('/modules/unenroll', function (Request $request) {
         $raw = json_decode($request->getContent(), true);
         $moduleId = $raw['moduleId'] ?? null;
     }
-    $data = getModulesData();
+    $data = getModulesData($k);
     
     $data['enrolled'] = array_values(array_filter($data['enrolled'], function ($enr) use ($moduleId) {
         return (string)$enr['id'] !== (string)$moduleId;
@@ -394,7 +431,7 @@ Route::post('/modules/unenroll', function (Request $request) {
     }
     unset($mod);
     
-    saveModulesData($data);
+    saveModulesData($data, $k);
     
     return response()->json([
         'status' => 'success',

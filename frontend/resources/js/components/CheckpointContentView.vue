@@ -113,7 +113,30 @@
       aria-label="Risse AI Chat Assistant"
     >
       <div class="chatbot-header-controls">
-        <span class="chat-header-spacer"></span>
+        <div class="ai-mode-toggle-group" role="group" aria-label="AI Mode Switcher">
+          <button 
+            type="button" 
+            class="ai-mode-pill-btn" 
+            :class="{ 'is-active': aiMode === 'socratic' }"
+            @click="setAiMode('socratic')"
+            title="Socratic Teaching Mode: Guided inquiry, hints, and conceptual understanding"
+            id="btn-mode-socratic"
+          >
+            <span class="ai-mode-icon">🎓</span>
+            <span class="ai-mode-text">Socratic</span>
+          </button>
+          <button 
+            type="button" 
+            class="ai-mode-pill-btn is-competition" 
+            :class="{ 'is-active': aiMode === 'competition' }"
+            @click="setAiMode('competition')"
+            title="Competition Mode: Direct tournament tactics, fast pit debugging & instant solutions"
+            id="btn-mode-competition"
+          >
+            <span class="ai-mode-icon">⚡</span>
+            <span class="ai-mode-text">Competition</span>
+          </button>
+        </div>
         <button 
           type="button" 
           class="btn-expand-chat" 
@@ -269,8 +292,44 @@ const chatHistory = ref([]);
 const isStreaming = ref(false);
 const chatMessagesContainer = ref(null);
 const isStarred = ref(false);
-const isKebabOpen = ref(false);
 const isChatMaximized = ref(false);
+
+function getActiveEmail() {
+  try {
+    const activeId = localStorage.getItem('risse_active_user_id');
+    if (activeId) {
+      const rawAccounts = localStorage.getItem('risse_registered_accounts');
+      if (rawAccounts) {
+        const accounts = JSON.parse(rawAccounts);
+        const user = accounts.find(a => a.id === activeId);
+        if (user && user.email) return user.email.toLowerCase().trim();
+      }
+    }
+  } catch (e) {}
+  return '';
+}
+
+function getStoredAiMode() {
+  try {
+    const email = getActiveEmail();
+    const key = email ? `risse_email_${email.replace(/[^a-z0-9]/g, '_')}_ai_mode` : 'risse_ai_mode';
+    return localStorage.getItem(key) || 'socratic';
+  } catch (_) {
+    return 'socratic';
+  }
+}
+
+const aiMode = ref(getStoredAiMode());
+
+function setAiMode(mode) {
+  aiMode.value = mode;
+  try {
+    const email = getActiveEmail();
+    const key = email ? `risse_email_${email.replace(/[^a-z0-9]/g, '_')}_ai_mode` : 'risse_ai_mode';
+    localStorage.setItem(key, mode);
+  } catch (_) {}
+  emit('notify', mode === 'competition' ? '⚡ Competition Mode Activated — Rapid pit tactics & tournament answers!' : '🎓 Socratic Mode Activated — Guided inquiry & conceptual learning.');
+}
 
 function autoGrowInput() {
   const el = chatInputTextarea.value;
@@ -690,6 +749,7 @@ async function sendMessage() {
       messages: formattedMessages,
       checkpointTitle: props.checkpointTitle,
       moduleTitle: props.parentModuleName,
+      mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
     };
 
     let response;
@@ -722,12 +782,20 @@ async function sendMessage() {
       }
     } catch (err) {
       if (isLocal) {
-        // Direct Vite dev server fallback (port 5173) for local development only
-        response = await fetch('http://localhost:5173/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        // Direct Vite dev server fallback (port 5173) for local development
+        try {
+          response = await fetch('http://127.0.0.1:5173/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch (_) {
+          response = await fetch('http://localhost:5173/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        }
       } else {
         throw err;
       }
@@ -1088,10 +1156,58 @@ function formatMessageText(text) {
 
 .chatbot-header-controls {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   flex-shrink: 0;
+  gap: 8px;
+}
+
+.ai-mode-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid #e2e8f0;
+}
+
+.ai-mode-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+  line-height: 1;
+}
+
+.ai-mode-pill-btn:hover {
+  color: #1e293b;
+}
+
+.ai-mode-pill-btn.is-active {
+  background: #ffffff;
+  color: #ea580c;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.ai-mode-pill-btn.is-competition.is-active {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+}
+
+.ai-mode-icon {
+  font-size: 12px;
 }
 
 .ai-model-tag {

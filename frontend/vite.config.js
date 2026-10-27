@@ -20,6 +20,25 @@ function chatApiPlugin() {
                         return;
                     }
 
+                    if (req.method === 'GET') {
+                        try {
+                            const mod = await server.ssrLoadModule('./api/chat.ts');
+                            const webRes = await mod.GET();
+                            res.statusCode = webRes.status || 200;
+                            webRes.headers.forEach((val, key) => {
+                                res.setHeader(key, val);
+                            });
+                            const text = await webRes.text();
+                            res.end(text);
+                        } catch (err) {
+                            console.error('[Chat API GET Error]:', err);
+                            res.statusCode = 500;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.end(JSON.stringify({ error: err.message }));
+                        }
+                        return;
+                    }
+
                     if (req.method === 'POST') {
                         try {
                             let body = '';
@@ -28,8 +47,8 @@ function chatApiPlugin() {
                             }
                             const json = body ? JSON.parse(body) : {};
 
-                            const mod = await server.ssrLoadModule('../backend/app/api/chat/route.ts');
-                            const webReq = new Request('http://localhost:5173/api/chat', {
+                            const mod = await server.ssrLoadModule('./api/chat.ts');
+                            const webReq = new Request('http://127.0.0.1:5173/api/chat', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(json),

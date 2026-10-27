@@ -1,5 +1,20 @@
 import dotenv from 'dotenv';
-dotenv.config({ path: '.env.local' });
+import fs from 'fs';
+import path from 'path';
+
+const envCandidates = [
+  path.resolve(process.cwd(), '.env.local'),
+  path.resolve(process.cwd(), 'frontend/.env.local'),
+  path.resolve(process.cwd(), '../frontend/.env.local'),
+  path.resolve(process.cwd(), '../.env.local'),
+  path.resolve(process.cwd(), 'backend/.env.local'),
+  path.resolve(process.cwd(), '.env'),
+];
+for (const p of envCandidates) {
+  try {
+    if (fs.existsSync(p)) dotenv.config({ path: p });
+  } catch (_) {}
+}
 dotenv.config();
 
 import { GoogleGenAI } from '@google/genai';
@@ -77,6 +92,53 @@ CURRICULUM CONTEXT & ACCURACY
 3. Measurement Standards:
    - Use standard metric SI units: millimeters (mm), centimeters (cm), meters (m), volts (V), milliamperes (mA), hertz (Hz).
 `;
+
+function getCompetitionRules(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'competition_mode.md'),
+    path.resolve(process.cwd(), 'competition-mode.md'),
+    path.resolve(process.cwd(), '../competition_mode.md'),
+    path.resolve(process.cwd(), 'frontend/competition_mode.md'),
+    path.resolve(__dirname, 'competition_mode.md'),
+    path.resolve(__dirname, '../competition_mode.md'),
+  ];
+
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        const content = fs.readFileSync(file, 'utf-8').trim();
+        if (content.length > 20) return content;
+      }
+    } catch (_) {}
+  }
+
+  return `
+PERSONA & ROLE: TOURNAMENT COMPETITION COACH & TACTICAL ADVISOR
+You are Risse in COMPETITION MODE. You are an elite, high-tempo robotics tournament coach and technical pit strategist.
+Your mission is to maximize the student's competitive performance, robot reliability, match win-rate, and rapid debugging under strict match time constraints.
+
+==================================================
+PRIME DIRECTIVE: RAPID TACTICAL PROBLEM-SOLVING
+==================================================
+1. Direct, Actionable Solutions (Zero Riddles):
+   - In competition mode, do NOT withhold direct answers or answer with Socratic puzzles.
+   - When the student asks how to fix a brownout, tune a sensor, increase torque, or correct a PID loop, provide direct, concrete engineering solutions, exact pinout logic, and optimized code immediately.
+
+2. Tournament Pit-Stop Diagnostics:
+   - Provide rapid triage checklists:
+     * Electrical: Voltage sag, common grounds, reverse polarity protection, capacitor filtering, noisy motor lines.
+     * Mechanical: Center of mass, gear ratios, traction vs wheel slip, push angles, wedge clearance.
+     * Sensory: Ambient light calibration, IR interference, false edge detection, ultrasonic cone reflection.
+     * Autonomous Strategy: Line-tracking algorithms, hunt-and-destroy routines, starting ring maneuvers, sensor debouncing.
+
+3. Complete, Production-Ready Code & Math:
+   - Provide clean, robust code snippets (C++, Arduino, Python, MicroPython) with concise explanation.
+   - Show direct calculations for gear ratio torque, wheel RPM, battery discharge rates, and delay timing.
+
+4. Concise, High-Urgency Tone:
+   - Keep answers direct, punchy, well-structured with bullet points or numbered checklists.
+`;
+}
 
 function resolveCredentials() {
   const googleApiKey =
@@ -301,8 +363,16 @@ export async function POST(req: Request) {
 
     // Assemble prompt
     stage = 'prompt_assembly';
+    const mode = (body.mode === 'competition' || body.aiMode === 'competition') ? 'competition' : 'socratic';
+    const activeRules = mode === 'competition' ? getCompetitionRules() : SYSTEM_RULES;
+
     const fullSystemPrompt = `
-${SYSTEM_RULES}
+${activeRules}
+
+==================================================
+ACTIVE INSTRUCTION MODE: ${mode.toUpperCase()} MODE
+${mode === 'competition' ? 'PRIORITY: Direct, urgent, production-ready competition and tournament engineering solutions.' : 'PRIORITY: Socratic mentorship, guiding inquiry, single guiding question per turn.'}
+==================================================
 
 ==================================================
 CURRENT ACTIVE LEARNING MODULE CONTEXT

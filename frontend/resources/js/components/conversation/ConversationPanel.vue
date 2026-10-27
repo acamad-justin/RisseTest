@@ -90,8 +90,47 @@ const inputEl = ref(null)
 const MAX_INPUT_PX = 148 // sensible cap; the textarea scrolls beyond it
 const isAiStreaming = ref(false)
 
-/** Notice shown under the composer. */
-const DEMO_NOTICE = 'Powered by Socratic Risse AI • Real-time project reasoning and code consultation'
+function getActiveEmail() {
+  try {
+    const activeId = localStorage.getItem('risse_active_user_id')
+    if (activeId) {
+      const rawAccounts = localStorage.getItem('risse_registered_accounts')
+      if (rawAccounts) {
+        const accounts = JSON.parse(rawAccounts)
+        const user = accounts.find(a => a.id === activeId)
+        if (user && user.email) return user.email.toLowerCase().trim()
+      }
+    }
+  } catch (e) {}
+  return ''
+}
+
+function getStoredAiMode() {
+  try {
+    const email = getActiveEmail()
+    const key = email ? `risse_email_${email.replace(/[^a-z0-9]/g, '_')}_ai_mode` : 'risse_ai_mode'
+    return localStorage.getItem(key) || 'socratic'
+  } catch (_) {
+    return 'socratic'
+  }
+}
+
+const aiMode = ref(getStoredAiMode())
+
+function setAiMode(mode) {
+  aiMode.value = mode
+  try {
+    const email = getActiveEmail()
+    const key = email ? `risse_email_${email.replace(/[^a-z0-9]/g, '_')}_ai_mode` : 'risse_ai_mode'
+    localStorage.setItem(key, mode)
+  } catch (_) {}
+}
+
+const demoNotice = computed(() => {
+  return aiMode.value === 'competition'
+    ? '⚡ Powered by Risse Competition AI • Direct tournament engineering, pit triage & rapid code'
+    : '🎓 Powered by Socratic Risse AI • Real-time project reasoning and code consultation'
+})
 
 const sendDisabled = computed(() =>
   (input.value.trim().length === 0 && !selectedFile.value) || isAiStreaming.value
@@ -246,6 +285,7 @@ async function generateAiReply() {
       messages: formattedMessages,
       checkpointTitle: props.log.title || 'Project Notebook Log',
       moduleTitle: props.project?.title || 'Robotics & Control Systems Lab',
+      mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
     }
 
     const candidateUrls = [
@@ -463,7 +503,26 @@ function formatMessageText(text) {
       />
       <h1 v-else class="convo__title">{{ log.title }}</h1>
 
-      <span class="convo__demo-badge">Risse Socratic AI</span>
+      <div class="convo__mode-toggle" role="group" aria-label="AI Mode">
+        <button 
+          type="button" 
+          class="convo__mode-btn" 
+          :class="{ 'convo__mode-btn--active': aiMode === 'socratic' }"
+          @click="setAiMode('socratic')"
+          title="Socratic Teaching Mode: Guided inquiry, hints, and conceptual understanding"
+        >
+          <span>🎓 Socratic</span>
+        </button>
+        <button 
+          type="button" 
+          class="convo__mode-btn convo__mode-btn--competition" 
+          :class="{ 'convo__mode-btn--active': aiMode === 'competition' }"
+          @click="setAiMode('competition')"
+          title="Competition Mode: Direct tournament tactics, fast pit debugging & instant solutions"
+        >
+          <span>⚡ Competition</span>
+        </button>
+      </div>
 
       <!-- Compact actions — every control has a defined behaviour -->
       <div class="convo__header-actions">
@@ -663,7 +722,7 @@ function formatMessageText(text) {
         class="convo__composer-notice"
         :class="{ 'convo__composer-notice--note': attachNote }"
       >
-        {{ attachNote || DEMO_NOTICE }}
+        {{ attachNote || demoNotice }}
       </p>
     </footer>
 
@@ -747,16 +806,49 @@ function formatMessageText(text) {
   background: #fff;
 }
 
-.convo__demo-badge {
-  flex-shrink: 0;
-  font-size: 9.5px;
-  font-weight: 600;
-  color: var(--risse-orange);
-  background: rgba(255, 144, 0, 0.09);
+.convo__mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
   border-radius: 999px;
-  padding: 3px 9px;
-  letter-spacing: 0.03em;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.convo__mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+  line-height: 1.1;
   white-space: nowrap;
+}
+
+.convo__mode-btn:hover {
+  color: #1e293b;
+}
+
+.convo__mode-btn--active {
+  background: #ffffff;
+  color: #ea580c;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.convo__mode-btn--competition.convo__mode-btn--active {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.35);
 }
 
 /* ── Header actions ────────────────────────────────────────────────────── */
