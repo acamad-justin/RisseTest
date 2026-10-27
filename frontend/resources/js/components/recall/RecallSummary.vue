@@ -5,9 +5,8 @@
  * RECALL_4 — Session summary screen.
  *
  * Layout:
- *   - Right-aligned performance indicator (score + progress bar)
  *   - Large white card: "What you understood" + "What to strengthen"
- *   - Practice Again button at the bottom-right
+ *   - Practice Again button at the bottom-right (overlaid on the backdrop)
  *
  * Props:
  *   conceptName  string — concept display name
@@ -34,39 +33,19 @@ const understood = computed(() =>
 const needsPractice = computed(() =>
   props.evalResults.results.filter(r => !r.understood)
 )
-
-const scorePercent = computed(() =>
-  Math.round((props.evalResults.understoodCount / props.total) * 100)
-)
 </script>
 
 <template>
   <div class="rs">
 
-    <!-- ── Performance strip (right-aligned) ─────────────────────────── -->
-    <div class="rs__perf">
-      <div class="rs__perf-left">
-        <span class="rs__score">{{ evalResults.understoodCount }}/{{ total }}</span>
-        <span class="rs__score-label">Answered Well</span>
-      </div>
-      <div class="rs__perf-right">
-        <span class="rs__practice-count">{{ evalResults.practiceCount }}</span>
-        <span class="rs__practice-label">Need More Practice</span>
-      </div>
-      <div class="rs__bar-wrap">
-        <div
-          class="rs__bar-fill"
-          :style="{ width: scorePercent + '%' }"
-        ></div>
-      </div>
-    </div>
-
-    <!-- ── Main summary card ──────────────────────────────────────────── -->
+    <!-- ── Main summary card ────────────────────────────────────────────── -->
     <div class="rs__card">
 
       <!-- What you understood -->
       <section class="rs__section" aria-labelledby="rs-understood">
-        <h3 class="rs__section-title" id="rs-understood">What you understood</h3>
+        <h3 class="rs__section-title rs__section-title--understood" id="rs-understood">
+          What you understood
+        </h3>
         <ul class="rs__entries" aria-label="Concepts understood">
           <li
             v-for="r in understood"
@@ -82,12 +61,14 @@ const scorePercent = computed(() =>
         </ul>
       </section>
 
-      <!-- Divider -->
-      <div class="rs__divider" aria-hidden="true"></div>
+      <!-- Spacer between sections -->
+      <div class="rs__gap" aria-hidden="true"></div>
 
       <!-- What to strengthen -->
       <section class="rs__section" aria-labelledby="rs-strengthen">
-        <h3 class="rs__section-title" id="rs-strengthen">What to strengthen</h3>
+        <h3 class="rs__section-title rs__section-title--practice" id="rs-strengthen">
+          What to strengthen
+        </h3>
         <ul class="rs__entries" aria-label="Areas needing more practice">
           <li
             v-for="r in needsPractice"
@@ -105,7 +86,7 @@ const scorePercent = computed(() =>
 
     </div>
 
-    <!-- ── Practice Again button ──────────────────────────────────────── -->
+    <!-- ── Practice Again button (bottom-right, outside card) ─────────── -->
     <div class="rs__actions">
       <button
         class="rs__practice-btn"
@@ -127,113 +108,50 @@ const scorePercent = computed(() =>
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 36px 28px;
+  padding: 24px 40px 32px;
   gap: 0;
   overflow: hidden;
   box-sizing: border-box;
 }
 
-/* ── Performance strip ────────────────────────────────────────────────── */
-.rs__perf {
-  width: 100%;
-  max-width: 700px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 16px;
-  flex-shrink: 0;
-  justify-content: flex-end;
-}
-
-.rs__perf-left {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.rs__score {
-  font-size: 26px;
-  font-weight: 700;
-  color: #ffffff;
-  line-height: 1;
-}
-
-.rs__score-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.rs__perf-right {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-}
-
-.rs__practice-count {
-  font-size: 22px;
-  font-weight: 700;
-  color: #e04f8a;
-  line-height: 1;
-}
-
-.rs__practice-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.rs__bar-wrap {
-  flex: 1;
-  max-width: 160px;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.rs__bar-fill {
-  height: 100%;
-  background: #ffffff;
-  border-radius: 999px;
-  transition: width 500ms ease;
-}
-
 /* ── Summary card ─────────────────────────────────────────────────────── */
 .rs__card {
-  width: 100%;
-  max-width: 700px;
+  width: 1453px;
+  max-width: 100%;
+  height: 758px;
   background: #ffffff;
-  border-radius: 22px;
-  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.20), 0 2px 8px rgba(0, 0, 0, 0.10);
-  padding: 0;
+  border-radius: 40px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 32px 40px 28px;
   box-sizing: border-box;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+  flex-shrink: 0;
 }
 
-/* ── Sections ─────────────────────────────────────────────────────────── */
+/* ── Section titles ───────────────────────────────────────────────────── */
 .rs__section {
-  padding: 20px 26px 4px;
+  padding: 0;
 }
 
 .rs__section-title {
-  font-size: 11px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: #b0aac0;
-  margin: 0 0 12px;
+  font-style: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  vertical-align: middle;
+  text-transform: none;
+  margin: 0 0 16px;
 }
 
-/* ── Divider ──────────────────────────────────────────────────────────── */
-.rs__divider {
-  height: 1px;
-  background: #eeeaf5;
-  margin: 6px 26px;
+.rs__section-title--understood, 
+.rs__section-title--practice {
+  color: #7678ED;
+}
+
+/* ── Gap between sections ─────────────────────────────────────────────── */
+.rs__gap {
+  height: 28px;
 }
 
 /* ── Entry list ───────────────────────────────────────────────────────── */
@@ -244,15 +162,19 @@ const scorePercent = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
 }
 
 .rs__entry {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  gap: 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .rs__entry:last-child {
@@ -265,10 +187,11 @@ const scorePercent = computed(() =>
 }
 
 .rs__entry-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-family: 'Lexend', sans-serif;
+  font-size: 18px;
+  font-weight: 500;
   line-height: 1.3;
-  margin: 0 0 3px;
+  margin: 0 0 4px;
 }
 
 .rs__entry-title--understood {
@@ -280,37 +203,42 @@ const scorePercent = computed(() =>
 }
 
 .rs__entry-desc {
-  font-size: 11.5px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 12.5px;
+  font-weight: 400;
   color: #8a84a0;
-  line-height: 1.45;
+  line-height: 1.5;
   margin: 0;
+  max-width: 680px;
 }
 
 .rs__entry-ref {
-  font-size: 10px;
-  font-weight: 500;
-  color: #c0bcd0;
+  font-family: 'Lexend', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: #b0aac0;
   white-space: nowrap;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 /* ── Actions row ──────────────────────────────────────────────────────── */
 .rs__actions {
-  width: 100%;
-  max-width: 700px;
+  width: 1453px;
+  max-width: 100%;
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
+  margin-top: 14px;
   flex-shrink: 0;
 }
 
 .rs__practice-btn {
-  padding: 11px 28px;
+  padding: 12px 32px;
   border-radius: 999px;
-  background: var(--risse-orange, #FF9000);
+  background: #7678ED;
   color: #ffffff;
-  font-size: 13.5px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.02em;
   border: none;
@@ -331,21 +259,16 @@ const scorePercent = computed(() =>
   outline-offset: 2px;
 }
 
-/* ── Responsive ───────────────────────────────────────────────────────── */
-@media (max-width: 680px) {
-  .rs {
-    padding: 14px 16px 20px;
+/* ── Responsive ───────────────────────────────────────────────────────── */@media (max-width: 680px) {
+  .rs { padding: 12px 16px 20px; }
+
+  .rs__card {
+    padding: 24px 20px 20px;
+    border-radius: 18px;
   }
 
-  .rs__perf {
-    gap: 12px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-
-  .rs__bar-wrap { max-width: 100px; }
-
-  .rs__section { padding: 16px 18px 4px; }
-  .rs__divider { margin: 4px 18px; }
+  .rs__entry-title { font-size: 15px; }
+  .rs__entry-ref   { font-size: 11px; }
+  .rs__gap         { height: 20px; }
 }
 </style>

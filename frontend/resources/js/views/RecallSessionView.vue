@@ -116,6 +116,9 @@ function onClose() {
     <RecallHeader
       :concept-name="conceptName"
       :phase="phase"
+      :total="totalQuestions"
+      :understood-count="evalResults?.understoodCount ?? 0"
+      :practice-count="evalResults?.practiceCount ?? 0"
       @close="onClose"
     />
 
@@ -179,7 +182,7 @@ function onClose() {
   align-items: center;
   /* Don't center vertically — let the card fill from top to progress bar */
   justify-content: flex-start;
-  padding: 24px 40px 28px;
+  padding: 24px 40px 16px;
   gap: 0;
   position: relative;
 }

@@ -53,15 +53,21 @@ defineEmits(['next'])
   justify-content: space-between;
   width: 100%;
   /* Matches the card's max-width so the progress row is always aligned with it */
-  max-width: min(860px, 100%);
-  margin-top: 20px;
+  max-width: min(1450px, 100%);
+  padding-bottom: 100px;
+  margin-top: 8px;
   flex-shrink: 0;
 }
 
 /* ── Progress label ───────────────────────────────────────────────────── */
 .rp__label {
-  font-size: 13px;
-  font-weight: 500;
+  font-family: 'Lexend', sans-serif;
+  font-size: 15.45px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  vertical-align: middle;
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
 }
@@ -75,9 +81,9 @@ defineEmits(['next'])
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  border: none;
+  border: 1.5px solid transparent;
   cursor: pointer;
-  transition: background 150ms ease, transform 120ms ease, opacity 150ms ease;
+  transition: background 150ms ease, transform 120ms ease, border-color 150ms ease, color 150ms ease;
 }
 
 .rp__btn:hover:not(:disabled) {
@@ -95,7 +101,9 @@ defineEmits(['next'])
 
 .rp__btn--disabled,
 .rp__btn:disabled {
-  opacity: 0.35;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
   cursor: not-allowed;
 }
 
