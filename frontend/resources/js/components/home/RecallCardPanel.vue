@@ -149,73 +149,54 @@ const statusText = computed(() => {
 
 /* ─── Stacked-card illustration ────────────────────────────────────────── */
 /*
- * Only the top ~55% of the cards is visible, matching the Figma reference
- * where the stack peeks up from behind the text content.
+ * Three cards stacked with a vertical offset — no rotation.
+ * Back card (indigo) peeks at the very top, mid card (periwinkle) sits just
+ * below it, and the large front card (light gray) dominates the foreground.
  */
 .rcp__illustration {
   position: relative;
-  height: 52px;        /* clip window — cards are 80px tall, we show ~52px */
-  overflow: hidden;
+  /* tall enough to show the full front card + peeking backs */
+  height: 130px;
   margin-bottom: 14px;
 }
 
 .rcp__card {
   position: absolute;
-  border-radius: 11px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-radius: 14px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
-/* Back card — indigo/purple, slightly rotated and shifted */
+/* Back card — dark indigo, narrow strip peeking at very top */
 .rcp__card--back {
-  width: 148px;
-  height: 80px;
-  background: linear-gradient(145deg, #6c63d4, #8b80e8);
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%) rotate(-6deg);
-}
-
-/* Mid card — medium gray */
-.rcp__card--mid {
-  width: 148px;
-  height: 80px;
-  background: #c0bccc;
-  top: 2px;
-  left: 50%;
-  transform: translateX(-50%) rotate(-2deg);
-}
-
-/* Front card — light gray / white */
-.rcp__card--front {
-  width: 148px;
-  height: 80px;
-  background: #eae8f0;
+  width: 86%;
+  height: 120px;
+  background: #3D348B;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%) rotate(1deg);
+  z-index: 1;
+}
+
+/* Mid card — periwinkle/blue-purple, peeks a bit more */
+.rcp__card--mid {
+  width: 92%;
+  height: 120px;
+  background: #7678ED;
+  top: 8px;
+  z-index: 2;
+}
+
+/* Front card — light gray, fills most of the space */
+.rcp__card--front {
+  width: 100%;
+  height: 118px;
+  background: #A2A2A2;
+  top: 16px;
+  z-index: 3;
   display: flex;
   align-items: flex-end;
-  padding: 0 16px 12px;
+  padding: 0 16px 14px;
   box-sizing: border-box;
 }
-
-/* Decorative line stubs on front card */
-.rcp__card-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  width: 100%;
-}
-
-.rcp__card-line {
-  display: block;
-  height: 5px;
-  border-radius: 3px;
-  background: #b8b4c4;
-}
-
-.rcp__card-line--long  { width: 80%; }
-.rcp__card-line--short { width: 52%; }
 
 /* ─── Body ─────────────────────────────────────────────────────────────── */
 .rcp__body {

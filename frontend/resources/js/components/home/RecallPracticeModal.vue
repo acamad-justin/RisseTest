@@ -96,14 +96,6 @@ function onKeydown(e) {
           </div>
         </div>
 
-        <!-- ── Progress bar ── -->
-        <div class="rpm__progress-bar" aria-hidden="true">
-          <div
-            class="rpm__progress-fill"
-            :style="{ width: `${((currentIndex + 1) / total) * 100}%` }"
-          ></div>
-        </div>
-
         <!-- ── Card area ── -->
         <div class="rpm__card-area">
           <template v-if="currentCard">
@@ -192,10 +184,11 @@ function onKeydown(e) {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
   box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* ─── Modal card ───────────────────────────────────────────────────────── */
@@ -205,11 +198,11 @@ function onKeydown(e) {
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
   width: 100%;
   max-width: 560px;
-  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
+  margin: auto;
 }
 
 /* ─── Header ───────────────────────────────────────────────────────────── */
@@ -217,7 +210,7 @@ function onKeydown(e) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 24px 14px;
+  padding: 14px 24px 8px;
   flex-shrink: 0;
 }
 
@@ -283,20 +276,6 @@ function onKeydown(e) {
 .rpm__close:focus-visible {
   outline: 2px solid var(--risse-orange, #FF9000);
   outline-offset: 2px;
-}
-
-/* ─── Progress bar ─────────────────────────────────────────────────────── */
-.rpm__progress-bar {
-  height: 4px;
-  background: rgba(0, 0, 0, 0.07);
-  flex-shrink: 0;
-}
-
-.rpm__progress-fill {
-  height: 100%;
-  background: var(--risse-orange, #FF9000);
-  border-radius: 0 2px 2px 0;
-  transition: width 280ms ease;
 }
 
 /* ─── Card area ────────────────────────────────────────────────────────── */
@@ -393,7 +372,7 @@ function onKeydown(e) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px 18px;
+  padding: 10px 24px 12px;
   flex-shrink: 0;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
