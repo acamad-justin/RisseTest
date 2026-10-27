@@ -399,9 +399,36 @@ const currentEnrolledPage = ref(0);
 const CARDS_PER_PAGE = 4;
 const transitionName = ref('slide-left');
 
-function getInitialEnrolled() {
+function getActiveUserEmail() {
   try {
-    const raw = localStorage.getItem('risse_enrolled_modules');
+    const activeId = localStorage.getItem('risse_active_user_id');
+    if (activeId) {
+      const rawAccounts = localStorage.getItem('risse_registered_accounts');
+      if (rawAccounts) {
+        const accounts = JSON.parse(rawAccounts);
+        const user = accounts.find(a => a.id === activeId);
+        if (user && user.email) return user.email.toLowerCase().trim();
+      }
+    }
+  } catch (e) {}
+  return '';
+}
+
+function getEnrolledStorageKey(email = getActiveUserEmail()) {
+  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
+  return safe ? `risse_email_${safe}_enrolled_modules` : 'risse_enrolled_modules';
+}
+
+function getInitialEnrolled() {
+  const email = getActiveUserEmail();
+  if (!email) return [];
+  try {
+    const userKey = getEnrolledStorageKey(email);
+    let raw = localStorage.getItem(userKey);
+    // Backward compatibility for adriel
+    if (!raw && email === 'adriel@risse.edu') {
+      raw = localStorage.getItem('risse_user_usr_adriel_enrolled_modules') || localStorage.getItem('risse_enrolled_modules');
+    }
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return [];
@@ -410,8 +437,13 @@ function getInitialEnrolled() {
 const enrolledList = ref(getInitialEnrolled());
 
 watch(enrolledList, (val) => {
+  const email = getActiveUserEmail();
+  if (!email) return;
   try {
-    localStorage.setItem('risse_enrolled_modules', JSON.stringify(val));
+    localStorage.setItem(getEnrolledStorageKey(email), JSON.stringify(val));
+    if (email === 'adriel@risse.edu') {
+      localStorage.setItem('risse_enrolled_modules', JSON.stringify(val));
+    }
   } catch (e) {}
 }, { deep: true });
 
@@ -478,17 +510,11 @@ async function handleUnenroll(enrolled) {
   emit('notify', `Unenrolled from "${targetTitle}".`);
 
   try {
-    const res = await axios.post('/api/modules/unenroll', { moduleId: targetId });
-    if (res.data && res.data.enrolled !== undefined) {
-      enrolledList.value = res.data.enrolled;
-      if (currentEnrolledPage.value >= totalPages.value) {
-        currentEnrolledPage.value = Math.max(0, totalPages.value - 1);
-      }
-    }
+    await axios.post('/api/modules/unenroll', { moduleId: targetId });
   } catch (e) {}
 }
 
-const modulesList = ref([
+const BASE_EXPLORE_MODULES = [
   {
     id: 999,
     title: 'Test Module: Quick Progression',
@@ -574,7 +600,35 @@ const modulesList = ref([
     isStarred: false,
     actionText: 'Enroll',
   },
-]);
+];
+
+function getExploreStorageKey(email = getActiveUserEmail()) {
+  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
+  return safe ? `risse_email_${safe}_explore_modules` : 'risse_explore_modules';
+}
+
+function getInitialExplore() {
+  const email = getActiveUserEmail();
+  if (!email) return JSON.parse(JSON.stringify(BASE_EXPLORE_MODULES));
+  try {
+    const raw = localStorage.getItem(getExploreStorageKey(email));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(BASE_EXPLORE_MODULES));
+}
+
+const modulesList = ref(getInitialExplore());
+
+watch(modulesList, (val) => {
+  const email = getActiveUserEmail();
+  if (!email) return;
+  try {
+    localStorage.setItem(getExploreStorageKey(email), JSON.stringify(val));
+  } catch (e) {}
+}, { deep: true });
 
 const displayedModules = computed(() => {
   let list = modulesList.value;
@@ -597,15 +651,12 @@ onMounted(async () => {
   try {
     const res = await axios.get('/api/modules');
     if (res.data) {
-      if (res.data.enrolled !== undefined && (!enrolledList.value || !enrolledList.value.length)) {
+      if (res.data.enrolled !== undefined && (!enrolledList.value || !enrolledList.value.length) && res.data.enrolled.length > 0) {
         enrolledList.value = res.data.enrolled;
-      }
-      if (res.data.explore && res.data.explore.length > 0) {
-        modulesList.value = res.data.explore;
       }
     }
   } catch (e) {
-    console.log('Using local state');
+    // Graceful offline fallback
   }
 });
 
@@ -669,10 +720,7 @@ async function handleModuleClick(module) {
     emit('notify', `Enrolled in "${module.title}" at 0% progress! Added to Currently Enrolled.`);
 
     try {
-      const res = await axios.post('/api/modules/enroll', { moduleId: module.id });
-      if (res.data && res.data.enrolled !== undefined) {
-        enrolledList.value = res.data.enrolled;
-      }
+      await axios.post('/api/modules/enroll', { moduleId: module.id });
     } catch (e) {}
   } else {
     const enrolledObj = enrolledList.value.find(e => e.id === module.id || e.title === module.title);

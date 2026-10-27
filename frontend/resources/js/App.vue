@@ -1,5 +1,13 @@
 <template>
+  <!-- Full Screen Authentication Gate: Shown when unauthenticated or on Auth tab -->
+  <AuthView 
+    v-if="!isAuthenticated || currentTab === 'Auth'" 
+    @authenticated="handleAuthenticated" 
+  />
+
+  <!-- Main Authenticated App Layout -->
   <div 
+    v-else
     class="risse-layout" 
     :class="{ 
       'risse-layout--home': currentTab === 'Home' || currentTab === 'DynamicHome'
@@ -8,12 +16,14 @@
     <!-- Full astronomical star field background active on standard Home view -->
     <CosmicBackground v-if="currentTab === 'Home'" />
 
-    <!-- Left Navigation Bar (Orange Pill) -->
+    <!-- Left Navigation Bar (Orange Pill) with User Station info & Logout -->
     <Sidebar 
       :active-tab="currentTab === 'DynamicHome' ? 'Home' : currentTab" 
+      :user="profileData.user"
       @update:active-tab="handleTabChange"
       @update:activeTab="handleTabChange"
       @open-settings="handleOpenSettings"
+      @logout="handleLogout"
     />
 
     <!-- Main Content Area -->
@@ -65,6 +75,7 @@
         <!-- View 1: Main Modules Page (Currently Enrolled & Scrollable Explore) -->
         <ModulesPage 
           v-else
+          :key="modulesComponentKey"
           @open-module="handleOpenModule"
           @notify="showToast"
         />
@@ -72,7 +83,36 @@
 
       <!-- PROFILE PAGE VIEW -->
       <div v-else-if="currentTab === 'Profile'" class="profile-page-content">
-        <h1 class="risse-page-title" id="page-title">Profile</h1>
+        <!-- Top Account Bar reflecting active logged account -->
+        <div class="profile-page-header-row">
+          <div class="profile-title-group">
+            <h1 class="risse-page-title" id="page-title">Profile</h1>
+            <p class="profile-account-sub">
+              Logged in as <strong class="profile-logged-name">{{ profileData.user.name }}</strong>
+            </p>
+          </div>
+
+          <div class="profile-auth-status-bar">
+            <div class="status-indicator-pill">
+              <span class="auth-live-dot"></span>
+              <span class="auth-email-label">{{ authStore.currentUser?.email || 'Active Learner' }}</span>
+            </div>
+            <button 
+              type="button" 
+              class="btn-profile-signout" 
+              @click="handleLogout"
+              id="btn-profile-signout"
+              title="Sign out of active account"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="15" height="15">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
 
         <!-- Top Row: Profile Card (Left) & Stats (Right) perfectly aligned -->
         <div class="risse-top-row">
@@ -166,12 +206,14 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
+import AuthView from './views/AuthView.vue';
 import Sidebar from './components/Sidebar.vue';
 import CosmicBackground from './components/layout/CosmicBackground.vue';
 import HomeView from './views/HomeView.vue';
 import DynamicHomeView from './views/DynamicHomeView.vue';
 import NotebooksView from './views/NotebooksView.vue';
 import NotebookPromptView from './components/notebooks/NotebookPromptView.vue';
+import { useAuthStore } from './stores/authStore.js';
 import { useNotebooksStore } from './stores/notebooksStore.js';
 import ModulesPage from './components/ModulesPage.vue';
 import ModuleRoadmapView from './components/ModuleRoadmapView.vue';
@@ -184,12 +226,19 @@ import FeaturedProjects from './components/FeaturedProjects.vue';
 import EditProfileModal from './components/EditProfileModal.vue';
 import BadgeModal from './components/BadgeModal.vue';
 
+const authStore = useAuthStore();
 const notebooksStore = useNotebooksStore();
+
+const isAuthenticated = computed(() => Boolean(authStore.isAuthenticated));
+const modulesComponentKey = ref(0);
 
 // ── URL-Driven Initial Tab Detection ──────────────────────────────────────
 function getInitialTabFromUrl() {
   const path = window.location.pathname.toLowerCase();
   const search = window.location.search.toLowerCase();
+  if (path.includes('login') || search.includes('login') || path.includes('auth') || search.includes('auth')) {
+    return 'Auth';
+  }
   if (path.includes('dynamic') || search.includes('dynamic')) {
     return 'DynamicHome';
   }
@@ -300,6 +349,11 @@ const toastMessage = ref('');
 
 // ── Dynamic Document Title Management ─────────────────────────────────────
 function updateDocumentTitle() {
+  if (!authStore.isAuthenticated) {
+    document.title = 'Station Authentication | Risse Robotics Lab';
+    return;
+  }
+
   let title = 'Risse';
   if (currentTab.value === 'DynamicHome') {
     title = 'Dynamic Star Chart | Risse';
@@ -316,13 +370,13 @@ function updateDocumentTitle() {
       title = 'Modules | Risse';
     }
   } else if (currentTab.value === 'Profile') {
-    title = 'Profile | Risse';
+    title = `${profileData.user?.name || 'Profile'} | Risse`;
   }
   document.title = title;
 }
 
 watch(
-  [currentTab, moduleViewState, selectedCheckpoint, selectedModule],
+  [() => authStore.isAuthenticated, currentTab, moduleViewState, selectedCheckpoint, selectedModule],
   () => {
     updateDocumentTitle();
   },
@@ -340,33 +394,113 @@ function ensureFavicon() {
   link.href = '/favicon.png';
 }
 
-function getInitialProfile() {
-  try {
-    const raw = localStorage.getItem('risse_profile_data');
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return null;
+// ── Multi-user Profile & Badges Storage Scoping ───────────────────────────
+function getUserProfileStorageKey(userOrEmail) {
+  let email = '';
+  if (typeof userOrEmail === 'string') {
+    if (userOrEmail.includes('@')) {
+      email = userOrEmail;
+    } else {
+      const found = authStore.accounts?.find(u => u.id === userOrEmail);
+      if (found?.email) email = found.email;
+    }
+  } else if (userOrEmail?.email) {
+    email = userOrEmail.email;
+  }
+  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
+  return safe ? `risse_email_${safe}_profile_data` : 'risse_profile_data';
 }
 
-const savedProfile = getInitialProfile();
+function loadUserProfile(user) {
+  if (!user) {
+    return {
+      user: {
+        name: 'ADRIEL JUSTIN DELA CRUZ',
+        school: 'Rizal Polytechnic de Muntinlupa',
+        grade: 'Grade 10',
+        avatar: null,
+      },
+      stats: { projects: 0, mastered: 0, badges: 0 },
+      skills: [],
+      achievements: [],
+      featuredProjects: [],
+    };
+  }
 
-// Clean default profile state with zero mock data (restores from localStorage if available)
-const profileData = reactive(savedProfile || {
-  user: {
-    name: 'ADRIEL JUSTIN DELA CRUZ',
-    school: 'Rizal Polytechnic de Muntinlupa',
-    grade: 'Grade 10',
-    avatar: null,
-  },
-  stats: {
-    projects: 0,
-    mastered: 0,
-    badges: 0,
-  },
-  skills: [],
-  achievements: [],
-  featuredProjects: [],
-});
+  const key = getUserProfileStorageKey(user.email || user.id);
+  let saved = null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) saved = JSON.parse(raw);
+    // Legacy fallback for default adriel user
+    if (!saved && (user.email === 'adriel@risse.edu' || user.id === 'usr_adriel')) {
+      const legacyRaw = localStorage.getItem('risse_user_usr_adriel_profile_data') || localStorage.getItem('risse_profile_data');
+      if (legacyRaw) saved = JSON.parse(legacyRaw);
+    }
+  } catch (e) {}
+
+  if (saved) {
+    return {
+      user: {
+        name: user.name || saved.user?.name || 'ADRIEL JUSTIN DELA CRUZ',
+        school: user.school || saved.user?.school || 'Rizal Polytechnic de Muntinlupa',
+        grade: user.grade || saved.user?.grade || 'Grade 10',
+        avatar: user.avatar !== undefined ? user.avatar : (saved.user?.avatar || null),
+      },
+      stats: saved.stats || { projects: 0, mastered: 0, badges: 0 },
+      skills: saved.skills || [],
+      achievements: saved.achievements || [],
+      featuredProjects: saved.featuredProjects || [],
+    };
+  }
+
+  return {
+    user: {
+      name: user.name || 'STUDENT LEARNER',
+      school: user.school || 'Robotics Academy',
+      grade: user.grade || 'Grade 10',
+      avatar: user.avatar || null,
+    },
+    stats: {
+      projects: 0,
+      mastered: 0,
+      badges: 0,
+    },
+    skills: [],
+    achievements: [],
+    featuredProjects: [],
+  };
+}
+
+function persistUserProfile(userOrEmail) {
+  const target = userOrEmail || authStore.currentUser?.email || authStore.currentUser?.id;
+  if (!target) return;
+  try {
+    const key = getUserProfileStorageKey(target);
+    localStorage.setItem(key, JSON.stringify(profileData));
+  } catch (e) {
+    console.warn('[Profile] Failed to persist profile data:', e);
+  }
+}
+
+const initialProfileState = loadUserProfile(authStore.currentUser);
+const profileData = reactive(initialProfileState);
+
+// Sync profile data and notebooks store whenever active authenticated user changes
+watch(() => authStore.currentUser, (newUser) => {
+  if (newUser) {
+    const loaded = loadUserProfile(newUser);
+    Object.assign(profileData.user, loaded.user);
+    Object.assign(profileData.stats, loaded.stats);
+    profileData.skills = loaded.skills;
+    profileData.achievements = loaded.achievements;
+    profileData.featuredProjects = loaded.featuredProjects;
+    notebooksStore.switchUser(newUser.email);
+  } else {
+    notebooksStore.switchUser('');
+  }
+  modulesComponentKey.value++;
+}, { deep: true });
 
 const userFirstName = computed(() => {
   const full = profileData.user?.name || 'Adriel';
@@ -374,13 +508,20 @@ const userFirstName = computed(() => {
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 });
 
+// Watch and persist profile data under the active user's key
 watch(profileData, (val) => {
   try {
-    localStorage.setItem('risse_profile_data', JSON.stringify(val));
+    const email = authStore.currentUser?.email;
+    if (email) {
+      localStorage.setItem(getUserProfileStorageKey(email), JSON.stringify(val));
+    }
+    if (email === 'adriel@risse.edu' || !email) {
+      localStorage.setItem('risse_profile_data', JSON.stringify(val));
+    }
   } catch (e) {}
 }, { deep: true });
 
-// Fetch live profile from Laravel API & listen for popstate
+// Listen for popstate & initialize
 onMounted(async () => {
   ensureFavicon();
   window.addEventListener('popstate', () => {
@@ -389,19 +530,47 @@ onMounted(async () => {
     currentTab.value = getInitialTabFromUrl();
   });
 
+  // If user is logged in, ensure store is synced to active email
+  if (authStore.currentUser?.email) {
+    notebooksStore.switchUser(authStore.currentUser.email);
+  }
+
   try {
     const res = await axios.get('/api/profile');
     if (res.data) {
-      if (res.data.user) Object.assign(profileData.user, res.data.user);
-      if (res.data.stats) Object.assign(profileData.stats, res.data.stats);
-      if (res.data.skills) profileData.skills = res.data.skills;
-      if (res.data.achievements) profileData.achievements = res.data.achievements;
-      if (res.data.featuredProjects) profileData.featuredProjects = res.data.featuredProjects;
+      // Only merge if backend has meaningful server data and user matches
+      if (res.data.stats && !profileData.stats.mastered) {
+        Object.assign(profileData.stats, res.data.stats);
+      }
     }
   } catch (err) {
-    console.log('Profile loaded locally');
+    // Graceful offline fallback
   }
 });
+
+function handleAuthenticated(user) {
+  const loaded = loadUserProfile(user);
+  Object.assign(profileData.user, loaded.user);
+  Object.assign(profileData.stats, loaded.stats);
+  profileData.skills = loaded.skills;
+  profileData.achievements = loaded.achievements;
+  profileData.featuredProjects = loaded.featuredProjects;
+
+  notebooksStore.switchUser(user.email);
+  modulesComponentKey.value++;
+  currentTab.value = 'Home';
+  window.history.pushState({}, '', '/');
+
+  showToast(`Welcome to your robotics station, ${user.name}!`);
+}
+
+function handleLogout() {
+  authStore.logout();
+  notebooksStore.switchUser('');
+  currentTab.value = 'Auth';
+  window.history.pushState({}, '', '/login');
+  showToast('Signed out of station. Your progress, chats, and badges are safely saved.');
+}
 
 async function handleAwardBadge(payload, maybeSkills = []) {
   let badge = null;
@@ -451,12 +620,33 @@ async function handleAwardBadge(payload, maybeSkills = []) {
       if (res.data.data.skills) profileData.skills = res.data.data.skills;
     }
   } catch (e) {
-    console.log('Badge saved locally');
+    // Saved to state & localStorage
   }
+}
+
+function syncModuleProgressToLocalStorage(updatedMod) {
+  try {
+    const email = authStore.currentUser?.email;
+    if (!email) return;
+    const safe = email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+    const key = `risse_email_${safe}_enrolled_modules`;
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      let list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        const idx = list.findIndex(e => e.id == updatedMod.id || e.title === updatedMod.title);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updatedMod };
+          localStorage.setItem(key, JSON.stringify(list));
+        }
+      }
+    }
+  } catch (_) {}
 }
 
 function handleUpdateModule(updatedMod) {
   selectedModule.value = { ...selectedModule.value, ...updatedMod };
+  syncModuleProgressToLocalStorage(selectedModule.value);
 }
 
 function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
@@ -469,6 +659,7 @@ function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
     currentStep,
     progressPercent,
   };
+  syncModuleProgressToLocalStorage(selectedModule.value);
 
   if (isLast) {
     showToast(`🏆 Mastered ${selectedModule.value.title}!`);
@@ -550,13 +741,15 @@ function handleProjectAction({ action, project }) {
 
 async function handleSaveProfile(updatedUser) {
   Object.assign(profileData.user, updatedUser);
+  authStore.updateProfile(updatedUser);
+  persistUserProfile();
   isEditModalOpen.value = false;
   showToast('Profile updated successfully!');
 
   try {
     await axios.post('/api/profile/update', updatedUser);
   } catch (err) {
-    console.log('Saved to state');
+    // Saved to state & localStorage
   }
 }
 
@@ -583,6 +776,95 @@ function showToast(msg) {
   flex-direction: column;
   height: 100%;
   width: 100%;
+}
+
+/* ── Profile Page Account Header ── */
+.profile-page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.profile-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-page-header-row .risse-page-title {
+  margin: 0;
+  line-height: 1.15;
+}
+
+.profile-account-sub {
+  font-size: 13.5px;
+  color: #64748b;
+  font-weight: 500;
+  margin: 0;
+}
+
+.profile-logged-name {
+  color: #ea580c;
+  font-weight: 700;
+}
+
+.profile-auth-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-indicator-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  color: #475569;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.auth-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.auth-email-label {
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.btn-profile-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.btn-profile-signout:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.15);
 }
 
 .risse-toast {
