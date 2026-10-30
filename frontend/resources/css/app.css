@@ -24,7 +24,7 @@
   --text-body: #4b5563;
   --text-muted: #6b7280;
   --text-subtle: #9ca3af;
-  --tag-bg: #e6eaed;
+  --tag-bg: #E2E2E2;
   --tag-text: #374151;
   --thumbnail-bg: #d8dde3;
   --font-family: 'Lexend', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -311,13 +311,14 @@ body {
 }
 
 .risse-page-title {
-  font-family: var(--font-family-display);
-  font-size: 28px;
-  font-weight: 800;
+  font-family: var(--font-family-display, 'Momo Trust Display', sans-serif);
+  font-size: 50px;
+  font-weight: 400;
   color: #181d24;
   letter-spacing: -0.5px;
-  margin-bottom: 16px;
-  line-height: 1.1;
+  margin-left: 25px;
+  margin-bottom: 25px;
+  line-height: 1.15;
   flex-shrink: 0;
 }
 
@@ -327,7 +328,7 @@ body {
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.85fr);
   gap: 36px;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 25px;
   width: 100%;
   flex-shrink: 0;
 }
@@ -356,7 +357,9 @@ body {
   gap: 20px;
   box-shadow: var(--shadow-subtle);
   position: relative;
-  width: 100%;
+  width: calc(100% - 25px);
+  max-width: 750px;
+  margin-left: 25px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -483,7 +486,7 @@ body {
 .bottom-left-col {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 25px;
   width: 100%;
   min-width: 0;
 }
@@ -503,6 +506,10 @@ body {
   color: var(--primary-orange);
   letter-spacing: -0.1px;
   margin-bottom: 10px;
+}
+
+.skills-section {
+  margin-left: 25px;
 }
 
 /* Skills Mini Tags */
@@ -528,9 +535,14 @@ body {
 }
 
 .skill-tag:hover {
-  background-color: #dde1e6;
+  background-color: #d6d6d6;
   color: #111827;
   transform: translateY(-1px);
+}
+
+.achievements-section {
+  margin-left: 25px;
+  margin-top: 18px;
 }
 
 /* Achievements Section - generous spacing and dedicated badge columns */

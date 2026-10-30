@@ -30,7 +30,7 @@ async function getAiSdk() {
   return { createGoogleGenerativeAI, streamText, convertToModelMessages };
 }
 
-import { SOCRATIC_RULES, COMPETITION_RULES } from '../lib/systemRules';
+import { SOCRATIC_RULES, COMPETITION_RULES, getCompetitionRules } from '../lib/systemRules';
 
 function resolveCredentials() {
   const googleApiKey =
@@ -226,13 +226,9 @@ async function handleChatStream(body: any) {
   let fullSystemPrompt = '';
 
   if (mode === 'competition') {
+    const activeRules = getCompetitionRules();
     fullSystemPrompt = `
-${COMPETITION_RULES}
-
-==================================================
-ACTIVE INSTRUCTION MODE: COMPETITION MODE
-PRIORITY: Rapid tournament pit-coach triage, immediate direct answers, complete production-ready code, and adherence to the 10-step TECHNICAL FLOW.
-==================================================
+${activeRules}
 
 ==================================================
 CURRENT ACTIVE LEARNING MODULE CONTEXT
@@ -246,7 +242,8 @@ RETRIEVED CONTEXT FROM CURRICULUM
 ${contextText}
 ==================================================
 
-COMPETITION MODE OVERRIDE: Ignore all 'Socratic Progression' sections in the retrieved context above. Use only the Core Knowledge, Vocabulary, and Application facts to provide immediate, direct answers, pit triage checklists, and complete production-ready code.
+COMPETITION MODE INSTRUCTION:
+Ignore any 'Socratic Progression' or guessing/quizzing steps in the retrieved curriculum context above. Follow the Competition Mode rules above, using the curriculum facts and technical details to support the student's project and competitive strategy naturally.
 `;
   } else {
     fullSystemPrompt = `

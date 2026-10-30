@@ -87,16 +87,9 @@
         <div class="profile-page-header-row">
           <div class="profile-title-group">
             <h1 class="risse-page-title" id="page-title">Profile</h1>
-            <p class="profile-account-sub">
-              Logged in as <strong class="profile-logged-name">{{ profileData.user.name }}</strong>
-            </p>
           </div>
 
           <div class="profile-auth-status-bar">
-            <div class="status-indicator-pill">
-              <span class="auth-live-dot"></span>
-              <span class="auth-email-label">{{ authStore.currentUser?.email || 'Active Learner' }}</span>
-            </div>
             <button 
               type="button" 
               class="btn-profile-signout" 
@@ -783,7 +776,8 @@ function showToast(msg) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-top: 10px;
+  margin-bottom: 25px;
   flex-wrap: wrap;
   gap: 12px;
 }
@@ -795,53 +789,18 @@ function showToast(msg) {
 }
 
 .profile-page-header-row .risse-page-title {
-  margin: 0;
+  font-family: var(--font-family-display, 'Momo Trust Display', sans-serif);
+  font-weight: 400;
+  font-size: 50px;
   line-height: 1.15;
-}
-
-.profile-account-sub {
-  font-size: 13.5px;
-  color: #64748b;
-  font-weight: 500;
-  margin: 0;
-}
-
-.profile-logged-name {
-  color: #ea580c;
-  font-weight: 700;
+  margin: 0 0 0 25px;
 }
 
 .profile-auth-status-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.status-indicator-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 9999px;
-  font-size: 12.5px;
-  color: #475569;
-  font-weight: 500;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.auth-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 6px #22c55e;
-}
-
-.auth-email-label {
-  font-family: monospace;
-  font-size: 12px;
+  margin-right: 25px;
 }
 
 .btn-profile-signout {

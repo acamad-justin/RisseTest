@@ -1,6 +1,7 @@
 // lib/systemRules.ts
 // Single source of truth for Risse AI prompt engineering across Socratic and Competition modes.
-// Exporting both sets of rules directly prevents Vercel serverless runtime file-read (fs.readFileSync) issues.
+import fs from 'fs';
+import path from 'path';
 
 export const SOCRATIC_RULES = `
 PERSONA & ROLE
@@ -162,5 +163,46 @@ Test and improve the code as necessary
    - Keep responses crisp, direct, and structured with bold highlights, actionable bullet points, and numbered triage checklists.
    - Cut all filler. Diagnose the bottleneck, deliver the fix, and get the team back on the competition field!
 `;
+
+/**
+ * Dynamically loads custom competition rules from competition_mode.md if available,
+ * allowing instant live updates whenever the user edits the markdown file.
+ */
+export function getCompetitionRules(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'competition_mode.md'),
+    path.resolve(process.cwd(), '../competition_mode.md'),
+    path.resolve(process.cwd(), 'frontend/competition_mode.md'),
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, 'competition_mode.md') : '',
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, '../competition_mode.md') : '',
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, '../../competition_mode.md') : '',
+  ].filter(Boolean);
+
+  let newestFile: string | null = null;
+  let newestMtime = -1;
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        const stat = fs.statSync(candidate);
+        if (stat.mtimeMs > newestMtime) {
+          const content = fs.readFileSync(candidate, 'utf-8').trim();
+          if (content.length > 20) {
+            newestFile = candidate;
+            newestMtime = stat.mtimeMs;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (newestFile) {
+    try {
+      return fs.readFileSync(newestFile, 'utf-8').trim();
+    } catch (_) {}
+  }
+
+  return COMPETITION_RULES;
+}
 
 export const SYSTEM_RULES = SOCRATIC_RULES;

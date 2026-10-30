@@ -288,13 +288,18 @@ async function generateAiReply() {
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
     }
 
-    const candidateUrls = [
-      '/api/chat',
-      'http://127.0.0.1:8000/api/chat',
-      'http://127.0.0.1:5174/api/chat',
-      'http://127.0.0.1:5173/api/chat',
-      'http://localhost:5173/api/chat',
-    ]
+    const isLocal = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    const candidateUrls = isLocal
+      ? [
+          '/api/chat',
+          'http://127.0.0.1:8000/api/chat',
+          'http://127.0.0.1:5174/api/chat',
+          'http://127.0.0.1:5173/api/chat',
+          'http://localhost:5173/api/chat',
+        ]
+      : ['/api/chat'];
 
     let response = null
     for (const url of candidateUrls) {

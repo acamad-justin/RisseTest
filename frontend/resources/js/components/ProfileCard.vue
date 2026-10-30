@@ -56,6 +56,11 @@ defineEmits(['edit']);
 </script>
 
 <style scoped>
+.profile-card {
+  margin-left: 25px;
+  max-width: 750px;
+  width: calc(100% - 25px);
+}
 .avatar-placeholder-box {
   width: 100%;
   height: 100%;
