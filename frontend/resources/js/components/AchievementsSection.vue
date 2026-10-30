@@ -74,6 +74,10 @@ defineEmits(['select-badge']);
 </script>
 
 <style scoped>
+.achievements-section {
+  margin-left: 25px;
+  margin-top: 18px;
+}
 .achievements-wrapper {
   display: flex;
   align-items: flex-start;

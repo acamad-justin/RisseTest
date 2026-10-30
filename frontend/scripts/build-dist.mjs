@@ -7,9 +7,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const backendPublic = path.resolve(rootDir, '..', 'backend', 'public');
-const buildDir = fs.existsSync(path.join(rootDir, 'public', 'build'))
-  ? path.join(rootDir, 'public', 'build')
-  : path.join(backendPublic, 'build');
+const buildDir = path.join(backendPublic, 'build');
 
 const manifestPath = path.join(buildDir, 'manifest.json');
 const distDir = path.join(rootDir, 'dist');

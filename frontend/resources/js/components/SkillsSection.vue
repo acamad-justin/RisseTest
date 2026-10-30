@@ -29,6 +29,12 @@ defineProps({
 </script>
 
 <style scoped>
+.skills-section {
+  margin-left: 25px;
+}
+.skill-tag {
+  background-color: #E2E2E2;
+}
 .empty-skills-notice {
   font-size: 13px;
   color: #94a3b8;
