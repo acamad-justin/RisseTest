@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false,
+    "strict": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["./frontend/node_modules/*", "*"]
+    },
+    "typeRoots": [
+      "./frontend/node_modules/@types"
+    ]
+  },
+  "include": [
+    "api/**/*",
+    "lib/**/*",
+    "frontend/**/*"
+  ],
+  "exclude": [
+    "**/node_modules/**"
+  ]
+}
