@@ -33,8 +33,10 @@ Phase 1 introduces the **Teaching Strategy Selector (TSS)**—a deterministic, s
 ### Modified Files
 | File Path | Changes Made |
 | :--- | :--- |
-| `api/chat.ts` | Integrated `selectTeachingStrategy` into `handleChatStream`. Injected dynamic teaching directives into system prompts. Added `X-Risse-*` response headers. Added TSS diagnostic check to `runLiveDiagnostics()`. |
+| `api/chat.ts` | Integrated `selectTeachingStrategy` into `handleChatStream`. Injected dynamic teaching directives into system prompts with strict anti-echo mandates. Added `X-Risse-*` response headers. Added TSS diagnostic check to `runLiveDiagnostics()`. |
 | `frontend/api/chat.ts` | Mirrored changes to the frontend chat handler for local Vite development environment compatibility. |
+| `frontend/resources/js/components/CheckpointContentView.vue` | Added directive-leak sanitizer in `formatMessageText` to strip any accidental leading meta-headers before rendering. |
+| `frontend/resources/js/components/conversation/ConversationPanel.vue` | Added directive-leak sanitizer in `formatMessageText` to strip any accidental leading meta-headers before rendering. |
 | `frontend/package.json` | Added `"test": "node --test --experimental-strip-types ../tests/*.test.ts"` script. |
 
 ---

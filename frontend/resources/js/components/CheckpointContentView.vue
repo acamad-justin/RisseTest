@@ -268,6 +268,9 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
+import { useAuthStore } from '../stores/authStore.js';
+
+const authStore = useAuthStore();
 
 const props = defineProps({
   checkpointTitle: {
@@ -753,13 +756,18 @@ async function sendMessage() {
     };
 
     let response;
+    const authToken = await authStore.getAuthToken?.();
+    const chatHeaders = {
+      'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    };
     const isLocal = typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
     try {
       response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: chatHeaders,
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
@@ -786,13 +794,13 @@ async function sendMessage() {
         try {
           response = await fetch('http://127.0.0.1:5173/api/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: chatHeaders,
             body: JSON.stringify(payload),
           });
         } catch (_) {
           response = await fetch('http://localhost:5173/api/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: chatHeaders,
             body: JSON.stringify(payload),
           });
         }
@@ -854,7 +862,14 @@ function bookmarkInsight(text) {
 
 function formatMessageText(text) {
   if (!text) return '';
-  let safe = text
+  // Strip any accidental leading internal directive header leak from display
+  const cleanText = text
+    .replace(/^\s*={10,}\s*\n\s*(?:CRITICAL SAFETY DIRECTIVE|ADAPTIVE TEACHING INTELLIGENCE|INTERNAL SYSTEM DIRECTIVE)[^\n]*\n[\s\S]*?\n\s*={10,}\s*\n*/i, '')
+    .replace(/^\s*<internal_[^>]+>[\s\S]*?<\/internal_[^>]+>\s*\n*/i, '')
+    .replace(/^\s*\[INTERNAL[^\n\]]*\][\s\S]*?\[END INTERNAL[^\n\]]*\]\s*\n*/i, '')
+    .trimStart();
+
+  let safe = cleanText
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');

@@ -503,16 +503,16 @@ function fillDemo(who) {
   }
 }
 
-function handleLoginSubmit() {
+async function handleLoginSubmit() {
   errorMessage.value = '';
   successMessage.value = '';
   isSubmitting.value = true;
 
-  setTimeout(() => {
-    const res = authStore.login(loginForm.email, loginForm.password);
+  try {
+    const res = await authStore.login(loginForm.email, loginForm.password);
     isSubmitting.value = false;
 
-    if (res.success) {
+    if (res.success && res.user) {
       successMessage.value = `Welcome back, ${res.user.name}!`;
       setTimeout(() => {
         emit('authenticated', res.user);
@@ -520,29 +520,35 @@ function handleLoginSubmit() {
     } else {
       errorMessage.value = res.message || 'Login failed. Please verify credentials.';
     }
-  }, 300);
+  } catch (err) {
+    isSubmitting.value = false;
+    errorMessage.value = err?.message || 'Login failed. Please try again.';
+  }
 }
 
-function handleQuickLogin(userId) {
+async function handleQuickLogin(userId) {
   errorMessage.value = '';
   successMessage.value = '';
   isSubmitting.value = true;
 
-  setTimeout(() => {
-    const res = authStore.quickLogin(userId);
+  try {
+    const res = await authStore.quickLogin(userId);
     isSubmitting.value = false;
-    if (res.success) {
+    if (res.success && res.user) {
       successMessage.value = `Station unlocked for ${res.user.name}...`;
       setTimeout(() => {
         emit('authenticated', res.user);
       }, 250);
     } else {
-      errorMessage.value = res.message || 'Demo login failed.';
+      errorMessage.value = res.message || 'Demo credentials not yet registered with Supabase.';
     }
-  }, 200);
+  } catch (err) {
+    isSubmitting.value = false;
+    errorMessage.value = err?.message || 'Demo login failed.';
+  }
 }
 
-function handleRegisterSubmit() {
+async function handleRegisterSubmit() {
   errorMessage.value = '';
   successMessage.value = '';
 
@@ -551,10 +557,15 @@ function handleRegisterSubmit() {
     return;
   }
 
+  if (regForm.password.length < 6) {
+    errorMessage.value = 'Password must be at least 6 characters.';
+    return;
+  }
+
   isSubmitting.value = true;
 
-  setTimeout(() => {
-    const res = authStore.register({
+  try {
+    const res = await authStore.register({
       name: regForm.name,
       email: regForm.email,
       school: regForm.school,
@@ -565,7 +576,15 @@ function handleRegisterSubmit() {
 
     isSubmitting.value = false;
 
-    if (res.success) {
+    if (res.success && res.verificationRequired) {
+      successMessage.value = res.message || 'Account created! Please check your email to verify your account before logging in.';
+      setTimeout(() => {
+        switchMode('login');
+      }, 3000);
+      return;
+    }
+
+    if (res.success && res.user && res.session) {
       successMessage.value = `Account created! Welcome to Risse, ${res.user.name}.`;
       setTimeout(() => {
         emit('authenticated', res.user);
@@ -573,7 +592,10 @@ function handleRegisterSubmit() {
     } else {
       errorMessage.value = res.message || 'Account creation failed.';
     }
-  }, 350);
+  } catch (err) {
+    isSubmitting.value = false;
+    errorMessage.value = err?.message || 'Registration failed.';
+  }
 }
 </script>
 
