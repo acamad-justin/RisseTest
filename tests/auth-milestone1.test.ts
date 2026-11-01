@@ -522,4 +522,65 @@ describe('Phase 2 Milestone 1: Authentication & Authorization Security', () => {
     assert.strictEqual(res.headers.get('X-Risse-User-Id'), null, 'Guest mode should not set X-Risse-User-Id');
   });
 
+  // ── Test 25: New Account Isolation — Storage keys strictly isolated by email ─
+  it('25. Storage keys are strictly scoped per authenticated user email to prevent data inheritance', () => {
+    const sanitize = (email: string) => email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+    
+    const user1Key = `risse_email_${sanitize('newstudent@school.edu')}_enrolled_modules`;
+    const user2Key = `risse_email_${sanitize('adriel@risse.edu')}_enrolled_modules`;
+
+    assert.notStrictEqual(user1Key, user2Key, 'User keys must be unique per email');
+    assert.strictEqual(user1Key, 'risse_email_newstudent_school_edu_enrolled_modules');
+  });
+
+  // ── Test 26: Default storage files enforce zero enrolled courses for clean slate ─
+  it('26. Default storage modules file contains an empty enrolled list for authentic fresh starts', () => {
+    const raw = readProjectFile('backend/storage/app/modules_data.json');
+    const data = JSON.parse(raw);
+    assert.ok(Array.isArray(data.enrolled), 'Enrolled must be an array');
+    assert.strictEqual(data.enrolled.length, 0, 'New accounts must start with exactly 0 enrolled modules');
+  });
+
+  // ── Test 27: StatsSection default props default strictly to 0 ──────────────
+  it('27. StatsSection default props default strictly to 0 projects, 0 mastered, 0 badges', () => {
+    const code = readProjectFile('frontend/resources/js/components/StatsSection.vue');
+    assert.ok(code.includes('projects: 0'), 'Default projects must be 0');
+    assert.ok(code.includes('mastered: 0'), 'Default mastered must be 0');
+    assert.ok(code.includes('badges: 0'), 'Default badges must be 0');
+    assert.ok(!code.includes('mastered: 7'), 'Must not default to 7 mastered');
+  });
+
+  // ── Test 28: Home views compute mastered concepts reactively without mock overrides
+  it('28. Home and DynamicHome views compute mastered concepts from userStats without mock overrides', () => {
+    const homeCode = readProjectFile('frontend/resources/js/views/HomeView.vue');
+    const dynCode = readProjectFile('frontend/resources/js/views/DynamicHomeView.vue');
+
+    assert.ok(!homeCode.includes("email === 'adriel@risse.edu'"), 'HomeView must not hardcode adriel email mock override');
+    assert.ok(!dynCode.includes("email === 'adriel@risse.edu'"), 'DynamicHomeView must not hardcode adriel email mock override');
+    assert.ok(homeCode.includes('masteredCount: props.userStats?.mastered ?? 0'), 'HomeView maps masteredCount to props.userStats');
+    assert.ok(dynCode.includes('masteredCount: props.userStats?.mastered ?? 0'), 'DynamicHomeView maps masteredCount to props.userStats');
+  });
+
+  // ── Test 29: App.vue integrity healing forces 0 mastered concepts when achievements are empty
+  it('29. App.vue integrity healing forces 0 mastered concepts when achievements are empty', () => {
+    const appCode = readProjectFile('frontend/resources/js/App.vue');
+
+    assert.ok(appCode.includes('cleanMastered = achievements.length > 0 ? (saved.stats?.mastered ?? achievements.length) : 0;'), 'Empty achievements must force 0 mastered');
+    assert.ok(appCode.includes('cleanBadges = achievements.length;'), 'Badges must match achievements count');
+    assert.ok(!appCode.includes("user.email === 'adriel@risse.edu'"), 'Must not have special legacy localStorage fallback for adriel in loadUserProfile');
+  });
+
+  // ── Test 30: Dedicated adriel storage files also baseline to clean zero slate
+  it('30. Dedicated adriel storage files also baseline to clean zero slate', () => {
+    const profRaw = readProjectFile('backend/storage/app/profile_data_adriel_risse_edu.json');
+    const profData = JSON.parse(profRaw);
+    assert.strictEqual(profData.stats.mastered, 0, 'Adriel storage file must have 0 mastered');
+    assert.strictEqual(profData.stats.badges, 0, 'Adriel storage file must have 0 badges');
+    assert.strictEqual(profData.achievements.length, 0, 'Adriel storage file must have 0 achievements');
+
+    const modRaw = readProjectFile('backend/storage/app/modules_data_adriel_risse_edu.json');
+    const modData = JSON.parse(modRaw);
+    assert.strictEqual(modData.enrolled.length, 0, 'Adriel modules file must have 0 enrolled');
+  });
+
 });

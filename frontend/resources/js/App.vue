@@ -29,12 +29,18 @@
     <!-- Main Content Area -->
     <main class="risse-main" role="main">
       <!-- DYNAMIC HOME VIEW (Real-time Canvas Space, Parallax, Meteors, Star Chart) -->
-      <DynamicHomeView v-if="currentTab === 'DynamicHome'" />
+      <DynamicHomeView 
+        v-if="currentTab === 'DynamicHome'" 
+        :user-stats="profileData.stats"
+        :user-email="authStore.currentUserEmail"
+      />
 
       <!-- STANDARD HOME VIEW (Constellation & Space) -->
       <HomeView 
         v-else-if="currentTab === 'Home'" 
         :is-chat-open="isChatOpen"
+        :user-stats="profileData.stats"
+        :user-email="authStore.currentUserEmail"
         @open-module="currentTab = 'Modules'"
         @open-mascot-prompt="openChat"
       />
@@ -408,8 +414,8 @@ function loadUserProfile(user) {
   if (!user) {
     return {
       user: {
-        name: 'ADRIEL JUSTIN DELA CRUZ',
-        school: 'Rizal Polytechnic de Muntinlupa',
+        name: 'STUDENT LEARNER',
+        school: 'Robotics Academy',
         grade: 'Grade 10',
         avatar: null,
       },
@@ -425,24 +431,29 @@ function loadUserProfile(user) {
   try {
     const raw = localStorage.getItem(key);
     if (raw) saved = JSON.parse(raw);
-    // Legacy fallback for default adriel user
-    if (!saved && (user.email === 'adriel@risse.edu' || user.id === 'usr_adriel')) {
-      const legacyRaw = localStorage.getItem('risse_user_usr_adriel_profile_data') || localStorage.getItem('risse_profile_data');
-      if (legacyRaw) saved = JSON.parse(legacyRaw);
-    }
   } catch (e) {}
 
   if (saved) {
+    const achievements = Array.isArray(saved.achievements) ? saved.achievements : [];
+    // Strict integrity: Mastered concepts and badges count cannot exist without matching achievements
+    const cleanMastered = achievements.length > 0 ? (saved.stats?.mastered ?? achievements.length) : 0;
+    const cleanBadges = achievements.length;
+    const cleanProjects = saved.stats?.projects ?? 0;
+
     return {
       user: {
-        name: user.name || saved.user?.name || 'ADRIEL JUSTIN DELA CRUZ',
-        school: user.school || saved.user?.school || 'Rizal Polytechnic de Muntinlupa',
+        name: user.name || saved.user?.name || 'STUDENT LEARNER',
+        school: user.school || saved.user?.school || 'Robotics Academy',
         grade: user.grade || saved.user?.grade || 'Grade 10',
         avatar: user.avatar !== undefined ? user.avatar : (saved.user?.avatar || null),
       },
-      stats: saved.stats || { projects: 0, mastered: 0, badges: 0 },
+      stats: {
+        projects: cleanProjects,
+        mastered: cleanMastered,
+        badges: cleanBadges,
+      },
       skills: saved.skills || [],
-      achievements: saved.achievements || [],
+      achievements: achievements,
       featuredProjects: saved.featuredProjects || [],
     };
   }
@@ -496,8 +507,8 @@ watch(() => authStore.currentUser, (newUser) => {
 }, { deep: true });
 
 const userFirstName = computed(() => {
-  const full = profileData.user?.name || 'Adriel';
-  const first = full.trim().split(/\s+/)[0] || 'Adriel';
+  const full = profileData.user?.name || authStore.currentUser?.name || 'Learner';
+  const first = full.trim().split(/\s+/)[0] || 'Learner';
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 });
 
@@ -507,9 +518,6 @@ watch(profileData, (val) => {
     const email = authStore.currentUser?.email;
     if (email) {
       localStorage.setItem(getUserProfileStorageKey(email), JSON.stringify(val));
-    }
-    if (email === 'adriel@risse.edu' || !email) {
-      localStorage.setItem('risse_profile_data', JSON.stringify(val));
     }
   } catch (e) {}
 }, { deep: true });
@@ -529,11 +537,25 @@ onMounted(async () => {
   }
 
   try {
-    const res = await axios.get('/api/profile');
-    if (res.data) {
-      // Only merge if backend has meaningful server data and user matches
-      if (res.data.stats && !profileData.stats.mastered) {
-        Object.assign(profileData.stats, res.data.stats);
+    const email = authStore.currentUser?.email;
+    if (email) {
+      const res = await axios.get('/api/profile', {
+        headers: { 'X-User-Email': email }
+      });
+      if (res.data && res.data.stats) {
+        const serverAchievements = Array.isArray(res.data.achievements) ? res.data.achievements : [];
+        if (serverAchievements.length > 0) {
+          profileData.achievements = serverAchievements;
+          profileData.skills = res.data.skills || [];
+          profileData.stats.badges = serverAchievements.length;
+          profileData.stats.mastered = res.data.stats.mastered || serverAchievements.length;
+          profileData.stats.projects = res.data.stats.projects || 0;
+        } else if (profileData.achievements.length === 0) {
+          // Fresh account integrity: force 0 mastered, 0 badges, 0 projects
+          profileData.stats.mastered = 0;
+          profileData.stats.badges = 0;
+          profileData.stats.projects = 0;
+        }
       }
     }
   } catch (err) {

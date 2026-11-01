@@ -28,6 +28,26 @@ import { constellationConceptMap } from '@/mocks/constellationData.js'
 
 const props = defineProps({
   isChatOpen: { type: Boolean, default: false },
+  userStats:  { type: Object, default: () => ({ projects: 0, mastered: 0, badges: 0 }) },
+  userEmail:  { type: String, default: '' },
+})
+
+const displayStats = computed(() => {
+  return {
+    projectCount: props.userStats?.projects ?? 0,
+    masteredCount: props.userStats?.mastered ?? 0,
+  };
+})
+
+const activeConcepts = computed(() => {
+  // For fresh learners with 0 mastered, show all initial concepts unmastered
+  if (!props.userStats?.mastered) {
+    return concepts.map(c => ({
+      ...c,
+      mastered: false,
+    }));
+  }
+  return concepts;
 })
 
 const emit = defineEmits(['open-module', 'open-mascot-prompt'])
@@ -99,7 +119,7 @@ function onPractice(id) {
       <div class="home__map">
         <ConstellationMap
           ref="constellationRef"
-          :concepts="concepts"
+          :concepts="activeConcepts"
           :connections="connections"
           :search-query="searchQuery"
           :highlighted-ids="activeHighlightIds"
@@ -113,14 +133,14 @@ function onPractice(id) {
         <div class="stat">
           <p class="stat__label">Project</p>
           <p class="stat__label">Showcase</p>
-          <p class="stat__number">{{ learnerSummary.projectCount }}</p>
+          <p class="stat__number">{{ displayStats.projectCount }}</p>
         </div>
 
         <!-- Mastered Concepts -->
         <div class="stat">
           <p class="stat__label">Mastered</p>
           <p class="stat__label">Concepts</p>
-          <p class="stat__number">{{ learnerSummary.masteredCount }}</p>
+          <p class="stat__number">{{ displayStats.masteredCount }}</p>
         </div>
       </aside>
     </div>
