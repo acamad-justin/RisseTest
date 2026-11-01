@@ -31,6 +31,7 @@ async function getAiSdk() {
 }
 
 import { SOCRATIC_RULES, COMPETITION_RULES, getCompetitionRules, getSocraticRules } from '../lib/systemRules';
+import { selectTeachingStrategy, buildTeachingDirectives } from '../lib/teaching/index.ts';
 
 function resolveCredentials() {
   const googleApiKey =
@@ -140,6 +141,28 @@ async function runLiveDiagnostics() {
     };
   }
 
+  try {
+    const sampleDecision = await selectTeachingStrategy({
+      messages: [{ role: 'user', content: 'What is torque?' }],
+      lastUserMessage: 'What is torque?',
+      selectedChatMode: 'socratic',
+    });
+    report.liveTests.teachingStrategySelector = {
+      status: 'SUCCESS',
+      sampleDecision: {
+        mode: sampleDecision.teachingMode,
+        state: sampleDecision.tutoringState,
+        level: sampleDecision.assistanceLevel,
+        strategy: sampleDecision.responseStrategy,
+      },
+    };
+  } catch (tssErr: any) {
+    report.liveTests.teachingStrategySelector = {
+      status: 'FAILED',
+      error: tssErr?.message || String(tssErr),
+    };
+  }
+
   const allGood =
     report.liveTests.gemini?.status === 'SUCCESS' &&
     report.liveTests.supabase?.status === 'SUCCESS';
@@ -223,12 +246,26 @@ async function handleChatStream(body: any) {
 
   const mode = (body.mode === 'competition' || body.aiMode === 'competition') ? 'competition' : 'socratic';
 
+  // Run Teaching Strategy Selector (TSS) before response generation
+  const teachingDecision = await selectTeachingStrategy({
+    messages: normalizedMessages,
+    lastUserMessage,
+    checkpointTitle,
+    moduleTitle,
+    selectedChatMode: mode,
+    retrievedContext: contextText !== 'No specific curriculum match found.' ? contextText : undefined,
+  });
+
+  const teachingDirectives = buildTeachingDirectives(teachingDecision);
+
   let fullSystemPrompt = '';
 
   if (mode === 'competition') {
     const activeRules = getCompetitionRules();
     fullSystemPrompt = `
 ${activeRules}
+
+${teachingDirectives}
 
 ==================================================
 CURRENT ACTIVE LEARNING MODULE CONTEXT
@@ -248,6 +285,8 @@ Ignore any 'Socratic Progression' or guessing/quizzing steps in the retrieved cu
   } else {
     fullSystemPrompt = `
 ${getSocraticRules()}
+
+${teachingDirectives}
 
 ==================================================
 ACTIVE INSTRUCTION MODE: SOCRATIC MODE
@@ -275,11 +314,16 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
     apiKey: googleApiKey,
   });
 
-  return streamText({
+  const streamResult = streamText({
     model: google('gemini-3.5-flash-lite'),
     system: fullSystemPrompt,
     messages: modelMessages,
   });
+
+  return {
+    streamResult,
+    teachingDecision,
+  };
 }
 
 // ── Vercel Node.js Serverless Function Handler (Default Export) ─────────────
@@ -314,8 +358,12 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const result = await handleChatStream(body || {});
-    result.pipeTextStreamToResponse(res);
+    const { streamResult, teachingDecision } = await handleChatStream(body || {});
+    res.setHeader('X-Risse-Teaching-Mode', teachingDecision.teachingMode);
+    res.setHeader('X-Risse-Assistance-Level', String(teachingDecision.assistanceLevel));
+    res.setHeader('X-Risse-Tutoring-State', teachingDecision.tutoringState);
+    res.setHeader('X-Risse-Target-Concept', encodeURIComponent(teachingDecision.targetConcept));
+    streamResult.pipeTextStreamToResponse(res);
   } catch (error: any) {
     console.error('[API /api/chat Serverless Error]:', error);
     const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
@@ -351,13 +399,17 @@ export async function POST(req: Request) {
   const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
   try {
     const body = await req.json().catch(() => ({}));
-    const result = await handleChatStream(body);
+    const { streamResult, teachingDecision } = await handleChatStream(body);
 
-    return result.toTextStreamResponse({
+    return streamResult.toTextStreamResponse({
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'X-Risse-Teaching-Mode': teachingDecision.teachingMode,
+        'X-Risse-Assistance-Level': String(teachingDecision.assistanceLevel),
+        'X-Risse-Tutoring-State': teachingDecision.tutoringState,
+        'X-Risse-Target-Concept': encodeURIComponent(teachingDecision.targetConcept),
       },
     });
   } catch (error: any) {
