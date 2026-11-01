@@ -29,7 +29,7 @@ async function getAiSdk() {
   return { createGoogleGenerativeAI, streamText, convertToModelMessages };
 }
 
-import { SOCRATIC_RULES, COMPETITION_RULES, getCompetitionRules } from '../lib/systemRules';
+import { SOCRATIC_RULES, COMPETITION_RULES, getCompetitionRules, getSocraticRules } from '../lib/systemRules';
 
 function resolveCredentials() {
   const googleApiKey =
@@ -246,7 +246,7 @@ Ignore any 'Socratic Progression' or guessing/quizzing steps in the retrieved cu
 `;
   } else {
     fullSystemPrompt = `
-${SOCRATIC_RULES}
+${getSocraticRules()}
 
 ==================================================
 ACTIVE INSTRUCTION MODE: SOCRATIC MODE
