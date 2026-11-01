@@ -490,8 +490,20 @@ function persistUserProfile(userOrEmail) {
 const initialProfileState = loadUserProfile(authStore.currentUser);
 const profileData = reactive(initialProfileState);
 
+// Strict integrity invariant: Mastered concepts and badges count cannot exist without matching achievements
+watch(
+  () => profileData.achievements?.length || 0,
+  (len) => {
+    if (len === 0) {
+      profileData.stats.badges = 0;
+      profileData.stats.mastered = 0;
+    }
+  },
+  { immediate: true }
+);
+
 // Sync profile data and notebooks store whenever active authenticated user changes
-watch(() => authStore.currentUser, (newUser) => {
+watch(() => authStore.currentUser, async (newUser) => {
   if (newUser) {
     const loaded = loadUserProfile(newUser);
     Object.assign(profileData.user, loaded.user);
@@ -500,6 +512,26 @@ watch(() => authStore.currentUser, (newUser) => {
     profileData.achievements = loaded.achievements;
     profileData.featuredProjects = loaded.featuredProjects;
     notebooksStore.switchUser(newUser.email);
+
+    try {
+      const res = await axios.get('/api/profile', {
+        headers: { 'X-User-Email': newUser.email }
+      });
+      if (res.data && res.data.stats) {
+        const serverAchievements = Array.isArray(res.data.achievements) ? res.data.achievements : [];
+        if (serverAchievements.length > 0) {
+          profileData.achievements = serverAchievements;
+          profileData.skills = res.data.skills || [];
+          profileData.stats.badges = serverAchievements.length;
+          profileData.stats.mastered = res.data.stats.mastered || serverAchievements.length;
+          profileData.stats.projects = res.data.stats.projects || 0;
+        } else {
+          profileData.stats.mastered = 0;
+          profileData.stats.badges = 0;
+          profileData.stats.projects = 0;
+        }
+      }
+    } catch (_) {}
   } else {
     notebooksStore.switchUser('');
   }
