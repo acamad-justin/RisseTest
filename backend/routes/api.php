@@ -525,6 +525,6 @@ Route::match(['GET', 'POST', 'OPTIONS'], '/chat', function (Request $request) {
         'Cache-Control' => 'no-cache, no-transform',
         'X-Accel-Buffering' => 'no',
         'Access-Control-Allow-Origin' => '*',
-        'Access-Control-Expose-Headers' => 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory',
+        'Access-Control-Expose-Headers' => 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory, X-Risse-Safety',
     ]);
 });

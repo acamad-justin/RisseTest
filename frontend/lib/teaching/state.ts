@@ -18,11 +18,11 @@ export interface StateAnalysisResult {
 }
 
 const STUCK_PATTERNS = [
-  /\b(i'?m\s*(stuck|lost|confused))\b/i,
-  /\b(i\s*don'?t\s*(understand|get\s*it|know|have\s*any\s*idea))\b/i,
+  /\b(i'?m|i\s*am)\s*(stuck|lost|confused)\b/i,
+  /\b(i\s*don'?t|i\s*do\s*not)\s*(understand|get\s*it|know|have\s*any\s*idea)\b/i,
   /\b(di\s*(ko|natin)\s*(gets?|maintindihan|alam))\b/i,
   /\b(nalilito\s*(ako)?|gulo\s*ng\s*isip)\b/i,
-  /\b(no\s*idea|clueless|can'?t\s*figure\s*this\s*out)\b/i,
+  /\b(no\s*idea|clueless|can'?t\s*figure\s*this\s*out|cannot\s*figure\s*this\s*out)\b/i,
   /\b(idk|dunno)\b/i,
 ];
 
@@ -38,6 +38,10 @@ const MASTERY_PATTERNS = [
   /\b(so\s*that\s*means|because|therefore|since\s*the\s*formula)\b/i,
   /\b(torque\s*=\s*force\s*[*x]\s*distance|gear\s*ratio\s*=\s*\d+[:/]\d+)\b/i,
   /\b(i\s*understand\s*now|now\s*i\s*get\s*it|that\s*makes\s*sense)\b/i,
+  /\b(sensors?.*(microcontrollers?|processors?|computation).*actuators?)\b/i,
+  /\b(integrat(ing|es?).*sensors?.*actuators?)\b/i,
+  /\b(perception.*(computation|processing).*actuation)\b/i,
+  /\b(closed[- ]loop\s*control|pid|encoder\s*feedback)\b/i,
 ];
 
 /**
