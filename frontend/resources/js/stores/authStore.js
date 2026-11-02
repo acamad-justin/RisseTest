@@ -36,11 +36,15 @@ function mapSupabaseUserToProfile(sbUser, role = 'student') {
   };
 }
 
+const roleCache = new Map();
+
 /**
  * Resolves user role from user_roles table
  */
 async function fetchUserRole(userId) {
   if (!userId) return 'student';
+  if (roleCache.has(userId)) return roleCache.get(userId);
+
   try {
     const { data, error } = await supabase
       .from('user_roles')
@@ -48,13 +52,17 @@ async function fetchUserRole(userId) {
       .eq('user_id', userId);
 
     if (error || !data || data.length === 0) {
+      roleCache.set(userId, 'student');
       return 'student'; // Default fallback
     }
     const roles = data.map(r => r.role);
-    if (roles.includes('admin')) return 'admin';
-    if (roles.includes('teacher')) return 'teacher';
-    return 'student';
+    let resolved = 'student';
+    if (roles.includes('admin')) resolved = 'admin';
+    else if (roles.includes('teacher')) resolved = 'teacher';
+    roleCache.set(userId, resolved);
+    return resolved;
   } catch (_) {
+    roleCache.set(userId, 'student');
     return 'student';
   }
 }
@@ -251,6 +259,7 @@ async function logout() {
   try {
     await supabase.auth.signOut();
   } catch (_) {}
+  roleCache.clear();
   currentUser.value = null;
   currentSession.value = null;
   userRole.value = 'student';

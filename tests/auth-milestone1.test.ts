@@ -462,7 +462,7 @@ describe('Phase 2 Milestone 1: Authentication & Authorization Security', () => {
 
   // ── Test 22: Public GET /api/chat does not leak environment, keys, or stack traces
   it('22. Public GET /api/chat does not leak environment, keys, or stack traces', async () => {
-    const { GET } = await import('../api/chat.ts');
+    const { GET } = await import('../api/chat.js');
 
     // Public request (no Authorization header)
     const res = await GET();
@@ -482,7 +482,7 @@ describe('Phase 2 Milestone 1: Authentication & Authorization Security', () => {
 
   // ── Test 23: Chat POST handler rejects invalid bearer token with 401 before calling LLM
   it('23. Chat POST handler rejects invalid bearer token with 401 before calling LLM', async () => {
-    const { POST } = await import('../api/chat.ts');
+    const { POST } = await import('../api/chat.js');
 
     const req = new Request('http://localhost:3000/api/chat', {
       method: 'POST',
@@ -504,7 +504,7 @@ describe('Phase 2 Milestone 1: Authentication & Authorization Security', () => {
 
   // ── Test 24: Chat POST handler allows Guest Mode with 200 and X-Risse-Auth header
   it('24. Chat POST handler allows guest mode when no Authorization header is provided', async () => {
-    const { POST } = await import('../api/chat.ts');
+    const { POST } = await import('../api/chat.js');
 
     const req = new Request('http://localhost:3000/api/chat', {
       method: 'POST',
