@@ -132,6 +132,9 @@ try {
   if (fs.existsSync(chatSrc)) {
     await viteBuild({
       root: projectRoot,
+      ssr: {
+        noExternal: true,
+      },
       build: {
         ssr: chatSrc,
         outDir: apiOutDir,
@@ -140,6 +143,7 @@ try {
           output: {
             format: 'es',
             entryFileNames: 'chat.js',
+            inlineDynamicImports: true,
           },
         },
       },
