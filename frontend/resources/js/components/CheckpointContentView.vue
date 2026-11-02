@@ -765,49 +765,34 @@ async function sendMessage() {
     const isLocal = typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-    try {
-      response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: chatHeaders,
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        let errMsg = `HTTP ${response.status}`;
-        try {
-          const errJson = await response.json();
-          if (errJson) {
-            errMsg = errJson.error || errJson.message || JSON.stringify(errJson);
-            if (errJson.stage) {
-              errMsg = `[Stage: ${errJson.stage}] ${errMsg}`;
-            }
-          }
-        } catch (_) {
-          try {
-            const rawText = await response.text();
-            if (rawText) errMsg = `HTTP ${response.status}: ${rawText.slice(0, 150)}`;
-          } catch (__) {}
+    const candidateUrls = isLocal
+      ? [
+          '/api/chat',
+          'http://127.0.0.1:8000/api/chat',
+          'http://127.0.0.1:5173/api/chat',
+          'http://localhost:5173/api/chat',
+        ]
+      : ['/api/chat'];
+
+    let lastError = null;
+    for (const url of candidateUrls) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: chatHeaders,
+          body: JSON.stringify(payload),
+        });
+        if (res.ok && res.body) {
+          response = res;
+          break;
         }
-        throw new Error(errMsg);
+      } catch (e) {
+        lastError = e;
       }
-    } catch (err) {
-      if (isLocal) {
-        // Direct Vite dev server fallback (port 5173) for local development
-        try {
-          response = await fetch('http://127.0.0.1:5173/api/chat', {
-            method: 'POST',
-            headers: chatHeaders,
-            body: JSON.stringify(payload),
-          });
-        } catch (_) {
-          response = await fetch('http://localhost:5173/api/chat', {
-            method: 'POST',
-            headers: chatHeaders,
-            body: JSON.stringify(payload),
-          });
-        }
-      } else {
-        throw err;
-      }
+    }
+
+    if (!response || !response.body) {
+      throw lastError || new Error('All chat endpoint candidates failed to respond');
     }
 
     if (!response.ok) {

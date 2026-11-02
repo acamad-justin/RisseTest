@@ -471,16 +471,33 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
     }
 
     $payload = json_encode($request->all());
+    $authHeader = $request->header('Authorization');
 
-    return response()->stream(function () use ($targetUrl, $payload) {
+    return response()->stream(function () use ($targetUrl, $payload, $authHeader) {
         $ch = curl_init($targetUrl);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        $headers = [
             'Content-Type: application/json',
             'Accept: text/plain, */*',
-        ]);
+        ];
+        if ($authHeader) {
+            $headers[] = 'Authorization: ' . $authHeader;
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $header) {
+            $len = strlen($header);
+            $parts = explode(':', $header, 2);
+            if (count($parts) === 2) {
+                $name = trim($parts[0]);
+                $val = trim($parts[1]);
+                if (stripos($name, 'X-Risse-') === 0 || strcasecmp($name, 'Access-Control-Expose-Headers') === 0) {
+                    header("$name: $val", false);
+                }
+            }
+            return $len;
+        });
         curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) {
             echo $data;
             if (ob_get_level() > 0) {
@@ -503,6 +520,7 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
         'Cache-Control' => 'no-cache, no-transform',
         'X-Accel-Buffering' => 'no',
         'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Expose-Headers' => 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory',
     ]);
 });
 
