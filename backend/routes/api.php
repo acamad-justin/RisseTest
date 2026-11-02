@@ -491,7 +491,9 @@ Route::match(['GET', 'POST', 'OPTIONS'], '/chat', function (Request $request) {
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) {
+        $bytesWritten = 0;
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) use (&$bytesWritten) {
+            $bytesWritten += strlen($data);
             echo $data;
             if (ob_get_level() > 0) {
                 @ob_flush();
@@ -503,9 +505,12 @@ Route::match(['GET', 'POST', 'OPTIONS'], '/chat', function (Request $request) {
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
 
         $executed = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         if ($executed === false) {
             $err = curl_error($ch);
             echo "Error connecting to AI chat service ($err). Target: $targetUrl";
+        } elseif ($bytesWritten === 0 && $httpCode && $httpCode !== 200) {
+            echo "Error from AI chat service: HTTP $httpCode received with empty response. Target: $targetUrl";
         }
         curl_close($ch);
     }, 200, [
