@@ -24,7 +24,7 @@ for (const p of envCandidates) {
 }
 dotenv.config();
 
-import { resolveBackendAuth } from '../lib/serverAuth.ts';
+import { resolveBackendAuth } from '../frontend/lib/serverAuth.ts';
 
 function readProjectFile(relativePath: string): string {
   const candidates = [
