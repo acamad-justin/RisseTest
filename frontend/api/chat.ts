@@ -67,6 +67,19 @@ function resolveCredentials() {
   return { googleApiKey, supabaseUrl, supabaseKey };
 }
 
+function buildHealthResponse() {
+  const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
+  return {
+    status: 'HEALTHY',
+    service: 'risse-chat',
+    checks: {
+      runtime: true,
+      supabaseConfigured: Boolean(supabaseUrl && supabaseKey),
+      geminiConfigured: Boolean(googleApiKey),
+    },
+  };
+}
+
 async function runLiveDiagnostics() {
   const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
 
@@ -349,31 +362,33 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
     messages: modelMessages,
   });
 
-  // Milestone 2B: Asynchronous Non-blocking Memory Extraction & Message Persistence
+  // Milestone 2B: Robust Non-blocking Memory Extraction & Message Persistence
   if (authContext?.user?.id && supabaseUrl && supabaseKey) {
-    (async () => {
-      try {
-        const sb = createClient(supabaseUrl, supabaseKey);
-        if (conversationId && lastUserMessage.trim()) {
-          await persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage);
-        }
-        if (!isNotebook) {
-          const extraction = extractCandidateMemories({
-            messages: normalizedMessages,
-            lastUserMessage,
-            moduleId: moduleId || undefined,
-            checkpointId: checkpointId || undefined,
-            targetConcept: teachingDecision.targetConcept,
-            isNotebook,
-          });
-          if (extraction.globalMemoryUpdate || extraction.candidateEvidence) {
-            await syncStudentMemoryInteraction(sb, authContext.user.id, extraction);
-          }
-        }
-      } catch (bgErr) {
-        console.warn('[API /api/chat] Non-fatal background memory task error:', bgErr?.message || bgErr);
+    try {
+      const sb = createClient(supabaseUrl, supabaseKey);
+      if (conversationId && lastUserMessage.trim()) {
+        persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage).catch((persistErr) => {
+          console.warn('[API /api/chat] Non-fatal conversation turn persistence warning:', persistErr?.message || persistErr);
+        });
       }
-    })().catch(() => {});
+      if (!isNotebook) {
+        const extraction = extractCandidateMemories({
+          messages: normalizedMessages,
+          lastUserMessage,
+          moduleId: moduleId || undefined,
+          checkpointId: checkpointId || undefined,
+          targetConcept: teachingDecision.targetConcept,
+          isNotebook,
+        });
+        if (extraction.globalMemoryUpdate || extraction.candidateEvidence) {
+          syncStudentMemoryInteraction(sb, authContext.user.id, extraction).catch((syncErr) => {
+            console.warn('[API /api/chat] Non-fatal student memory sync warning:', syncErr?.message || syncErr);
+          });
+        }
+      }
+    } catch (bgErr: any) {
+      console.warn('[API /api/chat] Non-fatal background memory task error:', bgErr?.message || bgErr);
+    }
   }
 
   return {
@@ -401,11 +416,7 @@ export default async function handler(req: any, res: any) {
       res.status(200).json(report);
       return;
     }
-    res.status(200).json({
-      status: 'HEALTHY',
-      service: 'Risse AI Chat API',
-      timestamp: new Date().toISOString(),
-    });
+    res.status(200).json(buildHealthResponse());
     return;
   }
 
@@ -477,21 +488,14 @@ export async function GET(req?: Request) {
     });
   }
 
-  return new Response(
-    JSON.stringify({
-      status: 'HEALTHY',
-      service: 'Risse AI Chat API',
-      timestamp: new Date().toISOString(),
-    }, null, 2),
-    {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-store, max-age=0',
-      },
-    }
-  );
+  return new Response(JSON.stringify(buildHealthResponse(), null, 2), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store, max-age=0',
+    },
+  });
 }
 
 export async function POST(req: Request) {

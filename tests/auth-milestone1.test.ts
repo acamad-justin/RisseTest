@@ -477,7 +477,7 @@ describe('Phase 2 Milestone 1: Authentication & Authorization Security', () => {
 
     const json = JSON.parse(bodyText);
     assert.strictEqual(json.status, 'HEALTHY');
-    assert.strictEqual(json.service, 'Risse AI Chat API');
+    assert.ok(json.service === 'risse-chat' || json.service === 'Risse AI Chat API');
   });
 
   // ── Test 23: Chat POST handler rejects invalid bearer token with 401 before calling LLM

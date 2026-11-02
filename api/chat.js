@@ -1123,6 +1123,18 @@ function resolveCredentials() {
 		supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 	};
 }
+function buildHealthResponse() {
+	const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
+	return {
+		status: "HEALTHY",
+		service: "risse-chat",
+		checks: {
+			runtime: true,
+			supabaseConfigured: Boolean(supabaseUrl && supabaseKey),
+			geminiConfigured: Boolean(googleApiKey)
+		}
+	};
+}
 async function runLiveDiagnostics() {
 	const { googleApiKey, supabaseUrl, supabaseKey } = resolveCredentials();
 	const report = {
@@ -1335,25 +1347,27 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
 		system: fullSystemPrompt,
 		messages: modelMessages
 	});
-	if (authContext?.user?.id && supabaseUrl && supabaseKey) (async () => {
-		try {
-			const sb = createClient(supabaseUrl, supabaseKey);
-			if (conversationId && lastUserMessage.trim()) await persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage);
-			if (!isNotebook) {
-				const extraction = extractCandidateMemories({
-					messages: normalizedMessages,
-					lastUserMessage,
-					moduleId: moduleId || void 0,
-					checkpointId: checkpointId || void 0,
-					targetConcept: teachingDecision.targetConcept,
-					isNotebook
-				});
-				if (extraction.globalMemoryUpdate || extraction.candidateEvidence) await syncStudentMemoryInteraction(sb, authContext.user.id, extraction);
-			}
-		} catch (bgErr) {
-			console.warn("[API /api/chat] Non-fatal background memory task error:", bgErr?.message || bgErr);
+	if (authContext?.user?.id && supabaseUrl && supabaseKey) try {
+		const sb = createClient(supabaseUrl, supabaseKey);
+		if (conversationId && lastUserMessage.trim()) persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage).catch((persistErr) => {
+			console.warn("[API /api/chat] Non-fatal conversation turn persistence warning:", persistErr?.message || persistErr);
+		});
+		if (!isNotebook) {
+			const extraction = extractCandidateMemories({
+				messages: normalizedMessages,
+				lastUserMessage,
+				moduleId: moduleId || void 0,
+				checkpointId: checkpointId || void 0,
+				targetConcept: teachingDecision.targetConcept,
+				isNotebook
+			});
+			if (extraction.globalMemoryUpdate || extraction.candidateEvidence) syncStudentMemoryInteraction(sb, authContext.user.id, extraction).catch((syncErr) => {
+				console.warn("[API /api/chat] Non-fatal student memory sync warning:", syncErr?.message || syncErr);
+			});
 		}
-	})().catch(() => {});
+	} catch (bgErr) {
+		console.warn("[API /api/chat] Non-fatal background memory task error:", bgErr?.message || bgErr);
+	}
 	return {
 		streamResult,
 		teachingDecision
@@ -1375,11 +1389,7 @@ async function handler(req, res) {
 			res.status(200).json(report);
 			return;
 		}
-		res.status(200).json({
-			status: "HEALTHY",
-			service: "Risse AI Chat API",
-			timestamp: (/* @__PURE__ */ new Date()).toISOString()
-		});
+		res.status(200).json(buildHealthResponse());
 		return;
 	}
 	if (req.method !== "POST") {
@@ -1433,11 +1443,7 @@ async function GET(req) {
 			}
 		});
 	}
-	return new Response(JSON.stringify({
-		status: "HEALTHY",
-		service: "Risse AI Chat API",
-		timestamp: (/* @__PURE__ */ new Date()).toISOString()
-	}, null, 2), {
+	return new Response(JSON.stringify(buildHealthResponse(), null, 2), {
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
