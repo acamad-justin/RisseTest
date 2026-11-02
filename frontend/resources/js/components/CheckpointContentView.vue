@@ -762,38 +762,12 @@ async function sendMessage() {
       'Content-Type': 'application/json',
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     };
-    const isLocal = typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-    const candidateUrls = isLocal
-      ? [
-          '/api/chat',
-          'http://127.0.0.1:8000/api/chat',
-          'http://127.0.0.1:5173/api/chat',
-          'http://localhost:5173/api/chat',
-        ]
-      : ['/api/chat'];
-
-    let lastError = null;
-    for (const url of candidateUrls) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: chatHeaders,
-          body: JSON.stringify(payload),
-        });
-        if (res.ok && res.body) {
-          response = res;
-          break;
-        }
-      } catch (e) {
-        lastError = e;
-      }
-    }
-
-    if (!response || !response.body) {
-      throw lastError || new Error('All chat endpoint candidates failed to respond');
-    }
+    response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: chatHeaders,
+      body: JSON.stringify(payload),
+    });
 
     if (!response.ok) {
       let finalErrMsg = `Chat API responded with ${response.status}`;
