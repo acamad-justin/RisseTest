@@ -270,7 +270,28 @@ async function logout() {
  */
 async function getAuthToken() {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
+
+    // Check if token is expired or expiring in the next 60 seconds
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiresAt = session.expires_at || 0;
+    if (expiresAt && expiresAt <= nowSec + 60) {
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshData?.session?.access_token) {
+          session = refreshData.session;
+          await syncSession(session);
+        } else {
+          console.warn('[AuthStore] Session expired and cannot be refreshed; operating in guest mode:', refreshError?.message);
+          return null;
+        }
+      } catch (refErr) {
+        console.warn('[AuthStore] Token refresh exception:', refErr);
+        return null;
+      }
+    }
+
     return session?.access_token || null;
   } catch (_) {
     return null;
