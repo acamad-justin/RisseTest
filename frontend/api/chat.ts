@@ -33,12 +33,6 @@ async function getAiSdk() {
 import { SOCRATIC_RULES, COMPETITION_RULES, getCompetitionRules, getSocraticRules } from '../lib/systemRules.ts';
 import { selectTeachingStrategy, buildTeachingDirectives } from '../lib/teaching/index.ts';
 import { resolveBackendAuth, type AuthContext } from '../lib/serverAuth.ts';
-import {
-  fetchStudentLearnerContext,
-  extractCandidateMemories,
-  syncStudentMemoryInteraction,
-  persistConversationTurn,
-} from '../lib/memory/memoryService.ts';
 
 function resolveCredentials() {
   const googleApiKey =
@@ -200,26 +194,6 @@ async function handleChatStream(body: any, authContext?: AuthContext | null) {
   const rawMessages = body.messages || [];
   const checkpointTitle = body.checkpointTitle || '';
   const moduleTitle = body.moduleTitle || body.parentModuleName || '';
-  const moduleId = body.moduleId || body.module_id || '';
-  const checkpointId = body.checkpointId || body.checkpoint_id || '';
-  const conversationId = body.conversationId || body.conversation_id || '';
-  const isNotebook = Boolean(
-    body.isNotebook ||
-    body.is_notebook ||
-    body.contextType === 'notebook' ||
-    body.context_type === 'notebook' ||
-    checkpointTitle === 'Project Notebook Log'
-  );
-
-  let learnerMemoryContext = undefined;
-  if (authContext?.user?.id && supabaseUrl && supabaseKey) {
-    try {
-      const sbClient = createClient(supabaseUrl, supabaseKey);
-      learnerMemoryContext = await fetchStudentLearnerContext(sbClient, authContext.user.id, moduleId || undefined);
-    } catch (e) {
-      console.warn('[API /api/chat] Non-fatal error retrieving learner memory:', e?.message || e);
-    }
-  }
 
   const normalizedMessages = rawMessages.map((m: any, idx: number) => {
     const textContent = m.content || m.text || '';
@@ -287,7 +261,6 @@ async function handleChatStream(body: any, authContext?: AuthContext | null) {
     moduleTitle,
     selectedChatMode: mode,
     retrievedContext: contextText !== 'No specific curriculum match found.' ? contextText : undefined,
-    learnerMemory: learnerMemoryContext,
   });
 
   const teachingDirectives = buildTeachingDirectives(teachingDecision);
@@ -362,35 +335,6 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
     messages: modelMessages,
   });
 
-  // Milestone 2B: Robust Non-blocking Memory Extraction & Message Persistence
-  if (authContext?.user?.id && supabaseUrl && supabaseKey) {
-    try {
-      const sb = createClient(supabaseUrl, supabaseKey);
-      if (conversationId && lastUserMessage.trim()) {
-        persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage).catch((persistErr) => {
-          console.warn('[API /api/chat] Non-fatal conversation turn persistence warning:', persistErr?.message || persistErr);
-        });
-      }
-      if (!isNotebook) {
-        const extraction = extractCandidateMemories({
-          messages: normalizedMessages,
-          lastUserMessage,
-          moduleId: moduleId || undefined,
-          checkpointId: checkpointId || undefined,
-          targetConcept: teachingDecision.targetConcept,
-          isNotebook,
-        });
-        if (extraction.globalMemoryUpdate || extraction.candidateEvidence) {
-          syncStudentMemoryInteraction(sb, authContext.user.id, extraction).catch((syncErr) => {
-            console.warn('[API /api/chat] Non-fatal student memory sync warning:', syncErr?.message || syncErr);
-          });
-        }
-      }
-    } catch (bgErr: any) {
-      console.warn('[API /api/chat] Non-fatal background memory task error:', bgErr?.message || bgErr);
-    }
-  }
-
   return {
     streamResult,
     teachingDecision,
@@ -416,7 +360,11 @@ export default async function handler(req: any, res: any) {
       res.status(200).json(report);
       return;
     }
-    res.status(200).json(buildHealthResponse());
+    res.status(200).json({
+      status: 'HEALTHY',
+      service: 'Risse AI Chat API',
+      timestamp: new Date().toISOString(),
+    });
     return;
   }
 
@@ -443,7 +391,6 @@ export default async function handler(req: any, res: any) {
     }
 
     const { streamResult, teachingDecision } = await handleChatStream(body || {}, auth);
-    res.setHeader('Access-Control-Expose-Headers', 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory');
     res.setHeader('X-Risse-Auth', auth ? auth.role : 'guest');
     if (auth?.user?.id) {
       res.setHeader('X-Risse-User-Id', auth.user.id);
@@ -452,9 +399,6 @@ export default async function handler(req: any, res: any) {
     res.setHeader('X-Risse-Assistance-Level', String(teachingDecision.assistanceLevel));
     res.setHeader('X-Risse-Tutoring-State', teachingDecision.tutoringState);
     res.setHeader('X-Risse-Target-Concept', encodeURIComponent(teachingDecision.targetConcept));
-    if (teachingDecision.learnerProfileSummary) {
-      res.setHeader('X-Risse-Learner-Memory', encodeURIComponent(teachingDecision.learnerProfileSummary));
-    }
     streamResult.pipeTextStreamToResponse(res);
   } catch (error: any) {
     console.error('[API /api/chat Serverless Error]:', {
@@ -488,14 +432,7 @@ export async function GET(req?: Request) {
     });
   }
 
-  return new Response(JSON.stringify(buildHealthResponse(), null, 2), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-store, max-age=0',
-    },
-  });
+  return new Response(JSON.stringify(buildHealthResponse(), null, 2), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store, max-age=0' } });
 }
 
 export async function POST(req: Request) {
@@ -520,16 +457,12 @@ export async function POST(req: Request) {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Expose-Headers': 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory',
         'X-Risse-Auth': auth ? auth.role : 'guest',
         ...(auth?.user?.id ? { 'X-Risse-User-Id': auth.user.id } : {}),
         'X-Risse-Teaching-Mode': teachingDecision.teachingMode,
         'X-Risse-Assistance-Level': String(teachingDecision.assistanceLevel),
         'X-Risse-Tutoring-State': teachingDecision.tutoringState,
         'X-Risse-Target-Concept': encodeURIComponent(teachingDecision.targetConcept),
-        ...(teachingDecision.learnerProfileSummary
-          ? { 'X-Risse-Learner-Memory': encodeURIComponent(teachingDecision.learnerProfileSummary) }
-          : {}),
       },
     });
   } catch (error: any) {

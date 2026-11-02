@@ -6,3 +6,4 @@ import handler, { GET, POST, OPTIONS, maxDuration } from '../frontend/api/chat.t
 
 export default handler;
 export { GET, POST, OPTIONS, maxDuration };
+

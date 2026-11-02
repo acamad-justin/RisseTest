@@ -432,16 +432,13 @@ Route::post('/modules/reset', function () {
     return response()->json(getModulesData());
 });
 
-Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
+Route::match(['GET', 'POST', 'OPTIONS'], '/chat', function (Request $request) {
     if ($request->isMethod('OPTIONS')) {
         return response('', 204)
             ->header('Access-Control-Allow-Origin', '*')
-            ->header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            ->header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     }
-
-    @set_time_limit(0);
-    @ini_set('max_execution_time', '0');
 
     $hotFile = public_path('hot');
     $defaultTarget = 'http://127.0.0.1:5173/api/chat';
@@ -451,8 +448,30 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
             $defaultTarget = $hotUrl . '/api/chat';
         }
     }
-
     $targetUrl = env('CHAT_API_URL', $defaultTarget);
+
+    if ($request->isMethod('GET')) {
+        $ch = curl_init($targetUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $authHeader = $request->header('Authorization');
+        $headers = ['Accept: application/json, text/plain, */*'];
+        if ($authHeader) {
+            $headers[] = 'Authorization: ' . $authHeader;
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $responseBody = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE) ?: 200;
+        curl_close($ch);
+
+        return response($responseBody ?: '{"status":"UNREACHABLE"}', $httpCode)
+            ->header('Content-Type', 'application/json')
+            ->header('Access-Control-Allow-Origin', '*');
+    }
+
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+
     $payload = json_encode($request->all());
     $authHeader = $request->header('Authorization');
 
