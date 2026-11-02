@@ -1378,6 +1378,19 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
 	};
 }
 async function handler(req, res) {
+	if (!res || typeof res.setHeader !== "function") {
+		const method = req?.method || "GET";
+		if (method === "OPTIONS") return OPTIONS();
+		if (method === "GET") return GET(req);
+		if (method === "POST") return POST(req);
+		return new Response(JSON.stringify({ error: "Method not allowed" }), {
+			status: 405,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": "*"
+			}
+		});
+	}
 	res.setHeader("Access-Control-Allow-Origin", "*");
 	res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 	res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
