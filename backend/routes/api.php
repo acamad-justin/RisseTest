@@ -492,6 +492,13 @@ Route::match(['GET', 'POST', 'OPTIONS'], '/chat', function (Request $request) {
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         $bytesWritten = 0;
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $headerLine) {
+            $trimmed = trim($headerLine);
+            if (stripos($trimmed, 'X-Risse-') === 0) {
+                @header($trimmed);
+            }
+            return strlen($headerLine);
+        });
         curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) use (&$bytesWritten) {
             $bytesWritten += strlen($data);
             echo $data;
