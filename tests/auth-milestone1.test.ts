@@ -34,7 +34,7 @@ function readProjectFile(relativePath: string): string {
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) {
-      return fs.readFileSync(c, 'utf8');
+      return fs.readFileSync(c, 'utf8').replace(/\r\n/g, String.fromCharCode(10));
     }
   }
   throw new Error(`Could not find project file ${relativePath}`);
