@@ -432,6 +432,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const { streamResult, teachingDecision } = await handleChatStream(body || {}, auth);
+    res.setHeader('Access-Control-Expose-Headers', 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory');
     res.setHeader('X-Risse-Auth', auth ? auth.role : 'guest');
     if (auth?.user?.id) {
       res.setHeader('X-Risse-User-Id', auth.user.id);
@@ -440,6 +441,9 @@ export default async function handler(req: any, res: any) {
     res.setHeader('X-Risse-Assistance-Level', String(teachingDecision.assistanceLevel));
     res.setHeader('X-Risse-Tutoring-State', teachingDecision.tutoringState);
     res.setHeader('X-Risse-Target-Concept', encodeURIComponent(teachingDecision.targetConcept));
+    if (teachingDecision.learnerProfileSummary) {
+      res.setHeader('X-Risse-Learner-Memory', encodeURIComponent(teachingDecision.learnerProfileSummary));
+    }
     streamResult.pipeTextStreamToResponse(res);
   } catch (error: any) {
     console.error('[API /api/chat Serverless Error]:', {
@@ -512,12 +516,16 @@ export async function POST(req: Request) {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Expose-Headers': 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory',
         'X-Risse-Auth': auth ? auth.role : 'guest',
         ...(auth?.user?.id ? { 'X-Risse-User-Id': auth.user.id } : {}),
         'X-Risse-Teaching-Mode': teachingDecision.teachingMode,
         'X-Risse-Assistance-Level': String(teachingDecision.assistanceLevel),
         'X-Risse-Tutoring-State': teachingDecision.tutoringState,
         'X-Risse-Target-Concept': encodeURIComponent(teachingDecision.targetConcept),
+        ...(teachingDecision.learnerProfileSummary
+          ? { 'X-Risse-Learner-Memory': encodeURIComponent(teachingDecision.learnerProfileSummary) }
+          : {}),
       },
     });
   } catch (error: any) {

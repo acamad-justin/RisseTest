@@ -710,7 +710,19 @@ async function selectTeachingStrategy(context) {
 		userSafeReasoningSummary: `CRITICAL SAFETY INTERVENTION: ${safetyResult.reasoning}`,
 		nextSuggestedAction: safetyResult.immediateGuidance || "Disconnect power and ensure safety before continuing."
 	}).decision;
-	const { decision } = validateTeachingDecision(evaluateDeterministicRules(context, analyzeTutoringState(context.messages, context.lastUserMessage)));
+	const rawDecision = evaluateDeterministicRules(context, analyzeTutoringState(context.messages, context.lastUserMessage));
+	if (context.learnerMemory && !rawDecision.learnerProfileSummary) {
+		const mem = context.learnerMemory;
+		const parts = [];
+		if (mem.generalExperience) parts.push(`Experience: ${mem.generalExperience}`);
+		if (mem.learningPreferences?.hintStyle) parts.push(`Preferred Hint Style: ${mem.learningPreferences.hintStyle}`);
+		if (mem.learningPreferences?.stepByStep) parts.push("Prefers step-by-step guidance");
+		if (mem.learningPreferences?.handsOnFirst) parts.push("Prefers hands-on practical tasks");
+		if (mem.masteredConcepts && mem.masteredConcepts.length > 0) parts.push(`Prior Verified Mastery: ${mem.masteredConcepts.join(", ")}`);
+		if (mem.activeMisconceptions && mem.activeMisconceptions.length > 0) parts.push(`Active Misconceptions: ${mem.activeMisconceptions.join(", ")}`);
+		if (parts.length > 0) rawDecision.learnerProfileSummary = parts.join("; ");
+	}
+	const { decision } = validateTeachingDecision(rawDecision);
 	return decision;
 }
 /**
@@ -1388,12 +1400,14 @@ async function handler(req, res) {
 			return;
 		}
 		const { streamResult, teachingDecision } = await handleChatStream(body || {}, auth);
+		res.setHeader("Access-Control-Expose-Headers", "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory");
 		res.setHeader("X-Risse-Auth", auth ? auth.role : "guest");
 		if (auth?.user?.id) res.setHeader("X-Risse-User-Id", auth.user.id);
 		res.setHeader("X-Risse-Teaching-Mode", teachingDecision.teachingMode);
 		res.setHeader("X-Risse-Assistance-Level", String(teachingDecision.assistanceLevel));
 		res.setHeader("X-Risse-Tutoring-State", teachingDecision.tutoringState);
 		res.setHeader("X-Risse-Target-Concept", encodeURIComponent(teachingDecision.targetConcept));
+		if (teachingDecision.learnerProfileSummary) res.setHeader("X-Risse-Learner-Memory", encodeURIComponent(teachingDecision.learnerProfileSummary));
 		streamResult.pipeTextStreamToResponse(res);
 	} catch (error) {
 		console.error("[API /api/chat Serverless Error]:", {
@@ -1449,12 +1463,14 @@ async function POST(req) {
 			"Access-Control-Allow-Origin": "*",
 			"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 			"Access-Control-Allow-Headers": "Content-Type, Authorization",
+			"Access-Control-Expose-Headers": "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory",
 			"X-Risse-Auth": auth ? auth.role : "guest",
 			...auth?.user?.id ? { "X-Risse-User-Id": auth.user.id } : {},
 			"X-Risse-Teaching-Mode": teachingDecision.teachingMode,
 			"X-Risse-Assistance-Level": String(teachingDecision.assistanceLevel),
 			"X-Risse-Tutoring-State": teachingDecision.tutoringState,
-			"X-Risse-Target-Concept": encodeURIComponent(teachingDecision.targetConcept)
+			"X-Risse-Target-Concept": encodeURIComponent(teachingDecision.targetConcept),
+			...teachingDecision.learnerProfileSummary ? { "X-Risse-Learner-Memory": encodeURIComponent(teachingDecision.learnerProfileSummary) } : {}
 		} });
 	} catch (error) {
 		console.error("[API /api/chat Web Error]:", {

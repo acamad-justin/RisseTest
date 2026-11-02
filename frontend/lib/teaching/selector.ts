@@ -46,6 +46,19 @@ export async function selectTeachingStrategy(context: SelectorContext): Promise<
 
   // ── Step 3: Deterministic Strategy Evaluation ──────────────────────────────
   const rawDecision = evaluateDeterministicRules(context, stateAnalysis);
+  if (context.learnerMemory && !rawDecision.learnerProfileSummary) {
+    const mem = context.learnerMemory;
+    const parts: string[] = [];
+    if (mem.generalExperience) parts.push(`Experience: ${mem.generalExperience}`);
+    if (mem.learningPreferences?.hintStyle) parts.push(`Preferred Hint Style: ${mem.learningPreferences.hintStyle}`);
+    if (mem.learningPreferences?.stepByStep) parts.push('Prefers step-by-step guidance');
+    if (mem.learningPreferences?.handsOnFirst) parts.push('Prefers hands-on practical tasks');
+    if (mem.masteredConcepts && mem.masteredConcepts.length > 0) parts.push(`Prior Verified Mastery: ${mem.masteredConcepts.join(', ')}`);
+    if (mem.activeMisconceptions && mem.activeMisconceptions.length > 0) parts.push(`Active Misconceptions: ${mem.activeMisconceptions.join(', ')}`);
+    if (parts.length > 0) {
+      rawDecision.learnerProfileSummary = parts.join('; ');
+    }
+  }
 
   // ── Step 4: Schema Validation & Safe Fallback ──────────────────────────────
   const { decision } = validateTeachingDecision(rawDecision);
