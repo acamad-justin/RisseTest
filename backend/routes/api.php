@@ -440,40 +440,26 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
             ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     }
 
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+
     $hotFile = public_path('hot');
-    $hotUrl = null;
+    $defaultTarget = 'http://127.0.0.1:5173/api/chat';
     if (file_exists($hotFile)) {
-        $hotUrl = rtrim(trim(file_get_contents($hotFile)), '/') . '/api/chat';
-    }
-
-    $endpoints = array_filter([
-        env('CHAT_API_URL'),
-        $hotUrl,
-        'http://127.0.0.1:5173/api/chat',
-        'http://localhost:5173/api/chat',
-        'http://[::1]:5173/api/chat',
-    ]);
-
-    $targetUrl = 'http://127.0.0.1:5173/api/chat';
-    foreach ($endpoints as $url) {
-        $chTest = curl_init($url);
-        curl_setopt($chTest, CURLOPT_CUSTOMREQUEST, 'OPTIONS');
-        curl_setopt($chTest, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($chTest, CURLOPT_CONNECTTIMEOUT_MS, 300);
-        curl_setopt($chTest, CURLOPT_TIMEOUT_MS, 400);
-        curl_exec($chTest);
-        $code = curl_getinfo($chTest, CURLINFO_HTTP_CODE);
-        curl_close($chTest);
-        if ($code === 200 || $code === 204) {
-            $targetUrl = $url;
-            break;
+        $hotUrl = rtrim(trim(@file_get_contents($hotFile)), '/');
+        if (!empty($hotUrl)) {
+            $defaultTarget = $hotUrl . '/api/chat';
         }
     }
 
+    $targetUrl = env('CHAT_API_URL', $defaultTarget);
     $payload = json_encode($request->all());
     $authHeader = $request->header('Authorization');
 
     return response()->stream(function () use ($targetUrl, $payload, $authHeader) {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+
         $ch = curl_init($targetUrl);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -486,28 +472,16 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $header) {
-            $len = strlen($header);
-            $parts = explode(':', $header, 2);
-            if (count($parts) === 2) {
-                $name = trim($parts[0]);
-                $val = trim($parts[1]);
-                if (stripos($name, 'X-Risse-') === 0 || strcasecmp($name, 'Access-Control-Expose-Headers') === 0) {
-                    header("$name: $val", false);
-                }
-            }
-            return $len;
-        });
         curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) {
             echo $data;
             if (ob_get_level() > 0) {
-                ob_flush();
+                @ob_flush();
             }
-            flush();
+            @flush();
             return strlen($data);
         });
-        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
 
         $executed = curl_exec($ch);
         if ($executed === false) {
@@ -523,5 +497,3 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
         'Access-Control-Expose-Headers' => 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory',
     ]);
 });
-
-
