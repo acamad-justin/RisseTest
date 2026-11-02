@@ -136,7 +136,7 @@ const pageNumbers = computed(() => {
 </template>
 
 <style scoped>
-.logs-section { margin-bottom: 24px; }
+.logs-section { margin-bottom: 0; flex-shrink: 0; display: flex; flex-direction: column; }
 
 /* ── Section head ── */
 .logs-section__head {
@@ -144,23 +144,38 @@ const pageNumbers = computed(() => {
   align-items: baseline;
   gap: 5px;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .logs-section__label {
-  font-size: 13px;
+  font-family: Lexend;
   font-weight: 700;
+  font-style: Bold;
+  font-size: 15px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
   color: var(--risse-orange);
-  letter-spacing: 0.01em;
 }
 
 .logs-section__count {
-  font-size: 12px;
+  font-family: Lexend;
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 15px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
   color: #A2A2A2;
-  font-weight: 500;
 }
 
 /* ── List ── */
-.logs-section__list { display: flex; flex-direction: column; }
+.logs-section__list {
+  display: flex;
+  flex-direction: column;
+  align-content: start;
+  overflow: hidden;
+}
 
 .logs-section__empty {
   font-size: 12px;
@@ -175,6 +190,7 @@ const pageNumbers = computed(() => {
   justify-content: flex-end;
   gap: 3px;
   margin-top: 10px;
+  flex-shrink: 0;
 }
 
 .pager__btn {

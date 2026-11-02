@@ -29,7 +29,7 @@ function toggleSearch() {
 
 <template>
   <header class="nb-header">
-    <h1 class="nb-header__title">Standalone Logs</h1>
+    <h1 class="nb-header__title">Notebook</h1>
 
     <div class="nb-header__controls">
       <!-- Search icon -->
@@ -39,8 +39,8 @@ function toggleSearch() {
         :aria-label="searchVisible ? 'Close search' : 'Open search'"
         @click="toggleSearch"
       >
-        <X    v-if="searchVisible" :size="16" aria-hidden="true" />
-        <Search v-else             :size="16" aria-hidden="true" />
+        <X    v-if="searchVisible" :size="20" aria-hidden="true" />
+        <Search v-else             :size="20" aria-hidden="true" />
       </button>
 
       <!-- Sort icon -->
@@ -50,7 +50,7 @@ function toggleSearch() {
         aria-label="Sort"
         @click="$emit('toggle-sort')"
       >
-        <ArrowUpDown :size="16" aria-hidden="true" />
+        <ArrowUpDown :size="20" aria-hidden="true" />
       </button>
 
       <!-- Select button -->
@@ -76,9 +76,9 @@ function toggleSearch() {
         class="nb-header__plus-btn"
         type="button"
         aria-label="New item"
-        @click="$emit('open-prompt')"
+        @click="$emit('open-action-menu', $event)"
       >
-        <Plus :size="17" aria-hidden="true" />
+        <Plus :size="24" aria-hidden="true" />
       </button>
     </div>
   </header>
@@ -95,11 +95,14 @@ function toggleSearch() {
 }
 
 .nb-header__title {
-  font-size: 24px;
-  font-weight: 700;
+  font-family: "Momo Trust Display";
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 50px;
+  line-height: 100%;
+  letter-spacing: 0%;
+  vertical-align: middle;
   color: #1a1a2e;
-  letter-spacing: -0.02em;
-  line-height: 1;
 }
 
 .nb-header__controls {
@@ -113,14 +116,18 @@ function toggleSearch() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 27px;
+  height: 23px;
   border-radius: 50%;
   border: none;
   background: transparent;
-  color: #4a4a6a;
+  color: #000000;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
+  top: 5px;
+  right: 15px;
+  transform: rotate(0deg);
+  position: relative;
 }
 
 .nb-header__icon-btn:hover,
@@ -133,15 +140,21 @@ function toggleSearch() {
 
 /* Select / Cancel text button */
 .nb-header__select-btn {
-  font-size: 13px;
-  font-weight: 500;
-  color: #4a4a6a;
+  font-family: Lexend;
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 20px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
+  color: #272727;
   background: transparent;
-  border: 1px solid #d8d8e8;
-  border-radius: 8px;
+  border: 1px solid #a7a6a6;
+  border-radius: 10px;
   padding: 5px 13px;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
+  margin-top: 5px;
 }
 
 .nb-header__select-btn:hover,
@@ -161,15 +174,19 @@ function toggleSearch() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
+  width: 35px;
+  height: 35px;
+  border-radius: 10px;
+  border: 1px solid var(--risse-orange);
+  opacity: 1;
   background: var(--risse-orange);
   color: #fff;
   cursor: pointer;
   transition: background 150ms ease, transform 150ms ease;
   flex-shrink: 0;
+  transform: rotate(0deg);
+  margin-top: 5px;
+  margin-left: 10px;
 }
 
 .nb-header__plus-btn:hover,

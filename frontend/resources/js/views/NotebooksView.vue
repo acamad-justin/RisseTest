@@ -15,6 +15,7 @@ import { ref, computed, watch } from 'vue'
 import NotebooksHeader       from '@/components/notebooks/NotebooksHeader.vue'
 import LogsSection           from '@/components/notebooks/LogsSection.vue'
 import ProjectsSection       from '@/components/notebooks/ProjectsSection.vue'
+import ProjectDetailView     from '@/components/notebooks/ProjectDetailView.vue'
 import CreateProjectModal    from '@/components/notebooks/CreateProjectModal.vue'
 import NotebookActionMenu    from '@/components/notebooks/NotebookActionMenu.vue'
 import ConversationWorkspace from '@/components/conversation/ConversationWorkspace.vue'
@@ -201,10 +202,7 @@ function onCreateProject(data) {
 // ── Create Log ────────────────────────────────────────────────────────────
 function onNewLog() {
   closeActionMenu()
-  const log = store.createLog({ title: 'New Log' })
-  activeProjectId.value = null
-  activeLogId.value = log.id
-  activeView.value = 'workspace'
+  activeView.value = 'prompt'
 }
 
 // ── Navigate ──────────────────────────────────────────────────────────────
@@ -218,7 +216,18 @@ function onOpenLog(id) {
 function onOpenProject(id) {
   activeProjectId.value = id
   activeLogId.value = null
-  activeView.value = 'workspace'
+  activeView.value = 'project-detail'
+  window.history.pushState({}, '', `/projects/${id}`)
+}
+
+// ── Project card actions (from ProjectsSection) ───────────────────────────
+function onToggleFavorite(id) { store.toggleFavorite(id) }
+
+function onRenameProject(id) {
+  // Delegate: open the project detail which has an inline rename UI.
+  // If not already in project-detail for this project, navigate there first.
+  activeProjectId.value = id
+  activeView.value = 'project-detail'
 }
 
 function handleBackToOverview() {
@@ -231,6 +240,7 @@ function handleBackToOverview() {
 function onRename(id, title) { store.renameLog(id, title) }
 function onMove(logId, projId) { store.moveLogToProject(logId, projId) }
 function onDelete(id) { store.deleteLog(id) }
+function onDeleteProject(id) { store.deleteProject(id) }
 </script>
 
 <template>
@@ -242,6 +252,15 @@ function onDelete(id) { store.deleteLog(id) }
     @submit="onPromptSubmit"
     @back="handleBackToOverview"
     @open-search="activeView = 'overview'; searchVisible = true"
+  />
+
+  <!-- Project Detail View -->
+  <ProjectDetailView
+    v-else-if="activeView === 'project-detail'"
+    :project-id="activeProjectId"
+    @back="handleBackToOverview"
+    @open-log="onOpenLog"
+    @open-prompt="onPromptSubmit"
   />
 
   <!-- Active Conversation Workspace -->
@@ -306,6 +325,9 @@ function onDelete(id) { store.deleteLog(id) }
         @open-project="onOpenProject"
         @toggle-select="onCardSelect"
         @page-change="onProjPageChange"
+        @toggle-favorite="onToggleFavorite"
+        @rename-project="onRenameProject"
+        @delete-project="onDeleteProject"
       />
     </div>
 
@@ -385,12 +407,12 @@ function onDelete(id) { store.deleteLog(id) }
 /* ─── Content ───────────────────────────────────────────────────────────── */
 .nb-page__content {
   flex: 1;
-  min-height: 0;          /* required: lets this region shrink and scroll */
-  padding: 0 40px 40px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: #e0e0ee transparent;
+  min-height: 0;
+  padding: 0 40px 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 /* ─── Transitions ───────────────────────────────────────────────────────── */

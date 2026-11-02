@@ -170,20 +170,34 @@ function confirmDelete() {
 }
 
 .log-row__title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1a1a2e;
-  line-height: 1.3;
-  margin-bottom: 3px;
+  font-family: Lexend;
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 20px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
+  color: #272727;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 3px;
+  width: 292;
+  height: 18;
+  opacity: 1;
+  top: 24px;
+  left: 28px;
 }
 
 .log-row__preview {
-  font-size: 9px;
+  font-family: Lexend;
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 15.45px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
   color: #8888aa;
-  line-height: 1.45;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -198,7 +212,14 @@ function confirmDelete() {
 }
 
 .log-row__date {
-  font-size: 9px;
+  font-family: Lexend;
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 13px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  text-align: right;
+  vertical-align: middle;
   color: #9999bb;
   white-space: nowrap;
 }
@@ -217,7 +238,7 @@ function confirmDelete() {
   border-radius: 50%;
   border: none;
   background: transparent;
-  color: #aaaacc;
+  color: #000000;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
 }

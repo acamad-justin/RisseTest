@@ -226,7 +226,8 @@ function onPractice(id) {
   color: #ffffff;
   line-height: 1.0;
   letter-spacing: -0.03em;
-  margin-top: 4px;
+  margin-top: 10px;
+  margin-right: 10px;
 }
 
 /* ─── Responsive ────────────────────────────────────────────────────────── */
