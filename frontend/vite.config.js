@@ -50,7 +50,10 @@ function chatApiPlugin() {
                             const mod = await server.ssrLoadModule('./api/chat.ts');
                             const webReq = new Request('http://127.0.0.1:5173/api/chat', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...(req.headers['authorization'] ? { Authorization: req.headers['authorization'] } : {}),
+                                },
                                 body: JSON.stringify(json),
                             });
 

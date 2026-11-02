@@ -385,8 +385,10 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
+import { useAuthStore } from '../stores/authStore.js';
 
 const emit = defineEmits(['notify', 'open-module']);
+const authStore = useAuthStore();
 
 const expandedId = ref(null);
 const showOnlyFavorites = ref(false);
@@ -400,7 +402,20 @@ const CARDS_PER_PAGE = 4;
 const transitionName = ref('slide-left');
 
 function getActiveUserEmail() {
+  if (authStore?.currentUser?.email) {
+    return authStore.currentUser.email.toLowerCase().trim();
+  }
   try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.user?.email) return parsed.user.email.toLowerCase().trim();
+        }
+      }
+    }
     const activeId = localStorage.getItem('risse_active_user_id');
     if (activeId) {
       const rawAccounts = localStorage.getItem('risse_registered_accounts');
@@ -425,10 +440,6 @@ function getInitialEnrolled() {
   try {
     const userKey = getEnrolledStorageKey(email);
     let raw = localStorage.getItem(userKey);
-    // Backward compatibility for adriel
-    if (!raw && email === 'adriel@risse.edu') {
-      raw = localStorage.getItem('risse_user_usr_adriel_enrolled_modules') || localStorage.getItem('risse_enrolled_modules');
-    }
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return [];
@@ -441,9 +452,6 @@ watch(enrolledList, (val) => {
   if (!email) return;
   try {
     localStorage.setItem(getEnrolledStorageKey(email), JSON.stringify(val));
-    if (email === 'adriel@risse.edu') {
-      localStorage.setItem('risse_enrolled_modules', JSON.stringify(val));
-    }
   } catch (e) {}
 }, { deep: true });
 
@@ -646,12 +654,23 @@ const displayedModules = computed(() => {
   return list;
 });
 
+// Re-sync when authenticated user changes
+watch(() => authStore?.currentUser?.email, () => {
+  enrolledList.value = getInitialEnrolled();
+  modulesList.value = getInitialExplore();
+});
+
 onMounted(async () => {
   window.addEventListener('click', closeCardMenu);
   try {
-    const res = await axios.get('/api/modules');
-    if (res.data) {
-      if (res.data.enrolled !== undefined && (!enrolledList.value || !enrolledList.value.length) && res.data.enrolled.length > 0) {
+    const email = getActiveUserEmail();
+    const res = await axios.get('/api/modules', {
+      headers: email ? { 'X-User-Email': email } : {}
+    });
+    if (res.data && Array.isArray(res.data.enrolled)) {
+      const userKey = getEnrolledStorageKey(email);
+      const hasLocal = email && localStorage.getItem(userKey);
+      if (!hasLocal) {
         enrolledList.value = res.data.enrolled;
       }
     }

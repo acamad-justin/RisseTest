@@ -33,21 +33,12 @@ function getProfileData($emailKey = 'default') {
             return $json;
         }
     }
-    if ($emailKey === 'adriel_risse_edu' || $emailKey === 'default') {
-        $legacy = storage_path('app/profile_data.json');
-        if (file_exists($legacy)) {
-            $json = json_decode(file_get_contents($legacy), true);
-            if ($json && isset($json['user'])) {
-                return $json;
-            }
-        }
-    }
     
     // Clean initial profile with zero mock data
     $default = [
         'user' => [
-            'name' => 'ADRIEL JUSTIN DELA CRUZ',
-            'school' => 'Rizal Polytechnic de Muntinlupa',
+            'name' => 'STUDENT LEARNER',
+            'school' => 'Robotics Academy',
             'grade' => 'Grade 10',
             'avatar' => null,
         ],
@@ -147,15 +138,6 @@ function getModulesData($emailKey = 'default') {
         $json = json_decode(file_get_contents($file), true);
         if ($json && isset($json['enrolled']) && isset($json['explore'])) {
             return $json;
-        }
-    }
-    if ($emailKey === 'adriel_risse_edu' || $emailKey === 'default') {
-        $legacy = storage_path('app/modules_data.json');
-        if (file_exists($legacy)) {
-            $json = json_decode(file_get_contents($legacy), true);
-            if ($json && isset($json['enrolled']) && isset($json['explore'])) {
-                return $json;
-            }
         }
     }
     
