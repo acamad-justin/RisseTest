@@ -262,7 +262,7 @@ function onLogDeleted() {
   overflow: hidden;
   background: #ffffff;
   border-radius: var(--radius-card, 18px);
-  border: 1px solid var(--border-card, #eef1f4);
+  border: none;
   box-shadow: var(--shadow-subtle);
 }
 

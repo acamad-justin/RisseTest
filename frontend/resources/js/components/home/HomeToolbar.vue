@@ -5,7 +5,7 @@
  * Matches the reference screenshot: pill input with muted indigo/purple tint,
  * search icon on the right side, two small icon-only buttons.
  */
-import { Search, Bell, UserRound } from 'lucide-vue-next'
+import { Search, Bell, CircleUserRound } from 'lucide-vue-next'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -54,7 +54,7 @@ function onSearch()  { emit('search', props.modelValue) }
 
     <!-- Notification -->
     <button
-      class="toolbar__icon-btn"
+      class="toolbar__icon-btn toolbar__icon-btn--bell"
       type="button"
       aria-label="Notifications"
     >
@@ -63,11 +63,11 @@ function onSearch()  { emit('search', props.modelValue) }
 
     <!-- Profile -->
     <button
-      class="toolbar__icon-btn"
+      class="toolbar__icon-btn toolbar__icon-btn--profile"
       type="button"
       aria-label="Profile"
     >
-      <UserRound :size="20" aria-hidden="true" />
+      <CircleUserRound :size="24" aria-hidden="true" />
     </button>
   </div>
 </template>
@@ -112,7 +112,7 @@ function onSearch()  { emit('search', props.modelValue) }
 }
 
 .toolbar__input::placeholder {
-  color: rgba(255, 255, 255, 0.72);
+  color: #FCFCFC;
 }
 
 .toolbar__input::-webkit-search-cancel-button { display: none; }
@@ -154,7 +154,6 @@ function onSearch()  { emit('search', props.modelValue) }
   flex-shrink: 0;
 }
 
-/* ── Icon buttons (no circular border, increased size to 40px) ── */
 .toolbar__icon-btn {
   display: flex;
   align-items: center;
@@ -170,10 +169,34 @@ function onSearch()  { emit('search', props.modelValue) }
   flex-shrink: 0;
 }
 
-.toolbar__icon-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-  transform: scale(1.06);
+/* ── Fill the person silhouette: child 1 = shoulders path, child 2 = head circle ── */
+/* child 3 is the outer ring — intentionally excluded */
+.toolbar__icon-btn--profile:hover :deep(svg > path),
+.toolbar__icon-btn--profile:hover :deep(svg > circle:nth-child(2)),
+.toolbar__icon-btn--profile:hover :deep(svg > circle:nth-child(1)) {
+  fill: #272727;
+  color: #272727
+}
+
+.toolbar__icon-btn--profile:hover :deep(svg > circle:nth-child(3)){
+  color: #272727;
+}
+
+.toolbar__icon-btn--profile:hover {
+  background: #7678edd5;
+  outline: 1.5px solid #272727;
+  outline-offset: 0;
+}
+
+.toolbar__icon-btn--bell:hover {
+  background: #7678edd5;
+  outline: 1.5px solid #272727;
+  outline-offset: 0;
+}
+
+.toolbar__icon-btn--bell:hover :deep(svg) {
+  fill: #272727;
+  color: #272727;
 }
 
 .toolbar__icon-btn:focus-visible {

@@ -225,11 +225,61 @@ const storeInstance = reactive({
       id:          uid(),
       title:       title.trim(),
       description: description.trim(),
+      favorite:    false,
+      sections:    [],
       createdAt:   now,
     }
     projects.value.unshift(project)
     persist()
     return project
+  },
+  renameProject(id, newTitle) {
+    const project = storeInstance.getProject(id)
+    if (project) {
+      project.title = newTitle.trim() || project.title
+      persist()
+    }
+  },
+  deleteProject(id) {
+    projects.value = projects.value.filter(p => p.id !== id)
+    // Detach logs that belonged to this project
+    for (const log of logs.value) {
+      if (log.projectId === id) log.projectId = null
+    }
+    persist()
+  },
+  toggleFavorite(id) {
+    const project = storeInstance.getProject(id)
+    if (project) {
+      project.favorite = !project.favorite
+      persist()
+    }
+  },
+  addSection(projectId, { title, subtitle = '' }) {
+    const project = storeInstance.getProject(projectId)
+    if (!project) return null
+    if (!Array.isArray(project.sections)) project.sections = []
+    const section = { id: uid(), title: title.trim(), subtitle: subtitle.trim() }
+    project.sections.push(section)
+    persist()
+    return section
+  },
+  updateSection(projectId, sectionId, { title, subtitle }) {
+    const project = storeInstance.getProject(projectId)
+    if (!project) return
+    const section = project.sections?.find(s => s.id === sectionId)
+    if (section) {
+      if (title !== undefined) section.title = title.trim()
+      if (subtitle !== undefined) section.subtitle = subtitle.trim()
+      persist()
+    }
+  },
+  deleteSection(projectId, sectionId) {
+    const project = storeInstance.getProject(projectId)
+    if (project && Array.isArray(project.sections)) {
+      project.sections = project.sections.filter(s => s.id !== sectionId)
+      persist()
+    }
   },
 })
 
