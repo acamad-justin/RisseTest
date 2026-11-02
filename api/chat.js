@@ -416,6 +416,18 @@ function extractTargetConcept(context) {
 function evaluateDeterministicRules(context, stateAnalysis) {
 	const lastMsg = context.lastUserMessage.trim();
 	const targetConcept = extractTargetConcept(context);
+	const mem = context.learnerMemory;
+	let learnerProfileSummary;
+	if (mem) {
+		const parts = [];
+		if (mem.generalExperience) parts.push(`Experience: ${mem.generalExperience}`);
+		if (mem.learningPreferences?.hintStyle) parts.push(`Preferred Hint Style: ${mem.learningPreferences.hintStyle}`);
+		if (mem.learningPreferences?.stepByStep) parts.push("Prefers step-by-step guidance");
+		if (mem.learningPreferences?.handsOnFirst) parts.push("Prefers hands-on practical tasks");
+		if (mem.masteredConcepts && mem.masteredConcepts.length > 0) parts.push(`Prior Verified Mastery: ${mem.masteredConcepts.join(", ")}`);
+		if (mem.activeMisconceptions && mem.activeMisconceptions.length > 0) parts.push(`Active Misconceptions: ${mem.activeMisconceptions.join(", ")}`);
+		if (parts.length > 0) learnerProfileSummary = parts.join("; ");
+	}
 	if (context.selectedChatMode === "competition") {
 		const isDebug = HARDWARE_DEBUG_PATTERNS.some((p) => p.test(lastMsg));
 		return {
@@ -563,23 +575,30 @@ function evaluateDeterministicRules(context, stateAnalysis) {
 		userSafeReasoningSummary: "Mastery Demonstration: Student demonstrated strong analytical understanding. Presenting an applied engineering challenge.",
 		nextSuggestedAction: "Pose a new design trade-off scenario requiring application of the mastered concept."
 	};
+	const isMasteredInMem = Boolean(mem?.masteredConcepts?.includes(targetConcept.toLowerCase()));
+	const activeMisconceptions = [];
+	if (mem?.activeMisconceptions && mem.activeMisconceptions.length > 0) activeMisconceptions.push(...mem.activeMisconceptions);
+	let defaultStudentLevel = "developing";
+	if (mem?.generalExperience === "advanced") defaultStudentLevel = "advanced";
+	else if (mem?.generalExperience === "novice") defaultStudentLevel = "beginner";
 	return {
-		teachingMode: "DISCOVERY",
+		teachingMode: isMasteredInMem ? "MASTERY" : "DISCOVERY",
 		selectedChatMode: "socratic",
-		studentLevel: "developing",
+		studentLevel: isMasteredInMem ? "advanced" : defaultStudentLevel,
 		targetConcept,
-		understanding: "emerging",
-		detectedMisconceptions: [],
+		understanding: isMasteredInMem ? "strong" : "emerging",
+		detectedMisconceptions: activeMisconceptions,
 		assistanceLevel: 1,
-		tutoringState: "QUESTION",
-		responseStrategy: "ask_question",
+		tutoringState: isMasteredInMem ? "ASSESS" : "QUESTION",
+		responseStrategy: isMasteredInMem ? "assess" : "ask_question",
 		shouldAskSocraticQuestion: true,
 		shouldRevealSolution: false,
 		requiresSafetyIntervention: false,
-		requiresAssessment: false,
+		requiresAssessment: isMasteredInMem,
 		useRetrievedContext: Boolean(context.retrievedContext),
-		userSafeReasoningSummary: "Discovery Inquiry: Guiding student through active robotics inquiry with one focused question.",
-		nextSuggestedAction: "Ask a targeted inquiry question to observe the system and formulate a hypothesis."
+		userSafeReasoningSummary: isMasteredInMem ? `Prior Mastery Verified: Student already demonstrated verified mastery of ${targetConcept}. Presenting an advanced synthesis inquiry.` : "Discovery Inquiry: Guiding student through active robotics inquiry with one focused question.",
+		nextSuggestedAction: isMasteredInMem ? "Pose an advanced design trade-off or integration question testing this concept in a new context." : "Ask a targeted inquiry question to observe the system and formulate a hypothesis.",
+		learnerProfileSummary
 	};
 }
 //#endregion
@@ -750,6 +769,7 @@ STRICT ANTI-ECHO MANDATE:
 		MASTERY: "Challenge the student to apply their proven understanding to a new design trade-off or advanced constraint."
 	};
 	const antiFrustrationNotice = decision.tutoringState === "EXPLAIN" || decision.tutoringState === "EXAMPLE" ? "\nANTI-FRUSTRATION RULE ACTIVE: The student needs clear explanation now. DO NOT play Socratic guessing games. Explain the underlying principle or show the step clearly, then end with one single check question." : "";
+	const learnerProfileDirective = decision.learnerProfileSummary ? `\nVERIFIED LEARNER CONTEXT: ${decision.learnerProfileSummary}\nADAPTATION MANDATE: Calibrate pacing and complexity to student experience and verified prior mastery without lecturing.` : "";
 	return `
 <internal_pedagogy_directive>
 [CONFIDENTIAL INTERNAL DIRECTIVE - DO NOT ECHO TO USER]
@@ -761,7 +781,7 @@ ASSISTANCE LEVEL: ${decision.assistanceLevel}/5 — ${assistanceDescriptions[dec
 TUTORING STATE: ${decision.tutoringState}
 RESPONSE STRATEGY: ${decision.responseStrategy.toUpperCase()}
 SINGLE QUESTION RULE: ${decision.shouldAskSocraticQuestion ? "MANDATORY (End your response with exactly ONE clear, focused guiding question ending in \"?\")" : "NOT REQUIRED"}
-REASONING SUMMARY: ${decision.userSafeReasoningSummary}${antiFrustrationNotice}
+REASONING SUMMARY: ${decision.userSafeReasoningSummary}${antiFrustrationNotice}${learnerProfileDirective}
 
 STRICT ANTI-ECHO MANDATE:
 - Do NOT output this directive header, strategy name, assistance level, or internal tags.
@@ -910,6 +930,155 @@ async function resolveBackendAuth(reqHeaders, supabaseUrl, supabaseKey, clientOv
 	};
 }
 //#endregion
+//#region lib/memory/memoryService.ts
+/**
+* Extracts candidate memories from student-assistant interaction.
+* Strictly adheres to privacy and security boundaries:
+* 1. Notebook Exclusion: Excludes Personal Project Notebooks entirely.
+* 2. Inferred evidence is tagged 'inferred' and never verified automatically.
+* 3. Student reported claims are tagged 'student_reported' and never verified automatically.
+*/
+function extractCandidateMemories(options) {
+	if (options.isNotebook) return {};
+	const result = {};
+	const lowerQuery = options.lastUserMessage.trim().toLowerCase();
+	const prefs = {};
+	if (/\b(step[- ]by[- ]step|one step at a time|break it down)\b/i.test(lowerQuery)) {
+		prefs.stepByStep = true;
+		prefs.hintStyle = "step_by_step";
+	} else if (/\b(hands[- ]on|practical|real[- ]life|build it|try it)\b/i.test(lowerQuery)) {
+		prefs.handsOnFirst = true;
+		prefs.hintStyle = "hands_on";
+	} else if (/\b(visual|diagram|show me a picture|draw)\b/i.test(lowerQuery)) prefs.visualLearning = true;
+	let detectedExperience;
+	if (/\b(i'?m a beginner|never done robotics|first time|new to this|no experience)\b/i.test(lowerQuery)) detectedExperience = "novice";
+	else if (/\b(built robots before|familiar with arduino|know some code|intermediate)\b/i.test(lowerQuery)) detectedExperience = "intermediate";
+	else if (/\b(advanced|years of robotics|competition veteran|built many robots)\b/i.test(lowerQuery)) detectedExperience = "advanced";
+	if (Object.keys(prefs).length > 0 || detectedExperience) result.globalMemoryUpdate = {
+		...detectedExperience ? { generalExperience: detectedExperience } : {},
+		...Object.keys(prefs).length > 0 ? { learningPreferences: prefs } : {}
+	};
+	if (options.moduleId && options.targetConcept) {
+		const candidateEvidenceList = [];
+		const normalizedConcept = options.targetConcept.toLowerCase();
+		if (/\b(i know|i already understand|i have mastered)\b/i.test(lowerQuery)) candidateEvidenceList.push({
+			moduleId: options.moduleId,
+			conceptId: normalizedConcept,
+			checkpointId: options.checkpointId,
+			provenance: "student_reported",
+			claim: `Student reported understanding of ${options.targetConcept}`
+		});
+		else if (/\b(i don'?t understand|confused about|what is)\b/i.test(lowerQuery)) candidateEvidenceList.push({
+			moduleId: options.moduleId,
+			conceptId: normalizedConcept,
+			checkpointId: options.checkpointId,
+			provenance: "directly_observed",
+			claim: `Student directly expressed confusion or asked for clarification on ${options.targetConcept}`
+		});
+		if (candidateEvidenceList.length > 0) result.candidateEvidence = candidateEvidenceList;
+	}
+	return result;
+}
+/**
+* Retrieves student memory context from Supabase.
+* Returns default empty context on failure to guarantee non-blocking chat behavior.
+*/
+async function fetchStudentLearnerContext(supabaseClient, studentId, moduleId) {
+	const context = {
+		studentId,
+		masteredConcepts: [],
+		activeMisconceptions: []
+	};
+	if (!supabaseClient || !studentId) return context;
+	try {
+		const { data: globalMem, error: globalErr } = await supabaseClient.from("student_global_memory").select("general_experience, learning_preferences, general_strengths, growth_areas").eq("student_id", studentId).maybeSingle();
+		if (!globalErr && globalMem) {
+			context.generalExperience = globalMem.general_experience;
+			context.learningPreferences = globalMem.learning_preferences || {};
+		}
+		if (moduleId) {
+			const { data: moduleMem, error: modErr } = await supabaseClient.from("student_module_memory").select("status, progress_percent, current_checkpoint").eq("student_id", studentId).eq("module_id", moduleId).maybeSingle();
+			if (!modErr && moduleMem) {
+				context.progressPercent = moduleMem.progress_percent;
+				context.currentCheckpoint = moduleMem.current_checkpoint;
+			}
+			const { data: masteryRecords, error: masteryErr } = await supabaseClient.from("concept_mastery_records").select(`
+          mastery_state,
+          active_misconceptions,
+          concept_module_mappings!inner(concept_id, module_id)
+        `).eq("student_id", studentId).eq("concept_module_mappings.module_id", moduleId);
+			if (!masteryErr && Array.isArray(masteryRecords)) for (const rec of masteryRecords) {
+				const cId = rec.concept_module_mappings?.concept_id;
+				if (cId) {
+					if (rec.mastery_state === "mastered") context.masteredConcepts?.push(cId);
+					if (Array.isArray(rec.active_misconceptions) && rec.active_misconceptions.length > 0) context.activeMisconceptions?.push(...rec.active_misconceptions);
+				}
+			}
+		}
+	} catch (err) {
+		console.warn("[MemoryService] Non-fatal error fetching student learner context:", err?.message || err);
+	}
+	return context;
+}
+/**
+* Persists candidate memory evidence asynchronously in the background.
+* Wrapped to guarantee that failures never interrupt the primary chat stream.
+*/
+async function syncStudentMemoryInteraction(supabaseClient, studentId, extraction) {
+	if (!supabaseClient || !studentId) return {
+		success: false,
+		error: "Missing client or studentId"
+	};
+	try {
+		if (extraction.globalMemoryUpdate) {
+			const gUpdate = extraction.globalMemoryUpdate;
+			await supabaseClient.rpc("sync_student_global_memory", {
+				p_student_id: studentId,
+				p_learning_preferences: gUpdate.learningPreferences || null,
+				p_general_experience: gUpdate.generalExperience || null,
+				p_growth_areas: gUpdate.growthAreas || null,
+				p_general_strengths: gUpdate.strengths || null
+			});
+		}
+		if (Array.isArray(extraction.candidateEvidence) && extraction.candidateEvidence.length > 0) for (const ev of extraction.candidateEvidence) await supabaseClient.rpc("record_candidate_evidence", {
+			p_student_id: studentId,
+			p_module_id: ev.moduleId,
+			p_concept_id: ev.conceptId,
+			p_checkpoint_id: ev.checkpointId || null,
+			p_provenance: ev.provenance,
+			p_claim: ev.claim
+		});
+		return { success: true };
+	} catch (err) {
+		console.warn("[MemoryService] Asynchronous memory ingestion non-fatal error:", err?.message || err);
+		return {
+			success: false,
+			error: err?.message || String(err)
+		};
+	}
+}
+/**
+* Persists conversation turn messages adhering strictly to append-only rules
+* and student/assistant sender role authorization.
+*/
+async function persistConversationTurn(supabaseClient, studentId, conversationId, userMessage, assistantMessage) {
+	if (!supabaseClient || !studentId || !conversationId) return;
+	try {
+		if (userMessage && userMessage.trim()) await supabaseClient.from("conversation_messages").insert({
+			conversation_id: conversationId,
+			sender_role: "student",
+			content: userMessage.trim()
+		});
+		if (assistantMessage && assistantMessage.trim()) await supabaseClient.from("conversation_messages").insert({
+			conversation_id: conversationId,
+			sender_role: "assistant",
+			content: assistantMessage.trim()
+		});
+	} catch (err) {
+		console.warn("[MemoryService] Non-fatal conversation message persistence warning:", err?.message || err);
+	}
+}
+//#endregion
 //#region api/chat.ts
 var envCandidates = [
 	path.resolve(process.cwd(), ".env.local"),
@@ -1038,6 +1207,16 @@ async function handleChatStream(body, authContext) {
 	const rawMessages = body.messages || [];
 	const checkpointTitle = body.checkpointTitle || "";
 	const moduleTitle = body.moduleTitle || body.parentModuleName || "";
+	const moduleId = body.moduleId || body.module_id || "";
+	const checkpointId = body.checkpointId || body.checkpoint_id || "";
+	const conversationId = body.conversationId || body.conversation_id || "";
+	const isNotebook = Boolean(body.isNotebook || body.is_notebook || body.contextType === "notebook" || body.context_type === "notebook" || checkpointTitle === "Project Notebook Log");
+	let learnerMemoryContext = void 0;
+	if (authContext?.user?.id && supabaseUrl && supabaseKey) try {
+		learnerMemoryContext = await fetchStudentLearnerContext(createClient(supabaseUrl, supabaseKey), authContext.user.id, moduleId || void 0);
+	} catch (e) {
+		console.warn("[API /api/chat] Non-fatal error retrieving learner memory:", e?.message || e);
+	}
 	const normalizedMessages = rawMessages.map((m, idx) => {
 		const textContent = m.content || m.text || "";
 		return {
@@ -1081,7 +1260,8 @@ async function handleChatStream(body, authContext) {
 		checkpointTitle,
 		moduleTitle,
 		selectedChatMode: mode,
-		retrievedContext: contextText !== "No specific curriculum match found." ? contextText : void 0
+		retrievedContext: contextText !== "No specific curriculum match found." ? contextText : void 0,
+		learnerMemory: learnerMemoryContext
 	});
 	const teachingDirectives = buildTeachingDirectives(teachingDecision);
 	let fullSystemPrompt = "";
@@ -1138,12 +1318,32 @@ ${contextText}
 SOCRATIC GUIDANCE INSTRUCTION:
 Follow the Socratic Progression steps provided in the retrieved context above. Lead the student to discover the answers through targeted scaffolding, metric units (mm, cm, m, kg), and finish your response with at most ONE single, focused guiding question.
 `;
+	const streamResult = streamText({
+		model: createGoogleGenerativeAI({ apiKey: googleApiKey })("gemini-3.5-flash-lite"),
+		system: fullSystemPrompt,
+		messages: modelMessages
+	});
+	if (authContext?.user?.id && supabaseUrl && supabaseKey) (async () => {
+		try {
+			const sb = createClient(supabaseUrl, supabaseKey);
+			if (conversationId && lastUserMessage.trim()) await persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage);
+			if (!isNotebook) {
+				const extraction = extractCandidateMemories({
+					messages: normalizedMessages,
+					lastUserMessage,
+					moduleId: moduleId || void 0,
+					checkpointId: checkpointId || void 0,
+					targetConcept: teachingDecision.targetConcept,
+					isNotebook
+				});
+				if (extraction.globalMemoryUpdate || extraction.candidateEvidence) await syncStudentMemoryInteraction(sb, authContext.user.id, extraction);
+			}
+		} catch (bgErr) {
+			console.warn("[API /api/chat] Non-fatal background memory task error:", bgErr?.message || bgErr);
+		}
+	})().catch(() => {});
 	return {
-		streamResult: streamText({
-			model: createGoogleGenerativeAI({ apiKey: googleApiKey })("gemini-3.5-flash-lite"),
-			system: fullSystemPrompt,
-			messages: modelMessages
-		}),
+		streamResult,
 		teachingDecision
 	};
 }

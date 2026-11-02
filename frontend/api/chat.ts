@@ -33,6 +33,12 @@ async function getAiSdk() {
 import { SOCRATIC_RULES, COMPETITION_RULES, getCompetitionRules, getSocraticRules } from '../lib/systemRules.ts';
 import { selectTeachingStrategy, buildTeachingDirectives } from '../lib/teaching/index.ts';
 import { resolveBackendAuth, type AuthContext } from '../lib/serverAuth.ts';
+import {
+  fetchStudentLearnerContext,
+  extractCandidateMemories,
+  syncStudentMemoryInteraction,
+  persistConversationTurn,
+} from '../lib/memory/memoryService.ts';
 
 function resolveCredentials() {
   const googleApiKey =
@@ -181,6 +187,26 @@ async function handleChatStream(body: any, authContext?: AuthContext | null) {
   const rawMessages = body.messages || [];
   const checkpointTitle = body.checkpointTitle || '';
   const moduleTitle = body.moduleTitle || body.parentModuleName || '';
+  const moduleId = body.moduleId || body.module_id || '';
+  const checkpointId = body.checkpointId || body.checkpoint_id || '';
+  const conversationId = body.conversationId || body.conversation_id || '';
+  const isNotebook = Boolean(
+    body.isNotebook ||
+    body.is_notebook ||
+    body.contextType === 'notebook' ||
+    body.context_type === 'notebook' ||
+    checkpointTitle === 'Project Notebook Log'
+  );
+
+  let learnerMemoryContext = undefined;
+  if (authContext?.user?.id && supabaseUrl && supabaseKey) {
+    try {
+      const sbClient = createClient(supabaseUrl, supabaseKey);
+      learnerMemoryContext = await fetchStudentLearnerContext(sbClient, authContext.user.id, moduleId || undefined);
+    } catch (e) {
+      console.warn('[API /api/chat] Non-fatal error retrieving learner memory:', e?.message || e);
+    }
+  }
 
   const normalizedMessages = rawMessages.map((m: any, idx: number) => {
     const textContent = m.content || m.text || '';
@@ -248,6 +274,7 @@ async function handleChatStream(body: any, authContext?: AuthContext | null) {
     moduleTitle,
     selectedChatMode: mode,
     retrievedContext: contextText !== 'No specific curriculum match found.' ? contextText : undefined,
+    learnerMemory: learnerMemoryContext,
   });
 
   const teachingDirectives = buildTeachingDirectives(teachingDecision);
@@ -321,6 +348,33 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
     system: fullSystemPrompt,
     messages: modelMessages,
   });
+
+  // Milestone 2B: Asynchronous Non-blocking Memory Extraction & Message Persistence
+  if (authContext?.user?.id && supabaseUrl && supabaseKey) {
+    (async () => {
+      try {
+        const sb = createClient(supabaseUrl, supabaseKey);
+        if (conversationId && lastUserMessage.trim()) {
+          await persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage);
+        }
+        if (!isNotebook) {
+          const extraction = extractCandidateMemories({
+            messages: normalizedMessages,
+            lastUserMessage,
+            moduleId: moduleId || undefined,
+            checkpointId: checkpointId || undefined,
+            targetConcept: teachingDecision.targetConcept,
+            isNotebook,
+          });
+          if (extraction.globalMemoryUpdate || extraction.candidateEvidence) {
+            await syncStudentMemoryInteraction(sb, authContext.user.id, extraction);
+          }
+        }
+      } catch (bgErr) {
+        console.warn('[API /api/chat] Non-fatal background memory task error:', bgErr?.message || bgErr);
+      }
+    })().catch(() => {});
+  }
 
   return {
     streamResult,
