@@ -8,8 +8,8 @@ import {
   validateGeneratedResponse,
   evaluateSafety,
   analyzeTutoringState,
-} from '../lib/teaching/index.ts';
-import type { SelectorContext } from '../lib/teaching/types.ts';
+} from '../frontend/lib/teaching/index.ts';
+import type { SelectorContext } from '../frontend/lib/teaching/types.ts';
 
 describe('RISSE Adaptive Teaching Intelligence — Phase 1 Test Suite', () => {
 
