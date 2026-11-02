@@ -323,12 +323,25 @@ async function generateAiReply() {
         }
       }
     }
+
+    const fullContent = (aiMessage.content || '').trim()
+    if (fullContent.startsWith('{') && fullContent.includes('"error"')) {
+      try {
+        const parsed = JSON.parse(fullContent)
+        if (parsed.error) {
+          aiMessage.content = `⚠️ AI Service Error: ${parsed.error}`
+        }
+      } catch (_) {}
+    }
   } catch (err) {
     console.error('Notebooks Chatbot error:', err)
     if (!aiMessage.content) {
       aiMessage.content = "I'm having trouble connecting to the AI assistant right now. Please ensure the dev server is active and try again."
     }
   } finally {
+    if (!aiMessage.content || !aiMessage.content.trim()) {
+      aiMessage.content = "I'm having trouble connecting to the AI assistant right now. Please ensure the dev server is active and try again."
+    }
     aiMessage.isStreaming = false
     isAiStreaming.value = false
     props.log.updatedAt = new Date().toISOString()

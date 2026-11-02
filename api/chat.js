@@ -942,6 +942,155 @@ async function resolveBackendAuth(reqHeaders, supabaseUrl, supabaseKey, clientOv
 	};
 }
 //#endregion
+//#region lib/memory/memoryService.ts
+/**
+* Extracts candidate memories from student-assistant interaction.
+* Strictly adheres to privacy and security boundaries:
+* 1. Notebook Exclusion: Excludes Personal Project Notebooks entirely.
+* 2. Inferred evidence is tagged 'inferred' and never verified automatically.
+* 3. Student reported claims are tagged 'student_reported' and never verified automatically.
+*/
+function extractCandidateMemories(options) {
+	if (options.isNotebook) return {};
+	const result = {};
+	const lowerQuery = options.lastUserMessage.trim().toLowerCase();
+	const prefs = {};
+	if (/\b(step[- ]by[- ]step|one step at a time|break it down)\b/i.test(lowerQuery)) {
+		prefs.stepByStep = true;
+		prefs.hintStyle = "step_by_step";
+	} else if (/\b(hands[- ]on|practical|real[- ]life|build it|try it)\b/i.test(lowerQuery)) {
+		prefs.handsOnFirst = true;
+		prefs.hintStyle = "hands_on";
+	} else if (/\b(visual|diagram|show me a picture|draw)\b/i.test(lowerQuery)) prefs.visualLearning = true;
+	let detectedExperience;
+	if (/\b(i'?m a beginner|never done robotics|first time|new to this|no experience)\b/i.test(lowerQuery)) detectedExperience = "novice";
+	else if (/\b(built robots before|familiar with arduino|know some code|intermediate)\b/i.test(lowerQuery)) detectedExperience = "intermediate";
+	else if (/\b(advanced|years of robotics|competition veteran|built many robots)\b/i.test(lowerQuery)) detectedExperience = "advanced";
+	if (Object.keys(prefs).length > 0 || detectedExperience) result.globalMemoryUpdate = {
+		...detectedExperience ? { generalExperience: detectedExperience } : {},
+		...Object.keys(prefs).length > 0 ? { learningPreferences: prefs } : {}
+	};
+	if (options.moduleId && options.targetConcept) {
+		const candidateEvidenceList = [];
+		const normalizedConcept = options.targetConcept.toLowerCase();
+		if (/\b(i know|i already understand|i have mastered)\b/i.test(lowerQuery)) candidateEvidenceList.push({
+			moduleId: options.moduleId,
+			conceptId: normalizedConcept,
+			checkpointId: options.checkpointId,
+			provenance: "student_reported",
+			claim: `Student reported understanding of ${options.targetConcept}`
+		});
+		else if (/\b(i don'?t understand|confused about|what is)\b/i.test(lowerQuery)) candidateEvidenceList.push({
+			moduleId: options.moduleId,
+			conceptId: normalizedConcept,
+			checkpointId: options.checkpointId,
+			provenance: "directly_observed",
+			claim: `Student directly expressed confusion or asked for clarification on ${options.targetConcept}`
+		});
+		if (candidateEvidenceList.length > 0) result.candidateEvidence = candidateEvidenceList;
+	}
+	return result;
+}
+/**
+* Retrieves student memory context from Supabase.
+* Returns default empty context on failure to guarantee non-blocking chat behavior.
+*/
+async function fetchStudentLearnerContext(supabaseClient, studentId, moduleId) {
+	const context = {
+		studentId,
+		masteredConcepts: [],
+		activeMisconceptions: []
+	};
+	if (!supabaseClient || !studentId) return context;
+	try {
+		const { data: globalMem, error: globalErr } = await supabaseClient.from("student_global_memory").select("general_experience, learning_preferences, general_strengths, growth_areas").eq("student_id", studentId).maybeSingle();
+		if (!globalErr && globalMem) {
+			context.generalExperience = globalMem.general_experience;
+			context.learningPreferences = globalMem.learning_preferences || {};
+		}
+		if (moduleId) {
+			const { data: moduleMem, error: modErr } = await supabaseClient.from("student_module_memory").select("status, progress_percent, current_checkpoint").eq("student_id", studentId).eq("module_id", moduleId).maybeSingle();
+			if (!modErr && moduleMem) {
+				context.progressPercent = moduleMem.progress_percent;
+				context.currentCheckpoint = moduleMem.current_checkpoint;
+			}
+			const { data: masteryRecords, error: masteryErr } = await supabaseClient.from("concept_mastery_records").select(`
+          mastery_state,
+          active_misconceptions,
+          concept_module_mappings!inner(concept_id, module_id)
+        `).eq("student_id", studentId).eq("concept_module_mappings.module_id", moduleId);
+			if (!masteryErr && Array.isArray(masteryRecords)) for (const rec of masteryRecords) {
+				const cId = rec.concept_module_mappings?.concept_id;
+				if (cId) {
+					if (rec.mastery_state === "mastered") context.masteredConcepts?.push(cId);
+					if (Array.isArray(rec.active_misconceptions) && rec.active_misconceptions.length > 0) context.activeMisconceptions?.push(...rec.active_misconceptions);
+				}
+			}
+		}
+	} catch (err) {
+		console.warn("[MemoryService] Non-fatal error fetching student learner context:", err?.message || err);
+	}
+	return context;
+}
+/**
+* Persists candidate memory evidence asynchronously in the background.
+* Wrapped to guarantee that failures never interrupt the primary chat stream.
+*/
+async function syncStudentMemoryInteraction(supabaseClient, studentId, extraction) {
+	if (!supabaseClient || !studentId) return {
+		success: false,
+		error: "Missing client or studentId"
+	};
+	try {
+		if (extraction.globalMemoryUpdate) {
+			const gUpdate = extraction.globalMemoryUpdate;
+			await supabaseClient.rpc("sync_student_global_memory", {
+				p_student_id: studentId,
+				p_learning_preferences: gUpdate.learningPreferences || null,
+				p_general_experience: gUpdate.generalExperience || null,
+				p_growth_areas: gUpdate.growthAreas || null,
+				p_general_strengths: gUpdate.strengths || null
+			});
+		}
+		if (Array.isArray(extraction.candidateEvidence) && extraction.candidateEvidence.length > 0) for (const ev of extraction.candidateEvidence) await supabaseClient.rpc("record_candidate_evidence", {
+			p_student_id: studentId,
+			p_module_id: ev.moduleId,
+			p_concept_id: ev.conceptId,
+			p_checkpoint_id: ev.checkpointId || null,
+			p_provenance: ev.provenance,
+			p_claim: ev.claim
+		});
+		return { success: true };
+	} catch (err) {
+		console.warn("[MemoryService] Asynchronous memory ingestion non-fatal error:", err?.message || err);
+		return {
+			success: false,
+			error: err?.message || String(err)
+		};
+	}
+}
+/**
+* Persists conversation turn messages adhering strictly to append-only rules
+* and student/assistant sender role authorization.
+*/
+async function persistConversationTurn(supabaseClient, studentId, conversationId, userMessage, assistantMessage) {
+	if (!supabaseClient || !studentId || !conversationId) return;
+	try {
+		if (userMessage && userMessage.trim()) await supabaseClient.from("conversation_messages").insert({
+			conversation_id: conversationId,
+			sender_role: "student",
+			content: userMessage.trim()
+		});
+		if (assistantMessage && assistantMessage.trim()) await supabaseClient.from("conversation_messages").insert({
+			conversation_id: conversationId,
+			sender_role: "assistant",
+			content: assistantMessage.trim()
+		});
+	} catch (err) {
+		console.warn("[MemoryService] Non-fatal conversation message persistence warning:", err?.message || err);
+	}
+}
+//#endregion
 //#region api/chat.ts
 var envCandidates = [
 	path.resolve(process.cwd(), ".env.local"),
@@ -1082,6 +1231,16 @@ async function handleChatStream(body, authContext) {
 	const rawMessages = body.messages || [];
 	const checkpointTitle = body.checkpointTitle || "";
 	const moduleTitle = body.moduleTitle || body.parentModuleName || "";
+	const moduleId = body.moduleId || body.module_id || "";
+	const checkpointId = body.checkpointId || body.checkpoint_id || "";
+	const conversationId = body.conversationId || body.conversation_id || "";
+	const isNotebook = Boolean(body.isNotebook || body.is_notebook || body.contextType === "notebook" || body.context_type === "notebook" || checkpointTitle === "Project Notebook Log");
+	let learnerMemoryContext = void 0;
+	if (authContext?.user?.id && supabaseUrl && supabaseKey) try {
+		learnerMemoryContext = await fetchStudentLearnerContext(createClient(supabaseUrl, supabaseKey), authContext.user.id, moduleId || void 0);
+	} catch (e) {
+		console.warn("[API /api/chat] Non-fatal error retrieving learner memory:", e?.message || e);
+	}
 	const normalizedMessages = rawMessages.map((m, idx) => {
 		const textContent = m.content || m.text || "";
 		return {
@@ -1125,7 +1284,8 @@ async function handleChatStream(body, authContext) {
 		checkpointTitle,
 		moduleTitle,
 		selectedChatMode: mode,
-		retrievedContext: contextText !== "No specific curriculum match found." ? contextText : void 0
+		retrievedContext: contextText !== "No specific curriculum match found." ? contextText : void 0,
+		learnerMemory: learnerMemoryContext
 	});
 	const teachingDirectives = buildTeachingDirectives(teachingDecision);
 	let fullSystemPrompt = "";
@@ -1182,12 +1342,34 @@ ${contextText}
 SOCRATIC GUIDANCE INSTRUCTION:
 Follow the Socratic Progression steps provided in the retrieved context above. Lead the student to discover the answers through targeted scaffolding, metric units (mm, cm, m, kg), and finish your response with at most ONE single, focused guiding question.
 `;
+	const streamResult = streamText({
+		model: createGoogleGenerativeAI({ apiKey: googleApiKey })("gemini-3.5-flash-lite"),
+		system: fullSystemPrompt,
+		messages: modelMessages
+	});
+	if (authContext?.user?.id && supabaseUrl && supabaseKey) try {
+		const sb = createClient(supabaseUrl, supabaseKey);
+		if (conversationId && lastUserMessage.trim()) persistConversationTurn(sb, authContext.user.id, conversationId, lastUserMessage).catch((persistErr) => {
+			console.warn("[API /api/chat] Non-fatal conversation turn persistence warning:", persistErr?.message || persistErr);
+		});
+		if (!isNotebook) {
+			const extraction = extractCandidateMemories({
+				messages: normalizedMessages,
+				lastUserMessage,
+				moduleId: moduleId || void 0,
+				checkpointId: checkpointId || void 0,
+				targetConcept: teachingDecision.targetConcept,
+				isNotebook
+			});
+			if (extraction.globalMemoryUpdate || extraction.candidateEvidence) syncStudentMemoryInteraction(sb, authContext.user.id, extraction).catch((syncErr) => {
+				console.warn("[API /api/chat] Non-fatal student memory sync warning:", syncErr?.message || syncErr);
+			});
+		}
+	} catch (bgErr) {
+		console.warn("[API /api/chat] Non-fatal background memory task error:", bgErr?.message || bgErr);
+	}
 	return {
-		streamResult: streamText({
-			model: createGoogleGenerativeAI({ apiKey: googleApiKey })("gemini-3.5-flash-lite"),
-			system: fullSystemPrompt,
-			messages: modelMessages
-		}),
+		streamResult,
 		teachingDecision
 	};
 }
@@ -1207,11 +1389,7 @@ async function handler(req, res) {
 			res.status(200).json(report);
 			return;
 		}
-		res.status(200).json({
-			status: "HEALTHY",
-			service: "Risse AI Chat API",
-			timestamp: (/* @__PURE__ */ new Date()).toISOString()
-		});
+		res.status(200).json(buildHealthResponse());
 		return;
 	}
 	if (req.method !== "POST") {
@@ -1232,12 +1410,14 @@ async function handler(req, res) {
 			return;
 		}
 		const { streamResult, teachingDecision } = await handleChatStream(body || {}, auth);
+		res.setHeader("Access-Control-Expose-Headers", "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory");
 		res.setHeader("X-Risse-Auth", auth ? auth.role : "guest");
 		if (auth?.user?.id) res.setHeader("X-Risse-User-Id", auth.user.id);
 		res.setHeader("X-Risse-Teaching-Mode", teachingDecision.teachingMode);
 		res.setHeader("X-Risse-Assistance-Level", String(teachingDecision.assistanceLevel));
 		res.setHeader("X-Risse-Tutoring-State", teachingDecision.tutoringState);
 		res.setHeader("X-Risse-Target-Concept", encodeURIComponent(teachingDecision.targetConcept));
+		if (teachingDecision.learnerProfileSummary) res.setHeader("X-Risse-Learner-Memory", encodeURIComponent(teachingDecision.learnerProfileSummary));
 		streamResult.pipeTextStreamToResponse(res);
 	} catch (error) {
 		console.error("[API /api/chat Serverless Error]:", {
@@ -1289,12 +1469,14 @@ async function POST(req) {
 			"Access-Control-Allow-Origin": "*",
 			"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 			"Access-Control-Allow-Headers": "Content-Type, Authorization",
+			"Access-Control-Expose-Headers": "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory",
 			"X-Risse-Auth": auth ? auth.role : "guest",
 			...auth?.user?.id ? { "X-Risse-User-Id": auth.user.id } : {},
 			"X-Risse-Teaching-Mode": teachingDecision.teachingMode,
 			"X-Risse-Assistance-Level": String(teachingDecision.assistanceLevel),
 			"X-Risse-Tutoring-State": teachingDecision.tutoringState,
-			"X-Risse-Target-Concept": encodeURIComponent(teachingDecision.targetConcept)
+			"X-Risse-Target-Concept": encodeURIComponent(teachingDecision.targetConcept),
+			...teachingDecision.learnerProfileSummary ? { "X-Risse-Learner-Memory": encodeURIComponent(teachingDecision.learnerProfileSummary) } : {}
 		} });
 	} catch (error) {
 		console.error("[API /api/chat Web Error]:", {

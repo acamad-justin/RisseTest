@@ -296,6 +296,7 @@ const isStreaming = ref(false);
 const chatMessagesContainer = ref(null);
 const isStarred = ref(false);
 const isChatMaximized = ref(false);
+const isKebabOpen = ref(false);
 
 function getActiveEmail() {
   try {
@@ -792,12 +793,27 @@ async function sendMessage() {
       chatHistory.value[aiMessageIdx].text += textChunk;
       scrollToBottom();
     }
+
+    // Inspect if response body returned a JSON error payload
+    const fullText = (chatHistory.value[aiMessageIdx].text || '').trim();
+    if (fullText.startsWith('{') && fullText.includes('"error"')) {
+      try {
+        const parsed = JSON.parse(fullText);
+        if (parsed.error) {
+          chatHistory.value[aiMessageIdx].text = `⚠️ AI Service Error: ${parsed.error}\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
+        }
+      } catch (_) {}
+    }
   } catch (error) {
     console.error('Chat streaming failed:', error);
     chatHistory.value[aiMessageIdx].text =
       chatHistory.value[aiMessageIdx].text ||
       `⚠️ AI Service Error: ${error?.message || 'Connection error'}\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
   } finally {
+    if (!chatHistory.value[aiMessageIdx].text || !chatHistory.value[aiMessageIdx].text.trim()) {
+      chatHistory.value[aiMessageIdx].text =
+        `⚠️ AI Service Error: The AI service returned an empty response. Please verify that the local dev server is running and try again.\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
+    }
     chatHistory.value[aiMessageIdx].isStreaming = false;
     isStreaming.value = false;
     await nextTick();
