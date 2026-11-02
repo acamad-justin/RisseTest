@@ -19,7 +19,7 @@ const props = defineProps({
   totalPages:        { type: Number, required: true },
 })
 
-const emit = defineEmits(['open-project', 'toggle-select', 'page-change'])
+const emit = defineEmits(['open-project', 'toggle-select', 'page-change', 'toggle-favorite', 'rename-project', 'delete-project'])
 
 const pageNumbers = computed(() => {
   const pages = []
@@ -47,6 +47,9 @@ const pageNumbers = computed(() => {
         :selected="selectedIds.includes(project.id)"
         @open="$emit('open-project', $event)"
         @toggle-select="$emit('toggle-select', $event)"
+        @toggle-favorite="$emit('toggle-favorite', $event)"
+        @rename="$emit('rename-project', $event)"
+        @delete="$emit('delete-project', $event)"
       />
 
       <p v-if="!projects.length" class="projects-section__empty">
@@ -63,6 +66,7 @@ const pageNumbers = computed(() => {
         @click="$emit('page-change', page - 1)"
       >
         <ChevronLeft :size="13" aria-hidden="true" />
+        <span class="pager__label">Previous</span>
       </button>
 
       <template v-for="n in pageNumbers" :key="n">
@@ -99,6 +103,7 @@ const pageNumbers = computed(() => {
         aria-label="Next page"
         @click="$emit('page-change', page + 1)"
       >
+        <span class="pager__label">Next</span>
         <ChevronRight :size="13" aria-hidden="true" />
       </button>
     </div>
@@ -106,31 +111,54 @@ const pageNumbers = computed(() => {
 </template>
 
 <style scoped>
+/* ── Section root ── */
+.projects-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Section head ── */
 .projects-section__head {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
 }
 
 .projects-section__label {
-  font-size: 13px;
+  font-family: Lexend;
   font-weight: 700;
+  font-style: Bold;
+  font-size: 15px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
   color: var(--risse-orange);
 }
 
 .projects-section__count {
-  font-size: 12px;
+  font-family: Lexend;
+  font-weight: 400;
+  font-style: Regular;
+  font-size: 15px;
+  line-height: 120%;
+  letter-spacing: 0%;
+  vertical-align: middle;
   color: #A2A2A2;
-  font-weight: 500;
 }
 
 /* ── Grid ── */
 .projects-section__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  overflow: hidden;
 }
 
 .projects-section__empty {
@@ -139,28 +167,23 @@ const pageNumbers = computed(() => {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 860px) {
-  .projects-section__grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 540px) {
-  .projects-section__grid { grid-template-columns: 1fr; }
-}
-
 /* ── Pagination ── */
 .projects-section__pagination {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 3px;
-  margin-top: 12px;
+  margin-top: 10px;
+  flex-shrink: 0;
 }
 
 .pager__btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  gap: 4px;
   height: 26px;
+  padding: 0 8px;
   border-radius: 6px;
   border: 1px solid #e4e4f0;
   background: transparent;
@@ -185,7 +208,7 @@ const pageNumbers = computed(() => {
   justify-content: center;
   min-width: 26px;
   height: 26px;
-  padding: 0 5px;
+  padding: 0 8px;
   border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
