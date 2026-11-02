@@ -293,11 +293,11 @@ function evaluateSafety(context) {
 //#endregion
 //#region lib/teaching/state.ts
 var STUCK_PATTERNS = [
-	/\b(i'?m\s*(stuck|lost|confused))\b/i,
-	/\b(i\s*don'?t\s*(understand|get\s*it|know|have\s*any\s*idea))\b/i,
+	/\b(i'?m|i\s*am)\s*(stuck|lost|confused)\b/i,
+	/\b(i\s*don'?t|i\s*do\s*not)\s*(understand|get\s*it|know|have\s*any\s*idea)\b/i,
 	/\b(di\s*(ko|natin)\s*(gets?|maintindihan|alam))\b/i,
 	/\b(nalilito\s*(ako)?|gulo\s*ng\s*isip)\b/i,
-	/\b(no\s*idea|clueless|can'?t\s*figure\s*this\s*out)\b/i,
+	/\b(no\s*idea|clueless|can'?t\s*figure\s*this\s*out|cannot\s*figure\s*this\s*out)\b/i,
 	/\b(idk|dunno)\b/i
 ];
 var DIRECT_EXPLANATION_PATTERNS = [
@@ -310,7 +310,11 @@ var DIRECT_EXPLANATION_PATTERNS = [
 var MASTERY_PATTERNS = [
 	/\b(so\s*that\s*means|because|therefore|since\s*the\s*formula)\b/i,
 	/\b(torque\s*=\s*force\s*[*x]\s*distance|gear\s*ratio\s*=\s*\d+[:/]\d+)\b/i,
-	/\b(i\s*understand\s*now|now\s*i\s*get\s*it|that\s*makes\s*sense)\b/i
+	/\b(i\s*understand\s*now|now\s*i\s*get\s*it|that\s*makes\s*sense)\b/i,
+	/\b(sensors?.*(microcontrollers?|processors?|computation).*actuators?)\b/i,
+	/\b(integrat(ing|es?).*sensors?.*actuators?)\b/i,
+	/\b(perception.*(computation|processing).*actuation)\b/i,
+	/\b(closed[- ]loop\s*control|pid|encoder\s*feedback)\b/i
 ];
 /**
 * Analyzes the recent conversation history and student message to derive
@@ -694,7 +698,7 @@ async function selectTeachingStrategy(context) {
 	const safetyResult = evaluateSafety(context);
 	if (!safetyResult.isSafe && safetyResult.requiresStop) return validateTeachingDecision({
 		teachingMode: "ENGINEERING_LAB",
-		selectedChatMode: context.selectedChatMode,
+		selectedChatMode: context.selectedChatMode || "socratic",
 		studentLevel: "unknown",
 		targetConcept: "Physical & Electrical Robotics Safety",
 		understanding: "uncertain",
@@ -1410,13 +1414,14 @@ async function handler(req, res) {
 			return;
 		}
 		const { streamResult, teachingDecision } = await handleChatStream(body || {}, auth);
-		res.setHeader("Access-Control-Expose-Headers", "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory");
+		res.setHeader("Access-Control-Expose-Headers", "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory, X-Risse-Safety");
 		res.setHeader("X-Risse-Auth", auth ? auth.role : "guest");
 		if (auth?.user?.id) res.setHeader("X-Risse-User-Id", auth.user.id);
 		res.setHeader("X-Risse-Teaching-Mode", teachingDecision.teachingMode);
 		res.setHeader("X-Risse-Assistance-Level", String(teachingDecision.assistanceLevel));
 		res.setHeader("X-Risse-Tutoring-State", teachingDecision.tutoringState);
 		res.setHeader("X-Risse-Target-Concept", encodeURIComponent(teachingDecision.targetConcept));
+		res.setHeader("X-Risse-Safety", teachingDecision.requiresSafetyIntervention ? "CRITICAL_HAZARD" : "SAFE");
 		if (teachingDecision.learnerProfileSummary) res.setHeader("X-Risse-Learner-Memory", encodeURIComponent(teachingDecision.learnerProfileSummary));
 		streamResult.pipeTextStreamToResponse(res);
 	} catch (error) {
@@ -1469,13 +1474,14 @@ async function POST(req) {
 			"Access-Control-Allow-Origin": "*",
 			"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 			"Access-Control-Allow-Headers": "Content-Type, Authorization",
-			"Access-Control-Expose-Headers": "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory",
+			"Access-Control-Expose-Headers": "X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory, X-Risse-Safety",
 			"X-Risse-Auth": auth ? auth.role : "guest",
 			...auth?.user?.id ? { "X-Risse-User-Id": auth.user.id } : {},
 			"X-Risse-Teaching-Mode": teachingDecision.teachingMode,
 			"X-Risse-Assistance-Level": String(teachingDecision.assistanceLevel),
 			"X-Risse-Tutoring-State": teachingDecision.tutoringState,
 			"X-Risse-Target-Concept": encodeURIComponent(teachingDecision.targetConcept),
+			"X-Risse-Safety": teachingDecision.requiresSafetyIntervention ? "CRITICAL_HAZARD" : "SAFE",
 			...teachingDecision.learnerProfileSummary ? { "X-Risse-Learner-Memory": encodeURIComponent(teachingDecision.learnerProfileSummary) } : {}
 		} });
 	} catch (error) {

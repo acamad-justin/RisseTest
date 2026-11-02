@@ -21,7 +21,7 @@ export async function selectTeachingStrategy(context: SelectorContext): Promise<
   if (!safetyResult.isSafe && safetyResult.requiresStop) {
     const safetyDecision: TeachingDecision = {
       teachingMode: 'ENGINEERING_LAB',
-      selectedChatMode: context.selectedChatMode,
+      selectedChatMode: context.selectedChatMode || 'socratic',
       studentLevel: 'unknown',
       targetConcept: 'Physical & Electrical Robotics Safety',
       understanding: 'uncertain',
