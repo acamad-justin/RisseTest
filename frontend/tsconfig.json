@@ -1,15 +1,28 @@
 {
-  "extends": "../tsconfig.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false,
+    "strict": false,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./resources/js/*"],
+      "*": ["./node_modules/*", "../lib/*", "./*"]
+    }
   },
   "include": [
+    "api/**/*",
+    "lib/**/*",
+    "resources/**/*",
     "**/*",
     "../lib/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ]
 }
-

@@ -36,11 +36,15 @@ function mapSupabaseUserToProfile(sbUser, role = 'student') {
   };
 }
 
+const roleCache = new Map();
+
 /**
  * Resolves user role from user_roles table
  */
 async function fetchUserRole(userId) {
   if (!userId) return 'student';
+  if (roleCache.has(userId)) return roleCache.get(userId);
+
   try {
     const { data, error } = await supabase
       .from('user_roles')
@@ -48,13 +52,17 @@ async function fetchUserRole(userId) {
       .eq('user_id', userId);
 
     if (error || !data || data.length === 0) {
+      roleCache.set(userId, 'student');
       return 'student'; // Default fallback
     }
     const roles = data.map(r => r.role);
-    if (roles.includes('admin')) return 'admin';
-    if (roles.includes('teacher')) return 'teacher';
-    return 'student';
+    let resolved = 'student';
+    if (roles.includes('admin')) resolved = 'admin';
+    else if (roles.includes('teacher')) resolved = 'teacher';
+    roleCache.set(userId, resolved);
+    return resolved;
   } catch (_) {
+    roleCache.set(userId, 'student');
     return 'student';
   }
 }
@@ -251,6 +259,7 @@ async function logout() {
   try {
     await supabase.auth.signOut();
   } catch (_) {}
+  roleCache.clear();
   currentUser.value = null;
   currentSession.value = null;
   userRole.value = 'student';
@@ -261,7 +270,28 @@ async function logout() {
  */
 async function getAuthToken() {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
+
+    // Check if token is expired or expiring in the next 60 seconds
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiresAt = session.expires_at || 0;
+    if (expiresAt && expiresAt <= nowSec + 60) {
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshData?.session?.access_token) {
+          session = refreshData.session;
+          await syncSession(session);
+        } else {
+          console.warn('[AuthStore] Session expired and cannot be refreshed; operating in guest mode:', refreshError?.message);
+          return null;
+        }
+      } catch (refErr) {
+        console.warn('[AuthStore] Token refresh exception:', refErr);
+        return null;
+      }
+    }
+
     return session?.access_token || null;
   } catch (_) {
     return null;

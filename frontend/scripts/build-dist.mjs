@@ -121,3 +121,31 @@ try {
 } catch (e) {
   // non-fatal
 }
+
+// Bundle Vercel Serverless Function api/chat.js from frontend/api/chat.ts
+try {
+  const { build: viteBuild } = await import('vite');
+  const projectRoot = path.resolve(rootDir, '..');
+  const chatSrc = path.join(rootDir, 'api', 'chat.ts');
+  const apiOutDir = path.join(projectRoot, 'api');
+
+  if (fs.existsSync(chatSrc)) {
+    await viteBuild({
+      root: projectRoot,
+      build: {
+        ssr: chatSrc,
+        outDir: apiOutDir,
+        emptyOutDir: false,
+        rollupOptions: {
+          output: {
+            format: 'es',
+            entryFileNames: 'chat.js',
+          },
+        },
+      },
+    });
+    console.log('[build-dist] ✓ Successfully bundled serverless function api/chat.js.');
+  }
+} catch (e) {
+  console.error('[build-dist] Error bundling serverless function api/chat.js:', e);
+}

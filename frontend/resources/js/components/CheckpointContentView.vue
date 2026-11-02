@@ -296,6 +296,7 @@ const isStreaming = ref(false);
 const chatMessagesContainer = ref(null);
 const isStarred = ref(false);
 const isChatMaximized = ref(false);
+const isKebabOpen = ref(false);
 
 function getActiveEmail() {
   try {
@@ -752,6 +753,7 @@ async function sendMessage() {
       messages: formattedMessages,
       checkpointTitle: props.checkpointTitle,
       moduleTitle: props.parentModuleName,
+      moduleId: props.moduleData?.id ? String(props.moduleData.id) : undefined,
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
     };
 
@@ -761,53 +763,12 @@ async function sendMessage() {
       'Content-Type': 'application/json',
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     };
-    const isLocal = typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-    try {
-      response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: chatHeaders,
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        let errMsg = `HTTP ${response.status}`;
-        try {
-          const errJson = await response.json();
-          if (errJson) {
-            errMsg = errJson.error || errJson.message || JSON.stringify(errJson);
-            if (errJson.stage) {
-              errMsg = `[Stage: ${errJson.stage}] ${errMsg}`;
-            }
-          }
-        } catch (_) {
-          try {
-            const rawText = await response.text();
-            if (rawText) errMsg = `HTTP ${response.status}: ${rawText.slice(0, 150)}`;
-          } catch (__) {}
-        }
-        throw new Error(errMsg);
-      }
-    } catch (err) {
-      if (isLocal) {
-        // Direct Vite dev server fallback (port 5173) for local development
-        try {
-          response = await fetch('http://127.0.0.1:5173/api/chat', {
-            method: 'POST',
-            headers: chatHeaders,
-            body: JSON.stringify(payload),
-          });
-        } catch (_) {
-          response = await fetch('http://localhost:5173/api/chat', {
-            method: 'POST',
-            headers: chatHeaders,
-            body: JSON.stringify(payload),
-          });
-        }
-      } else {
-        throw err;
-      }
-    }
+    response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: chatHeaders,
+      body: JSON.stringify(payload),
+    });
 
     if (!response.ok) {
       let finalErrMsg = `Chat API responded with ${response.status}`;
@@ -832,12 +793,27 @@ async function sendMessage() {
       chatHistory.value[aiMessageIdx].text += textChunk;
       scrollToBottom();
     }
+
+    // Inspect if response body returned a JSON error payload
+    const fullText = (chatHistory.value[aiMessageIdx].text || '').trim();
+    if (fullText.startsWith('{') && fullText.includes('"error"')) {
+      try {
+        const parsed = JSON.parse(fullText);
+        if (parsed.error) {
+          chatHistory.value[aiMessageIdx].text = `⚠️ AI Service Error: ${parsed.error}\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
+        }
+      } catch (_) {}
+    }
   } catch (error) {
     console.error('Chat streaming failed:', error);
     chatHistory.value[aiMessageIdx].text =
       chatHistory.value[aiMessageIdx].text ||
       `⚠️ AI Service Error: ${error?.message || 'Connection error'}\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
   } finally {
+    if (!chatHistory.value[aiMessageIdx].text || !chatHistory.value[aiMessageIdx].text.trim()) {
+      chatHistory.value[aiMessageIdx].text =
+        `⚠️ AI Service Error: The AI service returned an empty response. Please verify that the local dev server is running and try again.\n\n💡 Debug Tip: You can visit /api/chat directly in your browser on this domain to run live backend diagnostics.`;
+    }
     chatHistory.value[aiMessageIdx].isStreaming = false;
     isStreaming.value = false;
     await nextTick();
