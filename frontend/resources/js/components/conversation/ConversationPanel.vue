@@ -33,6 +33,9 @@ import {
 } from '@lucide/vue'
 import { useNotebooksStore } from '@/stores/notebooksStore.js'
 import { useDismissable } from '@/composables/useDismissable.js'
+import { useAuthStore } from '@/stores/authStore.js'
+
+const authStore = useAuthStore()
 
 const props = defineProps({
   /** The active Log (with its own messages array). */
@@ -301,12 +304,18 @@ async function generateAiReply() {
         ]
       : ['/api/chat'];
 
+    const authToken = await authStore.getAuthToken?.()
+    const chatHeaders = {
+      'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    }
+
     let response = null
     for (const url of candidateUrls) {
       try {
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: chatHeaders,
           body: JSON.stringify(payload),
         })
         if (res.ok && res.body) {
@@ -454,8 +463,15 @@ function fmtTime(iso) {
 }
 
 function formatMessageText(text) {
-  if (!text) return ''
-  let safe = text
+  if (!text) return '';
+  // Strip any accidental leading internal directive header leak from display
+  const cleanText = text
+    .replace(/^\s*={10,}\s*\n\s*(?:CRITICAL SAFETY DIRECTIVE|ADAPTIVE TEACHING INTELLIGENCE|INTERNAL SYSTEM DIRECTIVE)[^\n]*\n[\s\S]*?\n\s*={10,}\s*\n*/i, '')
+    .replace(/^\s*<internal_[^>]+>[\s\S]*?<\/internal_[^>]+>\s*\n*/i, '')
+    .replace(/^\s*\[INTERNAL[^\n\]]*\][\s\S]*?\[END INTERNAL[^\n\]]*\]\s*\n*/i, '')
+    .trimStart();
+
+  let safe = cleanText
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

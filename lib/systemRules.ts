@@ -205,4 +205,47 @@ export function getCompetitionRules(): string {
   return COMPETITION_RULES;
 }
 
+/**
+ * Dynamically loads custom robotics/socratic rules from robotics_rules.md if available,
+ * allowing instant live updates whenever the user edits the markdown file.
+ */
+export function getSocraticRules(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'robotics_rules.md'),
+    path.resolve(process.cwd(), '../robotics_rules.md'),
+    path.resolve(process.cwd(), 'frontend/robotics_rules.md'),
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, 'robotics_rules.md') : '',
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, '../robotics_rules.md') : '',
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, '../../robotics_rules.md') : '',
+  ].filter(Boolean);
+
+  let newestFile: string | null = null;
+  let newestMtime = -1;
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        const stat = fs.statSync(candidate);
+        if (stat.mtimeMs > newestMtime) {
+          const content = fs.readFileSync(candidate, 'utf-8').trim();
+          if (content.length > 20) {
+            newestFile = candidate;
+            newestMtime = stat.mtimeMs;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (newestFile) {
+    try {
+      return fs.readFileSync(newestFile, 'utf-8').trim();
+    } catch (_) {}
+  }
+
+  return SOCRATIC_RULES;
+}
+
+export const getRoboticsRules = getSocraticRules;
+
 export const SYSTEM_RULES = SOCRATIC_RULES;

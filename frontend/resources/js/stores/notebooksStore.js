@@ -17,6 +17,16 @@ function fmtDate(iso) {
 
 function getActiveEmail() {
   try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+        const raw = localStorage.getItem(k)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed?.user?.email) return parsed.user.email.toLowerCase().trim()
+        }
+      }
+    }
     const activeId = localStorage.getItem('risse_active_user_id')
     if (activeId) {
       const rawAccounts = localStorage.getItem('risse_registered_accounts')
@@ -50,10 +60,6 @@ function getInitialLogs(email = getActiveEmail()) {
   try {
     const userKey = getLogsKey(email)
     let raw = localStorage.getItem(userKey)
-    // Backward compatibility: legacy keys only for adriel@risse.edu
-    if (!raw && email === 'adriel@risse.edu') {
-      raw = localStorage.getItem('risse_user_usr_adriel_notebooks_logs') || localStorage.getItem('risse_notebooks_logs')
-    }
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -69,9 +75,6 @@ function getInitialProjects(email = getActiveEmail()) {
   try {
     const userKey = getProjectsKey(email)
     let raw = localStorage.getItem(userKey)
-    if (!raw && email === 'adriel@risse.edu') {
-      raw = localStorage.getItem('risse_user_usr_adriel_notebooks_projects') || localStorage.getItem('risse_notebooks_projects')
-    }
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -92,10 +95,6 @@ function persist() {
   try {
     localStorage.setItem(getLogsKey(email), JSON.stringify(logs.value))
     localStorage.setItem(getProjectsKey(email), JSON.stringify(projects.value))
-    if (email === 'adriel@risse.edu') {
-      localStorage.setItem('risse_notebooks_logs', JSON.stringify(logs.value))
-      localStorage.setItem('risse_notebooks_projects', JSON.stringify(projects.value))
-    }
   } catch (e) {}
 }
 

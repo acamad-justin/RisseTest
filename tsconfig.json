@@ -3,14 +3,14 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "allowJs": true,
     "checkJs": false,
     "strict": false,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
-      "*": ["./frontend/node_modules/*", "*"]
+      "*": ["./frontend/node_modules/*", "./*"]
     },
     "typeRoots": [
       "./frontend/node_modules/@types"

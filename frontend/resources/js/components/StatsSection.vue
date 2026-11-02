@@ -23,9 +23,9 @@ defineProps({
     type: Object,
     required: true,
     default: () => ({
-      projects: 5,
-      mastered: 7,
-      badges: 1,
+      projects: 0,
+      mastered: 0,
+      badges: 0,
     }),
   },
 });
