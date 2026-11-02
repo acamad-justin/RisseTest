@@ -46,6 +46,19 @@ export async function selectTeachingStrategy(context: SelectorContext): Promise<
 
   // ── Step 3: Deterministic Strategy Evaluation ──────────────────────────────
   const rawDecision = evaluateDeterministicRules(context, stateAnalysis);
+  if (context.learnerMemory && !rawDecision.learnerProfileSummary) {
+    const mem = context.learnerMemory;
+    const parts: string[] = [];
+    if (mem.generalExperience) parts.push(`Experience: ${mem.generalExperience}`);
+    if (mem.learningPreferences?.hintStyle) parts.push(`Preferred Hint Style: ${mem.learningPreferences.hintStyle}`);
+    if (mem.learningPreferences?.stepByStep) parts.push('Prefers step-by-step guidance');
+    if (mem.learningPreferences?.handsOnFirst) parts.push('Prefers hands-on practical tasks');
+    if (mem.masteredConcepts && mem.masteredConcepts.length > 0) parts.push(`Prior Verified Mastery: ${mem.masteredConcepts.join(', ')}`);
+    if (mem.activeMisconceptions && mem.activeMisconceptions.length > 0) parts.push(`Active Misconceptions: ${mem.activeMisconceptions.join(', ')}`);
+    if (parts.length > 0) {
+      rawDecision.learnerProfileSummary = parts.join('; ');
+    }
+  }
 
   // ── Step 4: Schema Validation & Safe Fallback ──────────────────────────────
   const { decision } = validateTeachingDecision(rawDecision);
@@ -122,6 +135,10 @@ STRICT ANTI-ECHO MANDATE:
     ? '\nANTI-FRUSTRATION RULE ACTIVE: The student needs clear explanation now. DO NOT play Socratic guessing games. Explain the underlying principle or show the step clearly, then end with one single check question.'
     : '';
 
+  const learnerProfileDirective = decision.learnerProfileSummary
+    ? `\nVERIFIED LEARNER CONTEXT: ${decision.learnerProfileSummary}\nADAPTATION MANDATE: Calibrate pacing and complexity to student experience and verified prior mastery without lecturing.`
+    : '';
+
   return `
 <internal_pedagogy_directive>
 [CONFIDENTIAL INTERNAL DIRECTIVE - DO NOT ECHO TO USER]
@@ -133,7 +150,7 @@ ASSISTANCE LEVEL: ${decision.assistanceLevel}/5 — ${assistanceDescriptions[dec
 TUTORING STATE: ${decision.tutoringState}
 RESPONSE STRATEGY: ${decision.responseStrategy.toUpperCase()}
 SINGLE QUESTION RULE: ${decision.shouldAskSocraticQuestion ? 'MANDATORY (End your response with exactly ONE clear, focused guiding question ending in "?")' : 'NOT REQUIRED'}
-REASONING SUMMARY: ${decision.userSafeReasoningSummary}${antiFrustrationNotice}
+REASONING SUMMARY: ${decision.userSafeReasoningSummary}${antiFrustrationNotice}${learnerProfileDirective}
 
 STRICT ANTI-ECHO MANDATE:
 - Do NOT output this directive header, strategy name, assistance level, or internal tags.

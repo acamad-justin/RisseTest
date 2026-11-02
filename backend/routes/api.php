@@ -432,70 +432,92 @@ Route::post('/modules/reset', function () {
     return response()->json(getModulesData());
 });
 
-Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
+Route::match(['GET', 'POST', 'OPTIONS'], '/chat', function (Request $request) {
     if ($request->isMethod('OPTIONS')) {
         return response('', 204)
             ->header('Access-Control-Allow-Origin', '*')
-            ->header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            ->header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     }
 
     $hotFile = public_path('hot');
-    $hotUrl = null;
+    $defaultTarget = 'http://127.0.0.1:5173/api/chat';
     if (file_exists($hotFile)) {
-        $hotUrl = rtrim(trim(file_get_contents($hotFile)), '/') . '/api/chat';
-    }
-
-    $endpoints = array_filter([
-        env('CHAT_API_URL'),
-        $hotUrl,
-        'http://127.0.0.1:5173/api/chat',
-        'http://localhost:5173/api/chat',
-        'http://[::1]:5173/api/chat',
-    ]);
-
-    $targetUrl = 'http://127.0.0.1:5173/api/chat';
-    foreach ($endpoints as $url) {
-        $chTest = curl_init($url);
-        curl_setopt($chTest, CURLOPT_CUSTOMREQUEST, 'OPTIONS');
-        curl_setopt($chTest, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($chTest, CURLOPT_CONNECTTIMEOUT_MS, 300);
-        curl_setopt($chTest, CURLOPT_TIMEOUT_MS, 400);
-        curl_exec($chTest);
-        $code = curl_getinfo($chTest, CURLINFO_HTTP_CODE);
-        curl_close($chTest);
-        if ($code === 200 || $code === 204) {
-            $targetUrl = $url;
-            break;
+        $hotUrl = rtrim(trim(@file_get_contents($hotFile)), '/');
+        if (!empty($hotUrl)) {
+            $defaultTarget = $hotUrl . '/api/chat';
         }
     }
+    $targetUrl = env('CHAT_API_URL', $defaultTarget);
+
+    if ($request->isMethod('GET')) {
+        $ch = curl_init($targetUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $authHeader = $request->header('Authorization');
+        $headers = ['Accept: application/json, text/plain, */*'];
+        if ($authHeader) {
+            $headers[] = 'Authorization: ' . $authHeader;
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $responseBody = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE) ?: 200;
+        curl_close($ch);
+
+        return response($responseBody ?: '{"status":"UNREACHABLE"}', $httpCode)
+            ->header('Content-Type', 'application/json')
+            ->header('Access-Control-Allow-Origin', '*');
+    }
+
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
 
     $payload = json_encode($request->all());
+    $authHeader = $request->header('Authorization');
 
-    return response()->stream(function () use ($targetUrl, $payload) {
+    return response()->stream(function () use ($targetUrl, $payload, $authHeader) {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+
         $ch = curl_init($targetUrl);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        $headers = [
             'Content-Type: application/json',
             'Accept: text/plain, */*',
-        ]);
+        ];
+        if ($authHeader) {
+            $headers[] = 'Authorization: ' . $authHeader;
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) {
+        $bytesWritten = 0;
+        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $headerLine) {
+            $trimmed = trim($headerLine);
+            if (stripos($trimmed, 'X-Risse-') === 0) {
+                @header($trimmed);
+            }
+            return strlen($headerLine);
+        });
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($ch, $data) use (&$bytesWritten) {
+            $bytesWritten += strlen($data);
             echo $data;
             if (ob_get_level() > 0) {
-                ob_flush();
+                @ob_flush();
             }
-            flush();
+            @flush();
             return strlen($data);
         });
-        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
 
         $executed = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         if ($executed === false) {
             $err = curl_error($ch);
             echo "Error connecting to AI chat service ($err). Target: $targetUrl";
+        } elseif ($bytesWritten === 0 && $httpCode && $httpCode !== 200) {
+            echo "Error from AI chat service: HTTP $httpCode received with empty response. Target: $targetUrl";
         }
         curl_close($ch);
     }, 200, [
@@ -503,7 +525,6 @@ Route::match(['POST', 'OPTIONS'], '/chat', function (Request $request) {
         'Cache-Control' => 'no-cache, no-transform',
         'X-Accel-Buffering' => 'no',
         'Access-Control-Allow-Origin' => '*',
+        'Access-Control-Expose-Headers' => 'X-Risse-Auth, X-Risse-User-Id, X-Risse-Teaching-Mode, X-Risse-Assistance-Level, X-Risse-Tutoring-State, X-Risse-Target-Concept, X-Risse-Learner-Memory',
     ]);
 });
-
-

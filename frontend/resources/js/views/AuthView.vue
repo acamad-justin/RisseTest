@@ -585,6 +585,12 @@ async function handleRegisterSubmit() {
     }
 
     if (res.success && res.user && res.session) {
+      try {
+        const safe = res.user.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+        localStorage.removeItem(`risse_email_${safe}_profile_data`);
+        localStorage.removeItem(`risse_email_${safe}_enrolled_modules`);
+        localStorage.removeItem('risse_profile_data');
+      } catch (_) {}
       successMessage.value = `Account created! Welcome to Risse, ${res.user.name}.`;
       setTimeout(() => {
         emit('authenticated', res.user);

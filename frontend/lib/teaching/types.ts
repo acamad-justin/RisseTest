@@ -63,6 +63,22 @@ export interface ChatMessage {
   id?: string;
 }
 
+export interface LearnerMemoryContext {
+  studentId?: string;
+  generalExperience?: 'novice' | 'intermediate' | 'advanced';
+  learningPreferences?: {
+    hintStyle?: string;
+    tone?: string;
+    handsOnFirst?: boolean;
+    stepByStep?: boolean;
+    [key: string]: any;
+  };
+  masteredConcepts?: string[];
+  activeMisconceptions?: string[];
+  currentCheckpoint?: string;
+  progressPercent?: number;
+}
+
 export interface SelectorContext {
   messages: ChatMessage[];
   lastUserMessage: string;
@@ -70,6 +86,7 @@ export interface SelectorContext {
   moduleTitle?: string;
   selectedChatMode: 'socratic' | 'competition';
   retrievedContext?: string;
+  learnerMemory?: LearnerMemoryContext;
 }
 
 export interface SafetyEvaluationResult {
@@ -97,6 +114,7 @@ export interface TeachingDecision {
   useRetrievedContext: boolean;
   userSafeReasoningSummary: string;
   nextSuggestedAction: string;
+  learnerProfileSummary?: string;
 }
 
 export interface ValidationResult {

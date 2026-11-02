@@ -289,20 +289,8 @@ async function generateAiReply() {
       checkpointTitle: props.log.title || 'Project Notebook Log',
       moduleTitle: props.project?.title || 'Robotics & Control Systems Lab',
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
+      isNotebook: true,
     }
-
-    const isLocal = typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-    const candidateUrls = isLocal
-      ? [
-          '/api/chat',
-          'http://127.0.0.1:8000/api/chat',
-          'http://127.0.0.1:5174/api/chat',
-          'http://127.0.0.1:5173/api/chat',
-          'http://localhost:5173/api/chat',
-        ]
-      : ['/api/chat'];
 
     const authToken = await authStore.getAuthToken?.()
     const chatHeaders = {
@@ -310,25 +298,14 @@ async function generateAiReply() {
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     }
 
-    let response = null
-    for (const url of candidateUrls) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: chatHeaders,
-          body: JSON.stringify(payload),
-        })
-        if (res.ok && res.body) {
-          response = res
-          break
-        }
-      } catch (e) {
-        // Continue to next endpoint candidate
-      }
-    }
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: chatHeaders,
+      body: JSON.stringify(payload),
+    })
 
-    if (!response || !response.body) {
-      throw new Error('Chat service unreachable')
+    if (!response.ok || !response.body) {
+      throw new Error(`Chat API error (${response.status})`)
     }
 
     const reader = response.body.getReader()
@@ -346,12 +323,25 @@ async function generateAiReply() {
         }
       }
     }
+
+    const fullContent = (aiMessage.content || '').trim()
+    if (fullContent.startsWith('{') && fullContent.includes('"error"')) {
+      try {
+        const parsed = JSON.parse(fullContent)
+        if (parsed.error) {
+          aiMessage.content = `⚠️ AI Service Error: ${parsed.error}`
+        }
+      } catch (_) {}
+    }
   } catch (err) {
     console.error('Notebooks Chatbot error:', err)
     if (!aiMessage.content) {
       aiMessage.content = "I'm having trouble connecting to the AI assistant right now. Please ensure the dev server is active and try again."
     }
   } finally {
+    if (!aiMessage.content || !aiMessage.content.trim()) {
+      aiMessage.content = "I'm having trouble connecting to the AI assistant right now. Please ensure the dev server is active and try again."
+    }
     aiMessage.isStreaming = false
     isAiStreaming.value = false
     props.log.updatedAt = new Date().toISOString()

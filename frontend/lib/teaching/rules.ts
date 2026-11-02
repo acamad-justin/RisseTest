@@ -100,6 +100,21 @@ export function evaluateDeterministicRules(
   const lastMsg = context.lastUserMessage.trim();
   const targetConcept = extractTargetConcept(context);
 
+  const mem = context.learnerMemory;
+  let learnerProfileSummary: string | undefined;
+  if (mem) {
+    const parts: string[] = [];
+    if (mem.generalExperience) parts.push(`Experience: ${mem.generalExperience}`);
+    if (mem.learningPreferences?.hintStyle) parts.push(`Preferred Hint Style: ${mem.learningPreferences.hintStyle}`);
+    if (mem.learningPreferences?.stepByStep) parts.push('Prefers step-by-step guidance');
+    if (mem.learningPreferences?.handsOnFirst) parts.push('Prefers hands-on practical tasks');
+    if (mem.masteredConcepts && mem.masteredConcepts.length > 0) parts.push(`Prior Verified Mastery: ${mem.masteredConcepts.join(', ')}`);
+    if (mem.activeMisconceptions && mem.activeMisconceptions.length > 0) parts.push(`Active Misconceptions: ${mem.activeMisconceptions.join(', ')}`);
+    if (parts.length > 0) {
+      learnerProfileSummary = parts.join('; ');
+    }
+  }
+
   // ── 1. Competition Mode: Preserve High-Stakes Pit Workflow ───────────────
   if (context.selectedChatMode === 'competition') {
     const isDebug = HARDWARE_DEBUG_PATTERNS.some(p => p.test(lastMsg));
@@ -280,22 +295,40 @@ export function evaluateDeterministicRules(
   }
 
   // ── 9. Default Fallback: Discovery & Scaffolding ─────────────────────────
+  const isMasteredInMem = Boolean(mem?.masteredConcepts?.includes(targetConcept.toLowerCase()));
+  const activeMisconceptions: string[] = [];
+  if (mem?.activeMisconceptions && mem.activeMisconceptions.length > 0) {
+    activeMisconceptions.push(...mem.activeMisconceptions);
+  }
+
+  let defaultStudentLevel: StudentLevel = 'developing';
+  if (mem?.generalExperience === 'advanced') {
+    defaultStudentLevel = 'advanced';
+  } else if (mem?.generalExperience === 'novice') {
+    defaultStudentLevel = 'beginner';
+  }
+
   return {
-    teachingMode: 'DISCOVERY',
+    teachingMode: isMasteredInMem ? 'MASTERY' : 'DISCOVERY',
     selectedChatMode: 'socratic',
-    studentLevel: 'developing',
+    studentLevel: isMasteredInMem ? 'advanced' : defaultStudentLevel,
     targetConcept,
-    understanding: 'emerging',
-    detectedMisconceptions: [],
+    understanding: isMasteredInMem ? 'strong' : 'emerging',
+    detectedMisconceptions: activeMisconceptions,
     assistanceLevel: 1,
-    tutoringState: 'QUESTION',
-    responseStrategy: 'ask_question',
+    tutoringState: isMasteredInMem ? 'ASSESS' : 'QUESTION',
+    responseStrategy: isMasteredInMem ? 'assess' : 'ask_question',
     shouldAskSocraticQuestion: true,
     shouldRevealSolution: false,
     requiresSafetyIntervention: false,
-    requiresAssessment: false,
+    requiresAssessment: isMasteredInMem,
     useRetrievedContext: Boolean(context.retrievedContext),
-    userSafeReasoningSummary: 'Discovery Inquiry: Guiding student through active robotics inquiry with one focused question.',
-    nextSuggestedAction: 'Ask a targeted inquiry question to observe the system and formulate a hypothesis.',
+    userSafeReasoningSummary: isMasteredInMem
+      ? `Prior Mastery Verified: Student already demonstrated verified mastery of ${targetConcept}. Presenting an advanced synthesis inquiry.`
+      : 'Discovery Inquiry: Guiding student through active robotics inquiry with one focused question.',
+    nextSuggestedAction: isMasteredInMem
+      ? 'Pose an advanced design trade-off or integration question testing this concept in a new context.'
+      : 'Ask a targeted inquiry question to observe the system and formulate a hypothesis.',
+    learnerProfileSummary,
   };
 }
