@@ -752,6 +752,7 @@ async function sendMessage() {
       messages: formattedMessages,
       checkpointTitle: props.checkpointTitle,
       moduleTitle: props.parentModuleName,
+      moduleId: props.moduleData?.id ? String(props.moduleData.id) : undefined,
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
     };
 

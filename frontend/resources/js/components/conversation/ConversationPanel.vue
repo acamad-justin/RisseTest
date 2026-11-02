@@ -289,6 +289,7 @@ async function generateAiReply() {
       checkpointTitle: props.log.title || 'Project Notebook Log',
       moduleTitle: props.project?.title || 'Robotics & Control Systems Lab',
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
+      isNotebook: true,
     }
 
     const isLocal = typeof window !== 'undefined' && 
