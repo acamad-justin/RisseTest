@@ -48,6 +48,7 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
       assert.ok(res.headers.has('X-Risse-Assistance-Level'));
       assert.ok(res.headers.has('X-Risse-Tutoring-State'));
       assert.ok(res.headers.has('X-Risse-Target-Concept'));
+      assert.ok(res.headers.has('X-Risse-Safety'));
     }
   });
 
@@ -168,7 +169,7 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
   });
 
   // 9. Correct production endpoint routing & configuration integrity
-  test('9. Root api/chat.ts, package.json, and vercel.json configuration integrity', () => {
+  test('9. Root api/chat.js, package.json, and vercel.json configuration integrity', () => {
     const rootDir = path.resolve(import.meta.dirname, '..');
 
     // Root package.json exists and has dependencies
@@ -180,9 +181,9 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
     assert.ok(rootPkg.dependencies['@ai-sdk/google'], 'Must declare @ai-sdk/google in root package.json');
     assert.ok(rootPkg.dependencies['ai'], 'Must declare ai in root package.json');
 
-    // Root api/chat.ts exists
-    const rootApiTs = path.join(rootDir, 'api', 'chat.ts');
-    assert.ok(fs.existsSync(rootApiTs), 'Root api/chat.ts must exist as Vercel serverless entry');
+    // Root api/chat.js exists
+    const rootApiJs = path.join(rootDir, 'api', 'chat.js');
+    assert.ok(fs.existsSync(rootApiJs), 'Root api/chat.js must exist as bundled Vercel serverless entry');
 
     // vercel.json configuration
     const vercelJsonPath = path.join(rootDir, 'vercel.json');
