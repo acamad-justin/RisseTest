@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
+// Discover .env.local regardless of whether launched from root or frontend or backend
 const envCandidates = [
   path.resolve(process.cwd(), '.env.local'),
   path.resolve(process.cwd(), 'frontend/.env.local'),

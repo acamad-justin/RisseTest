@@ -406,6 +406,9 @@ function getUserProfileStorageKey(userOrEmail) {
   } else if (userOrEmail?.email) {
     email = userOrEmail.email;
   }
+  if (!email && authStore.currentUser?.email) {
+    email = authStore.currentUser.email;
+  }
   const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
   return safe ? `risse_email_${safe}_profile_data` : 'risse_profile_data';
 }
@@ -435,10 +438,18 @@ function loadUserProfile(user) {
 
   if (saved) {
     const achievements = Array.isArray(saved.achievements) ? saved.achievements : [];
-    // Strict integrity: Mastered concepts and badges count cannot exist without matching achievements
-    const cleanMastered = achievements.length > 0 ? (saved.stats?.mastered ?? achievements.length) : 0;
+    const skills = Array.isArray(saved.skills) ? saved.skills : [];
     const cleanBadges = achievements.length;
-    const cleanProjects = saved.stats?.projects ?? 0;
+    const cleanProjects = Math.max(0, Number(saved.stats?.projects) || 0);
+
+    // Concept mastery exists independently of module badges; badges strictly track achievements count.
+    // Fresh slate profiles with 0 achievements and 0 skills heal orphan ghost numbers to 0.
+    const isCleanZeroSlate = achievements.length === 0 && skills.length === 0 && !saved.stats?.hasVerifiedMastery;
+    const cleanMastered = isCleanZeroSlate
+      ? 0
+      : (typeof saved.stats?.mastered === 'number' && saved.stats.mastered >= 0
+          ? saved.stats.mastered
+          : (achievements.length > 0 ? achievements.length : skills.length));
 
     return {
       user: {
@@ -452,7 +463,7 @@ function loadUserProfile(user) {
         mastered: cleanMastered,
         badges: cleanBadges,
       },
-      skills: saved.skills || [],
+      skills: skills,
       achievements: achievements,
       featuredProjects: saved.featuredProjects || [],
     };
@@ -490,12 +501,15 @@ function persistUserProfile(userOrEmail) {
 const initialProfileState = loadUserProfile(authStore.currentUser);
 const profileData = reactive(initialProfileState);
 
-// Strict integrity invariant: Mastered concepts and badges count cannot exist without matching achievements
+// Strict integrity invariant: Badges count cannot exist without matching achievements.
+// Fresh accounts with 0 achievements and 0 skills heal orphan ghost numbers to 0.
 watch(
-  () => profileData.achievements?.length || 0,
-  (len) => {
-    if (len === 0) {
+  [() => profileData.achievements?.length || 0, () => profileData.skills?.length || 0],
+  ([achLen, skillLen]) => {
+    if (achLen === 0) {
       profileData.stats.badges = 0;
+    }
+    if (achLen === 0 && skillLen === 0 && !profileData.stats?.hasVerifiedMastery) {
       profileData.stats.mastered = 0;
     }
   },
@@ -526,9 +540,9 @@ watch(() => authStore.currentUser, async (newUser) => {
           profileData.stats.mastered = res.data.stats.mastered || serverAchievements.length;
           profileData.stats.projects = res.data.stats.projects || 0;
         } else {
-          profileData.stats.mastered = 0;
           profileData.stats.badges = 0;
-          profileData.stats.projects = 0;
+          profileData.stats.mastered = (res.data.skills?.length || 0) > 0 ? (res.data.stats.mastered || 0) : 0;
+          profileData.stats.projects = res.data.stats.projects || 0;
         }
       }
     } catch (_) {}
@@ -582,11 +596,10 @@ onMounted(async () => {
           profileData.stats.badges = serverAchievements.length;
           profileData.stats.mastered = res.data.stats.mastered || serverAchievements.length;
           profileData.stats.projects = res.data.stats.projects || 0;
-        } else if (profileData.achievements.length === 0) {
-          // Fresh account integrity: force 0 mastered, 0 badges, 0 projects
-          profileData.stats.mastered = 0;
+        } else {
           profileData.stats.badges = 0;
-          profileData.stats.projects = 0;
+          profileData.stats.mastered = (res.data.skills?.length || 0) > 0 ? (res.data.stats.mastered || 0) : 0;
+          profileData.stats.projects = res.data.stats.projects || 0;
         }
       }
     }
