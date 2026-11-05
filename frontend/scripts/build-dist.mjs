@@ -122,10 +122,10 @@ try {
   // non-fatal
 }
 
-// Bundle Vercel Serverless Function api/chat.js from frontend/api/chat.ts
+// Bundle Vercel Serverless Function api/chat.js from frontend/server/chat.ts
 try {
   const projectRoot = path.resolve(rootDir, '..');
-  const chatSrc = path.join(rootDir, 'api', 'chat.ts');
+  const chatSrc = path.join(rootDir, 'server', 'chat.ts');
   const apiOutDir = path.join(projectRoot, 'api');
   const prebundledChat = path.join(apiOutDir, 'chat.js');
 

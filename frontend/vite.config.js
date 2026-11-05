@@ -22,7 +22,7 @@ function chatApiPlugin() {
 
                     if (req.method === 'GET') {
                         try {
-                            const mod = await server.ssrLoadModule('./api/chat.ts');
+                            const mod = await server.ssrLoadModule('./server/chat.ts');
                             const webRes = await mod.GET();
                             res.statusCode = webRes.status || 200;
                             webRes.headers.forEach((val, key) => {
@@ -47,7 +47,7 @@ function chatApiPlugin() {
                             }
                             const json = body ? JSON.parse(body) : {};
 
-                            const mod = await server.ssrLoadModule('./api/chat.ts');
+                            const mod = await server.ssrLoadModule('./server/chat.ts');
                             const webReq = new Request('http://127.0.0.1:5173/api/chat', {
                                 method: 'POST',
                                 headers: {

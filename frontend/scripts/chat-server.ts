@@ -15,7 +15,7 @@ for (const p of envCandidates) {
 }
 dotenv.config();
 
-import { POST, GET } from '../api/chat';
+import { POST, GET } from '../server/chat';
 
 const PORT = process.env.CHAT_PORT || 5173;
 

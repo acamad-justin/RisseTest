@@ -108632,7 +108632,7 @@ var init_dist = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region api/chat.ts
+//#region server/chat.ts
 var envCandidates = [
 	path.resolve(process.cwd(), ".env.local"),
 	path.resolve(process.cwd(), "frontend/.env.local"),

@@ -6,7 +6,7 @@ import path from 'node:path';
 describe('Production API /api/chat Fix & Regression Suite', () => {
   // 1. GET /api/chat health response
   test('1. GET /api/chat returns lightweight health check confirming runtime, supabase, and gemini status', async () => {
-    const mod = await import('../frontend/api/chat.ts');
+    const mod = await import('../frontend/server/chat.ts');
     assert.equal(typeof mod.GET, 'function', 'GET export must exist');
 
     const res = await mod.GET();
@@ -30,7 +30,7 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
 
   // 2. POST /api/chat handles valid requests
   test('2. POST /api/chat processes valid request payload and streams response', async () => {
-    const mod = await import('../frontend/api/chat.ts');
+    const mod = await import('../frontend/server/chat.ts');
     const req = new Request('http://localhost:3000/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -70,7 +70,7 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
 
   // 4. Invalid request body handling
   test('4. Empty or malformed request body is handled safely without unhandled server crash', async () => {
-    const mod = await import('../frontend/api/chat.ts');
+    const mod = await import('../frontend/server/chat.ts');
     const req = new Request('http://localhost:3000/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,7 +84,7 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
 
   // 5. Missing Gemini credentials handling
   test('5. Missing Gemini API credentials return 500 JSON rather than crashing serverless process', async () => {
-    const mod = await import('../frontend/api/chat.ts');
+    const mod = await import('../frontend/server/chat.ts');
     const originalKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     const origGeminiKey = process.env.GEMINI_API_KEY;
     const origGoogleKey = process.env.GOOGLE_API_KEY;
@@ -113,7 +113,7 @@ describe('Production API /api/chat Fix & Regression Suite', () => {
 
   // 6. Supabase retrieval failure falls back gracefully
   test('6. Supabase retrieval failure does not break primary chat response', async () => {
-    const mod = await import('../frontend/api/chat.ts');
+    const mod = await import('../frontend/server/chat.ts');
     const originalUrl = process.env.SUPABASE_URL;
 
     try {
