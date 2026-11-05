@@ -108645,7 +108645,6 @@ for (const p of envCandidates) try {
 	if (fs.existsSync(p)) import_dist.default.config({ path: p });
 } catch (_) {}
 import_dist.default.config();
-var maxDuration = 30;
 async function getAiSdk() {
 	const { createGoogleGenerativeAI } = await Promise.resolve().then(() => (init_dist$2(), dist_exports$1));
 	const { streamText, convertToModelMessages } = await Promise.resolve().then(() => (init_dist(), dist_exports));
@@ -109060,4 +109059,4 @@ async function OPTIONS() {
 	});
 }
 //#endregion
-export { GET, OPTIONS, POST, handler as default, maxDuration };
+export { GET, OPTIONS, POST, handler as default };

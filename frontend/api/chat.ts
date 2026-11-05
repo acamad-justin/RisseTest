@@ -21,7 +21,6 @@ dotenv.config();
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
-export const maxDuration = 30;
 
 // Dynamic import prevents Vercel ERR_REQUIRE_ESM crash
 async function getAiSdk() {

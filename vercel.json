@@ -3,11 +3,6 @@
   "installCommand": "npm install && npm --prefix frontend install",
   "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "dist",
-  "functions": {
-    "api/*": {
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
     {
       "source": "/((?!api/).*)",
