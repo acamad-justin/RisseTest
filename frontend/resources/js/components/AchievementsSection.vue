@@ -173,5 +173,6 @@ defineEmits(['select-badge']);
   padding: 8px 0;
   font-style: italic;
   line-height: 1.4;
+  margin-left: 18px;
 }
 </style>
