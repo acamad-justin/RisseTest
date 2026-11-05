@@ -761,13 +761,14 @@ async function sendMessage() {
     const authToken = await authStore.getAuthToken?.();
     const chatHeaders = {
       'Content-Type': 'application/json',
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(authToken && authToken.length < 8192 ? { Authorization: `Bearer ${authToken}` } : {}),
     };
 
     try {
       response = await fetch('/api/chat', {
         method: 'POST',
         headers: chatHeaders,
+        credentials: 'omit',
         body: JSON.stringify(payload),
       });
     } catch (fetchErr) {
@@ -777,6 +778,7 @@ async function sendMessage() {
         response = await fetch('http://127.0.0.1:5173/api/chat', {
           method: 'POST',
           headers: chatHeaders,
+          credentials: 'omit',
           body: JSON.stringify(payload),
         });
       } else {

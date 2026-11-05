@@ -108969,9 +108969,9 @@ async function handler(req, res) {
 		res.setHeader("X-Risse-Teaching-Mode", teachingDecision.teachingMode);
 		res.setHeader("X-Risse-Assistance-Level", String(teachingDecision.assistanceLevel));
 		res.setHeader("X-Risse-Tutoring-State", teachingDecision.tutoringState);
-		res.setHeader("X-Risse-Target-Concept", encodeURIComponent(teachingDecision.targetConcept));
+		res.setHeader("X-Risse-Target-Concept", encodeURIComponent((teachingDecision.targetConcept || "").slice(0, 100)));
 		res.setHeader("X-Risse-Safety", teachingDecision.requiresSafetyIntervention ? "CRITICAL_HAZARD" : "SAFE");
-		if (teachingDecision.learnerProfileSummary) res.setHeader("X-Risse-Learner-Memory", encodeURIComponent(teachingDecision.learnerProfileSummary));
+		if (teachingDecision.learnerProfileSummary) res.setHeader("X-Risse-Learner-Memory", encodeURIComponent((teachingDecision.learnerProfileSummary || "").slice(0, 500)));
 		streamResult.pipeTextStreamToResponse(res);
 	} catch (error) {
 		console.error("[API /api/chat Serverless Error]:", {
@@ -108979,7 +108979,7 @@ async function handler(req, res) {
 			stage: error?.stage,
 			stack: error?.stack
 		});
-		if (!res.headersSent) res.status(500).json({ error: "Chat generation failed. Please try again." });
+		if (!res.headersSent) res.status(500).json({ error: error?.message || "Chat generation failed. Please try again." });
 	}
 }
 async function GET(req) {
@@ -109029,9 +109029,9 @@ async function POST(req) {
 			"X-Risse-Teaching-Mode": teachingDecision.teachingMode,
 			"X-Risse-Assistance-Level": String(teachingDecision.assistanceLevel),
 			"X-Risse-Tutoring-State": teachingDecision.tutoringState,
-			"X-Risse-Target-Concept": encodeURIComponent(teachingDecision.targetConcept),
+			"X-Risse-Target-Concept": encodeURIComponent((teachingDecision.targetConcept || "").slice(0, 100)),
 			"X-Risse-Safety": teachingDecision.requiresSafetyIntervention ? "CRITICAL_HAZARD" : "SAFE",
-			...teachingDecision.learnerProfileSummary ? { "X-Risse-Learner-Memory": encodeURIComponent(teachingDecision.learnerProfileSummary) } : {}
+			...teachingDecision.learnerProfileSummary ? { "X-Risse-Learner-Memory": encodeURIComponent((teachingDecision.learnerProfileSummary || "").slice(0, 500)) } : {}
 		} });
 	} catch (error) {
 		console.error("[API /api/chat Web Error]:", {
@@ -109039,7 +109039,7 @@ async function POST(req) {
 			stage: error?.stage,
 			stack: error?.stack
 		});
-		return new Response(JSON.stringify({ error: "Chat generation failed. Please try again." }), {
+		return new Response(JSON.stringify({ error: error?.message || "Chat generation failed. Please try again." }), {
 			status: 500,
 			headers: {
 				"Content-Type": "application/json",

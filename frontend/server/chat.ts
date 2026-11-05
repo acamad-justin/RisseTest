@@ -460,10 +460,10 @@ export default async function handler(req: any, res?: any) {
     res.setHeader('X-Risse-Teaching-Mode', teachingDecision.teachingMode);
     res.setHeader('X-Risse-Assistance-Level', String(teachingDecision.assistanceLevel));
     res.setHeader('X-Risse-Tutoring-State', teachingDecision.tutoringState);
-    res.setHeader('X-Risse-Target-Concept', encodeURIComponent(teachingDecision.targetConcept));
+    res.setHeader('X-Risse-Target-Concept', encodeURIComponent((teachingDecision.targetConcept || '').slice(0, 100)));
     res.setHeader('X-Risse-Safety', teachingDecision.requiresSafetyIntervention ? 'CRITICAL_HAZARD' : 'SAFE');
     if (teachingDecision.learnerProfileSummary) {
-      res.setHeader('X-Risse-Learner-Memory', encodeURIComponent(teachingDecision.learnerProfileSummary));
+      res.setHeader('X-Risse-Learner-Memory', encodeURIComponent((teachingDecision.learnerProfileSummary || '').slice(0, 500)));
     }
     streamResult.pipeTextStreamToResponse(res);
   } catch (error: any) {
@@ -474,7 +474,7 @@ export default async function handler(req: any, res?: any) {
     });
     if (!res.headersSent) {
       res.status(500).json({
-        error: 'Chat generation failed. Please try again.',
+        error: error?.message || 'Chat generation failed. Please try again.',
       });
     }
   }
@@ -536,10 +536,10 @@ export async function POST(req: Request) {
         'X-Risse-Teaching-Mode': teachingDecision.teachingMode,
         'X-Risse-Assistance-Level': String(teachingDecision.assistanceLevel),
         'X-Risse-Tutoring-State': teachingDecision.tutoringState,
-        'X-Risse-Target-Concept': encodeURIComponent(teachingDecision.targetConcept),
+        'X-Risse-Target-Concept': encodeURIComponent((teachingDecision.targetConcept || '').slice(0, 100)),
         'X-Risse-Safety': teachingDecision.requiresSafetyIntervention ? 'CRITICAL_HAZARD' : 'SAFE',
         ...(teachingDecision.learnerProfileSummary
-          ? { 'X-Risse-Learner-Memory': encodeURIComponent(teachingDecision.learnerProfileSummary) }
+          ? { 'X-Risse-Learner-Memory': encodeURIComponent((teachingDecision.learnerProfileSummary || '').slice(0, 500)) }
           : {}),
       },
     });
@@ -551,7 +551,7 @@ export async function POST(req: Request) {
     });
     return new Response(
       JSON.stringify({
-        error: 'Chat generation failed. Please try again.',
+        error: error?.message || 'Chat generation failed. Please try again.',
       }),
       {
         status: 500,

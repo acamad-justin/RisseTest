@@ -76,6 +76,21 @@ async function syncSession(session) {
     const role = await fetchUserRole(session.user.id);
     userRole.value = role;
     currentUser.value = mapSupabaseUserToProfile(session.user, role);
+
+    // Auto-heal bloated session JWT: If user_metadata contains a heavy base64 data URL,
+    // preserve it in localStorage and purge from Supabase user_metadata so the JWT
+    // stays small (<2KB) and never triggers Vercel HTTP 494 (Request Header Too Large).
+    if (session.user.user_metadata?.avatar && typeof session.user.user_metadata.avatar === 'string' && session.user.user_metadata.avatar.startsWith('data:')) {
+      const email = session.user.email || session.user.id;
+      try {
+        const localKey = `risse_profile_${email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')}`;
+        const existing = JSON.parse(localStorage.getItem(localKey) || '{}');
+        if (!existing.user) existing.user = {};
+        if (!existing.user.avatar) existing.user.avatar = session.user.user_metadata.avatar;
+        localStorage.setItem(localKey, JSON.stringify(existing));
+      } catch (_) {}
+      supabase.auth.updateUser({ data: { avatar: null } }).catch(() => {});
+    }
   } else {
     currentUser.value = null;
     userRole.value = 'student';
@@ -233,7 +248,14 @@ async function updateProfile(updatedData) {
     if (updatedData.name) updates.full_name = updatedData.name.toUpperCase();
     if (updatedData.school !== undefined) updates.school = updatedData.school;
     if (updatedData.grade !== undefined) updates.grade = updatedData.grade;
-    if (updatedData.avatar !== undefined) updates.avatar = updatedData.avatar;
+    if (updatedData.avatar !== undefined) {
+      // Do not store base64 data URLs in Supabase Auth user_metadata to keep JWT header under 2KB
+      if (typeof updatedData.avatar === 'string' && updatedData.avatar.startsWith('data:')) {
+        updates.avatar = null;
+      } else {
+        updates.avatar = updatedData.avatar;
+      }
+    }
 
     const { error } = await supabase.auth.updateUser({
       data: updates,
@@ -292,7 +314,18 @@ async function getAuthToken() {
       }
     }
 
-    return session?.access_token || null;
+    const token = session?.access_token || null;
+    // Guard against Vercel HTTP 494 (Request Header Too Large):
+    // Standard Vercel limit is 16KB per header. If token exceeds 8KB, omit it and heal user metadata.
+    if (token && token.length > 8192) {
+      console.warn('[AuthStore] JWT access_token is unusually large (>8KB). Suppressing to prevent HTTP 494.');
+      if (session?.user?.user_metadata?.avatar?.startsWith('data:')) {
+        supabase.auth.updateUser({ data: { avatar: null } }).catch(() => {});
+      }
+      return null;
+    }
+
+    return token;
   } catch (_) {
     return null;
   }
