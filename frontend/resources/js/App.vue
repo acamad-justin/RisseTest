@@ -843,8 +843,9 @@ function showToast(msg) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 32px;
   margin-bottom: 25px;
+  margin-left: 18px;
   flex-wrap: wrap;
   gap: 12px;
 }
