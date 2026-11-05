@@ -152,6 +152,13 @@ try {
       },
     });
     console.log('[build-dist] ✓ Successfully bundled serverless function api/chat.js.');
+
+    // Mirror chat.js to frontend/api/chat.js if running in frontend context
+    const frontendApiChat = path.join(rootDir, 'api', 'chat.js');
+    if (fs.existsSync(prebundledChat) && (!fs.existsSync(frontendApiChat) || fs.statSync(prebundledChat).mtimeMs > fs.statSync(frontendApiChat).mtimeMs)) {
+      fs.copyFileSync(prebundledChat, frontendApiChat);
+      console.log('[build-dist] ✓ Mirrored prebundled function to frontend/api/chat.js.');
+    }
   }
 } catch (e) {
   console.error('[build-dist] Error bundling serverless function api/chat.js:', e);

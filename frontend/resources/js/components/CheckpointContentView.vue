@@ -764,11 +764,25 @@ async function sendMessage() {
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     };
 
-    response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: chatHeaders,
-      body: JSON.stringify(payload),
-    });
+    try {
+      response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: chatHeaders,
+        body: JSON.stringify(payload),
+      });
+    } catch (fetchErr) {
+      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      if (isLocal && window.location.port !== '5173') {
+        console.warn('[Checkpoint] Primary /api/chat unreachable, falling back to local port 5173...');
+        response = await fetch('http://127.0.0.1:5173/api/chat', {
+          method: 'POST',
+          headers: chatHeaders,
+          body: JSON.stringify(payload),
+        });
+      } else {
+        throw fetchErr;
+      }
+    }
 
     if (!response.ok) {
       let finalErrMsg = `Chat API responded with ${response.status}`;

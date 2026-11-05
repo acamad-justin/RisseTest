@@ -298,11 +298,26 @@ async function generateAiReply() {
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     }
 
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: chatHeaders,
-      body: JSON.stringify(payload),
-    })
+    let response
+    try {
+      response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: chatHeaders,
+        body: JSON.stringify(payload),
+      })
+    } catch (fetchErr) {
+      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      if (isLocal && window.location.port !== '5173') {
+        console.warn('[Conversation] Primary /api/chat unreachable, falling back to local port 5173...')
+        response = await fetch('http://127.0.0.1:5173/api/chat', {
+          method: 'POST',
+          headers: chatHeaders,
+          body: JSON.stringify(payload),
+        })
+      } else {
+        throw fetchErr
+      }
+    }
 
     if (!response.ok || !response.body) {
       let finalErrMsg = `Chat API error (${response.status})`
