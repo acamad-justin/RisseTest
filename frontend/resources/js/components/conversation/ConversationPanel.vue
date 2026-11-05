@@ -305,7 +305,17 @@ async function generateAiReply() {
     })
 
     if (!response.ok || !response.body) {
-      throw new Error(`Chat API error (${response.status})`)
+      let finalErrMsg = `Chat API error (${response.status})`
+      try {
+        const text = await response.text()
+        try {
+          const parsed = JSON.parse(text)
+          if (parsed.error) finalErrMsg = parsed.error
+        } catch (_) {
+          if (text && text.trim().length > 0 && text.length < 300) finalErrMsg = text.trim()
+        }
+      } catch (_) {}
+      throw new Error(finalErrMsg)
     }
 
     const reader = response.body.getReader()
@@ -336,11 +346,11 @@ async function generateAiReply() {
   } catch (err) {
     console.error('Notebooks Chatbot error:', err)
     if (!aiMessage.content) {
-      aiMessage.content = "I'm having trouble connecting to the AI assistant right now. Please ensure the dev server is active and try again."
+      aiMessage.content = `⚠️ AI Service Error: ${err?.message || 'Connection error'}`
     }
   } finally {
     if (!aiMessage.content || !aiMessage.content.trim()) {
-      aiMessage.content = "I'm having trouble connecting to the AI assistant right now. Please ensure the dev server is active and try again."
+      aiMessage.content = "⚠️ AI Service Error: The AI service returned an empty response. Please verify that the server is running and try again."
     }
     aiMessage.isStreaming = false
     isAiStreaming.value = false
