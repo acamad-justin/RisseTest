@@ -1,10 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install --include=dev && npm --prefix frontend install --include=dev",
+  "installCommand": "npm install && npm --prefix frontend install",
   "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/*.js": {
+    "api/*": {
       "maxDuration": 30
     }
   },

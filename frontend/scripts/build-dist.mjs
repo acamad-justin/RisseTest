@@ -124,12 +124,15 @@ try {
 
 // Bundle Vercel Serverless Function api/chat.js from frontend/api/chat.ts
 try {
-  const { build: viteBuild } = await import('vite');
   const projectRoot = path.resolve(rootDir, '..');
   const chatSrc = path.join(rootDir, 'api', 'chat.ts');
   const apiOutDir = path.join(projectRoot, 'api');
+  const prebundledChat = path.join(apiOutDir, 'chat.js');
 
-  if (fs.existsSync(chatSrc)) {
+  if (process.env.VERCEL && fs.existsSync(prebundledChat)) {
+    console.log('[build-dist] ✓ Using committed pre-bundled serverless function api/chat.js on Vercel.');
+  } else if (fs.existsSync(chatSrc)) {
+    const { build: viteBuild } = await import('vite');
     await viteBuild({
       root: projectRoot,
       ssr: {
