@@ -178,7 +178,7 @@ function onPractice(id) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 32px 32px 0 36px;
+  padding: 36px 32px 0 40px;
   flex-shrink: 0;
 }
 

@@ -774,7 +774,8 @@ async function handleModuleClick(module) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 0 36px 14px 30px;
+  padding: 36px 32px 20px 40px;
+  margin: 0;
   flex-shrink: 0;
 }
 
@@ -784,6 +785,7 @@ async function handleModuleClick(module) {
   font-weight: 400;
   color: #181d24;
   letter-spacing: -0.5px;
+  line-height: 100%;
   margin: 0;
 }
 
@@ -849,7 +851,7 @@ async function handleModuleClick(module) {
   position: relative;
   display: flex;
   align-items: center;
-  margin: 0 36px 18px 30px;
+  margin: 0 32px 18px 40px;
   flex-shrink: 0;
   width: auto;
   border-radius: 20px;
