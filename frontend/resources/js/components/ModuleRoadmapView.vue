@@ -257,6 +257,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import axios from 'axios';
+import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
+import { useAuthStore } from '../stores/authStore.js';
 
 const props = defineProps({
   moduleData: {
@@ -276,6 +278,7 @@ const props = defineProps({
 
 const emit = defineEmits(['back', 'select-checkpoint', 'award-badge', 'notify', 'update-module']);
 
+const authStore = useAuthStore();
 const isStarred = ref(false);
 const currentStep = ref(props.moduleData.currentStep || 0);
 
@@ -297,6 +300,34 @@ const checkpoints = computed(() => {
       { id: 2, name: 'Rapid Prototyping Trial', x: 520, y: 440, labelPos: 'top', desc: 'Deploy quick sensor and actuator loops' },
       { id: 3, name: 'Final Calibration & Mastery', x: 800, y: 180, labelPos: 'left', desc: 'Verify full cycle and unlock Speed Learner achievement' },
     ];
+  }
+
+  // Dynamic checkpoints provided by authoritative database or teacher curriculum
+  if (props.moduleData?.checkpoints && Array.isArray(props.moduleData.checkpoints) && props.moduleData.checkpoints.length > 0) {
+    const total = props.moduleData.checkpoints.length;
+    const predefinedPositions = [
+      { x: 260, y: 840, labelPos: 'right' },
+      { x: 500, y: 720, labelPos: 'left' },
+      { x: 740, y: 580, labelPos: 'top' },
+      { x: 340, y: 440, labelPos: 'bottom' },
+      { x: 620, y: 320, labelPos: 'right' },
+      { x: 440, y: 180, labelPos: 'left' },
+      { x: 760, y: 120, labelPos: 'bottom' },
+      { x: 520, y: 80, labelPos: 'top' },
+    ];
+    return props.moduleData.checkpoints.map((cp, idx) => {
+      const pos = predefinedPositions[idx % predefinedPositions.length];
+      const yDynamic = total > 1 ? Math.round(840 - (idx / (total - 1)) * 700) : 500;
+      return {
+        id: cp.id || idx + 1,
+        name: cp.name || cp.title || `Checkpoint ${idx + 1}`,
+        x: pos.x,
+        y: yDynamic,
+        labelPos: pos.labelPos,
+        desc: cp.description || cp.desc || '',
+        type: cp.type || 'concept',
+      };
+    });
   }
 
   // Default checkpoints for other modules
@@ -391,7 +422,7 @@ async function advanceStep() {
 
   emit('notify', `Step ${nextStep} completed! Constellation illuminated.`);
 
-  // Persist to backend
+  // Persist to backend and Supabase
   try {
     await axios.post('/api/modules/progress', {
       moduleId: props.moduleData.id,
@@ -400,6 +431,19 @@ async function advanceStep() {
   } catch (e) {
     console.log('Saved step locally');
   }
+
+  try {
+    const studentId = authStore?.currentUser?.id;
+    if (studentId) {
+      const activeCp = checkpoints.value[Math.min(nextStep - 1, checkpoints.value.length - 1)];
+      await StudentSyncService.recordCheckpointProgress(
+        studentId,
+        props.moduleData.id,
+        String(activeCp?.id || nextStep),
+        progressPercent.value
+      );
+    }
+  } catch (_) {}
 
   // If completed 100%, award badge
   if (isFinished) {
@@ -425,6 +469,18 @@ async function resetProgress() {
   } catch (e) {
     console.log('Reset locally');
   }
+
+  try {
+    const studentId = authStore?.currentUser?.id;
+    if (studentId) {
+      await StudentSyncService.recordCheckpointProgress(
+        studentId,
+        props.moduleData.id,
+        String(checkpoints.value[0]?.id || 'start'),
+        0
+      );
+    }
+  } catch (_) {}
 }
 
 // Trigger Badge Modal Celebration

@@ -294,7 +294,6 @@ function onDeleteProject(id) { store.deleteProject(id) }
           type="search"
           placeholder="Search logs and projects…"
           aria-label="Search notebooks"
-          autofocus
         />
       </div>
     </Transition>

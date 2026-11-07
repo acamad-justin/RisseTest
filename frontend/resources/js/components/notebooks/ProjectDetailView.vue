@@ -100,7 +100,6 @@ function fmtDate(iso) {
               class="pdv__rename-input"
               type="text"
               aria-label="Rename project"
-              autofocus
               @keydown.enter="submitRenameProject"
               @keydown.esc="renamingProject = false"
             />

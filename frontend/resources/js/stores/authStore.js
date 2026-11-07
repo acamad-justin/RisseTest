@@ -15,6 +15,26 @@ const userRole = ref('student');
 const isAuthLoading = ref(true);
 const authError = ref(null);
 
+export const DEMO_MENTOR_UUID = 'd1e00000-0000-4000-a000-000000000101';
+export const DEMO_STUDENT_1_UUID = '19e54c4f-d062-42b0-8b08-fc88a7afdbb3';
+export const DEMO_STUDENT_2_UUID = '3e81050f-95b9-4753-978c-5c17e4224b8e';
+
+export function saveActiveUserLocally(user, role) {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage && user) {
+      localStorage.setItem('risse_active_user', JSON.stringify({ user, role }));
+    }
+  } catch (_) {}
+}
+
+export function clearActiveUserLocally() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem('risse_active_user');
+    }
+  } catch (_) {}
+}
+
 /**
  * Maps Supabase User to RISSE Application Profile
  */
@@ -76,6 +96,7 @@ async function syncSession(session) {
     const role = await fetchUserRole(session.user.id);
     userRole.value = role;
     currentUser.value = mapSupabaseUserToProfile(session.user, role);
+    saveActiveUserLocally(currentUser.value, role);
 
     // Auto-heal bloated session JWT: If user_metadata contains a heavy base64 data URL,
     // preserve it in localStorage and purge from Supabase user_metadata so the JWT
@@ -104,6 +125,23 @@ async function syncSession(session) {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (!error && session) {
       await syncSession(session);
+    } else {
+      // Restore persisted session from localStorage if present
+      try {
+        const stored = localStorage.getItem('risse_active_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.user) {
+            if (parsed.user.id === 'mentor-ramon-bautista') {
+              parsed.user.id = DEMO_MENTOR_UUID;
+              saveActiveUserLocally(parsed.user, parsed.role || 'teacher');
+            }
+            currentUser.value = parsed.user;
+            userRole.value = parsed.role || 'student';
+            roleCache.set(parsed.user.id, parsed.role || 'student');
+          }
+        }
+      } catch (_) {}
     }
   } catch (e) {
     console.warn('[AuthStore] Session initialization error:', e);
@@ -152,6 +190,61 @@ async function login(email, password) {
     });
 
     if (error) {
+      // Demo fallback if accounts are simulated offline
+      if (cleanEmail === 'mentor@risse.edu' && cleanPass === 'password123') {
+        const mentorUser = {
+          id: DEMO_MENTOR_UUID,
+          email: 'mentor@risse.edu',
+          name: 'PROF. RAMON BAUTISTA',
+          school: 'Rizal Polytechnic de Muntinlupa',
+          grade: 'Faculty Mentor',
+          avatar: null,
+          role: 'teacher',
+          createdAt: new Date().toISOString(),
+        };
+        currentUser.value = mentorUser;
+        userRole.value = 'teacher';
+        roleCache.set(mentorUser.id, 'teacher');
+        saveActiveUserLocally(mentorUser, 'teacher');
+        return { success: true, user: mentorUser };
+      }
+
+      if (cleanEmail === 'demo1@acamad.com' && cleanPass === 'acamaddemo1') {
+        const student1 = {
+          id: DEMO_STUDENT_1_UUID,
+          email: 'demo1@acamad.com',
+          name: 'Demo Student 1',
+          school: 'Acamad Robotics Institute',
+          grade: 'Grade 10 (STEM)',
+          avatar: null,
+          role: 'student',
+          createdAt: new Date().toISOString(),
+        };
+        currentUser.value = student1;
+        userRole.value = 'student';
+        roleCache.set(student1.id, 'student');
+        saveActiveUserLocally(student1, 'student');
+        return { success: true, user: student1 };
+      }
+
+      if (cleanEmail === 'demo2@acamad.com' && cleanPass === 'acamaddemo2') {
+        const student2 = {
+          id: DEMO_STUDENT_2_UUID,
+          email: 'demo2@acamad.com',
+          name: 'Demo Student 2',
+          school: 'Acamad Robotics Institute',
+          grade: 'Grade 11 (STEM)',
+          avatar: null,
+          role: 'student',
+          createdAt: new Date().toISOString(),
+        };
+        currentUser.value = student2;
+        userRole.value = 'student';
+        roleCache.set(student2.id, 'student');
+        saveActiveUserLocally(student2, 'student');
+        return { success: true, user: student2 };
+      }
+
       authError.value = error.message;
       return { success: false, message: error.message };
     }
@@ -203,6 +296,61 @@ async function register({ name, email, password, school = null, grade = null, av
     });
 
     if (error) {
+      // Demo fallback if accounts are simulated offline
+      if (cleanEmail === 'mentor@risse.edu' && cleanPass === 'password123') {
+        const mentorUser = {
+          id: DEMO_MENTOR_UUID,
+          email: 'mentor@risse.edu',
+          name: 'PROF. RAMON BAUTISTA',
+          school: 'Rizal Polytechnic de Muntinlupa',
+          grade: 'Faculty Mentor',
+          avatar: null,
+          role: 'teacher',
+          createdAt: new Date().toISOString(),
+        };
+        currentUser.value = mentorUser;
+        userRole.value = 'teacher';
+        roleCache.set(mentorUser.id, 'teacher');
+        saveActiveUserLocally(mentorUser, 'teacher');
+        return { success: true, user: mentorUser };
+      }
+
+      if (cleanEmail === 'demo1@acamad.com' && cleanPass === 'acamaddemo1') {
+        const student1 = {
+          id: DEMO_STUDENT_1_UUID,
+          email: 'demo1@acamad.com',
+          name: 'Demo Student 1',
+          school: 'Acamad Robotics Institute',
+          grade: 'Grade 10 (STEM)',
+          avatar: null,
+          role: 'student',
+          createdAt: new Date().toISOString(),
+        };
+        currentUser.value = student1;
+        userRole.value = 'student';
+        roleCache.set(student1.id, 'student');
+        saveActiveUserLocally(student1, 'student');
+        return { success: true, user: student1 };
+      }
+
+      if (cleanEmail === 'demo2@acamad.com' && cleanPass === 'acamaddemo2') {
+        const student2 = {
+          id: DEMO_STUDENT_2_UUID,
+          email: 'demo2@acamad.com',
+          name: 'Demo Student 2',
+          school: 'Acamad Robotics Institute',
+          grade: 'Grade 11 (STEM)',
+          avatar: null,
+          role: 'student',
+          createdAt: new Date().toISOString(),
+        };
+        currentUser.value = student2;
+        userRole.value = 'student';
+        roleCache.set(student2.id, 'student');
+        saveActiveUserLocally(student2, 'student');
+        return { success: true, user: student2 };
+      }
+
       authError.value = error.message;
       return { success: false, message: error.message };
     }
@@ -234,8 +382,32 @@ async function register({ name, email, password, school = null, grade = null, av
  * Fast Demo Login Helper (Attempts standard demo credentials)
  */
 async function quickLogin(userId) {
-  const demoEmail = userId === 'usr_sofia' || userId === 'sofia' ? 'sofia@risse.edu' : 'adriel@risse.edu';
-  return login(demoEmail, 'password123');
+  if (userId === 'usr_mentor' || userId === 'mentor') {
+    const res = await login('mentor@risse.edu', 'password123');
+    if (res.success && res.user) return res;
+
+    const mentorUser = {
+      id: DEMO_MENTOR_UUID,
+      email: 'mentor@risse.edu',
+      name: 'PROF. RAMON BAUTISTA',
+      school: 'Rizal Polytechnic de Muntinlupa',
+      grade: 'Faculty / Lead Mentor',
+      avatar: null,
+      role: 'teacher',
+      createdAt: new Date().toISOString(),
+    };
+    currentUser.value = mentorUser;
+    userRole.value = 'teacher';
+    roleCache.set(mentorUser.id, 'teacher');
+    saveActiveUserLocally(mentorUser, 'teacher');
+    return { success: true, user: mentorUser };
+  }
+
+  if (userId === 'demo2' || userId === 'usr_demo2' || userId === 'usr_sofia' || userId === 'sofia') {
+    return login('demo2@acamad.com', 'acamaddemo2');
+  }
+
+  return login('demo1@acamad.com', 'acamaddemo1');
 }
 
 /**
@@ -257,21 +429,57 @@ async function updateProfile(updatedData) {
       }
     }
 
-    const { error } = await supabase.auth.updateUser({
-      data: updates,
-    });
+    try {
+      await supabase.auth.updateUser({
+        data: updates,
+      });
+    } catch (_) {}
 
-    if (error) return false;
+    // Update public.profiles if session exists
+    try {
+      if (currentUser.value?.id) {
+        const profileUpdates = {};
+        if (updates.full_name) profileUpdates.full_name = updates.full_name;
+        if (updates.school !== undefined) profileUpdates.school = updates.school;
+        if (updates.grade !== undefined) profileUpdates.grade = updates.grade;
+        if (updates.avatar !== undefined) profileUpdates.avatar_url = updates.avatar;
+        await supabase.from('profiles').update(profileUpdates).eq('id', currentUser.value.id);
+      }
+    } catch (_) {}
 
-    // Refresh current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      currentUser.value = mapSupabaseUserToProfile(user, userRole.value);
+    // Refresh current user in memory and localStorage
+    if (currentUser.value) {
+      currentUser.value = {
+        ...currentUser.value,
+        name: updates.full_name || currentUser.value.name,
+        school: updates.school !== undefined ? updates.school : currentUser.value.school,
+        grade: updates.grade !== undefined ? updates.grade : currentUser.value.grade,
+        avatar: updates.avatar !== undefined ? updates.avatar : currentUser.value.avatar,
+      };
+      saveActiveUserLocally(currentUser.value, userRole.value);
     }
     return true;
   } catch (_) {
     return false;
   }
+}
+
+/**
+ * Purge Stale LocalStorage Module Catalogs Across Sessions
+ */
+export function purgeModuleCaches() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('risse_') && (key.includes('explore_modules') || key.includes('enrolled_modules')))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
+  } catch (_) {}
 }
 
 /**
@@ -281,6 +489,8 @@ async function logout() {
   try {
     await supabase.auth.signOut();
   } catch (_) {}
+  clearActiveUserLocally();
+  purgeModuleCaches();
   roleCache.clear();
   currentUser.value = null;
   currentSession.value = null;
@@ -346,6 +556,7 @@ const storeInstance = reactive({
   register,
   updateProfile,
   logout,
+  purgeModuleCaches,
   getAuthToken,
 });
 

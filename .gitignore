@@ -7,7 +7,6 @@ vendor/
 **/public/hot
 **/public/storage
 dist/
-changes/
 
 # Environment & Sensitive configs
 .env

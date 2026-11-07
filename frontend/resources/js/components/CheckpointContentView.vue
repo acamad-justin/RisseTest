@@ -269,6 +269,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore.js';
+import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
 
 const authStore = useAuthStore();
 
@@ -669,6 +670,7 @@ async function handleCompleteCheckpoint() {
   const nextStep = currentStep + 1;
   const totalSteps = props.moduleData?.totalSteps || 3;
   const isLast = nextStep >= totalSteps;
+  const progressPercent = Math.min(100, Math.round((nextStep / totalSteps) * 100));
 
   emit('notify', `Marked "${props.checkpointTitle}" as completed!`);
 
@@ -676,6 +678,19 @@ async function handleCompleteCheckpoint() {
     const modId = props.moduleData?.id || 999;
     await axios.post('/api/modules/progress', { moduleId: modId, step: nextStep });
   } catch (e) {}
+
+  try {
+    const studentId = authStore?.currentUser?.id;
+    const modId = props.moduleData?.id || 999;
+    if (studentId) {
+      await StudentSyncService.recordCheckpointProgress(
+        studentId,
+        modId,
+        props.checkpointTitle || 'Checkpoint',
+        progressPercent
+      );
+    }
+  } catch (_) {}
 
   emit('complete-checkpoint', {
     checkpoint: props.checkpointTitle,

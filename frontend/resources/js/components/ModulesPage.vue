@@ -57,8 +57,7 @@
           <div class="empty-enrolled-content">
             <h3 class="empty-enrolled-title">No Enrolled Modules Yet</h3>
             <p class="empty-enrolled-text">
-              Browse the catalog below and click <strong>Enroll</strong> on the 
-              <span class="highlight-orange">Test Module</span> to test instant progress from 0%, dynamic star chart illumination, and achievement unlocks!
+              Browse the catalog below and click <strong>Enroll</strong> on any available module to begin learning, track checkpoints, and unlock achievements!
             </p>
           </div>
         </div>
@@ -182,7 +181,6 @@
             type="search"
             class="explore-search-input"
             placeholder="Search modules..."
-            autofocus
           />
         </div>
 
@@ -220,10 +218,88 @@
       </div>
     </div>
 
+    <!-- Catalog Filter Tabs (All, Assigned Class Courses, Foundation) -->
+    <div class="catalog-filter-bar">
+      <button 
+        type="button" 
+        class="filter-pill-btn" 
+        :class="{ 'is-active': activeCatalogFilter === 'all' }"
+        @click="activeCatalogFilter = 'all'"
+      >
+        All Modules
+      </button>
+      <button 
+        type="button" 
+        class="filter-pill-btn" 
+        :class="{ 'is-active': activeCatalogFilter === 'class-courses' }"
+        @click="activeCatalogFilter = 'class-courses'"
+      >
+        Assigned Class Courses ({{ publishedClassModules.length }})
+      </button>
+      <button 
+        type="button" 
+        class="filter-pill-btn" 
+        :class="{ 'is-active': activeCatalogFilter === 'foundation' }"
+        @click="activeCatalogFilter = 'foundation'"
+      >
+        Foundation Curriculum
+      </button>
+    </div>
+
+    <!-- Empty State for Assigned Class Courses -->
+    <div v-if="activeCatalogFilter === 'class-courses' && publishedClassModules.length === 0" class="no-assigned-courses-card">
+      <div class="empty-badge">✦</div>
+      <div class="empty-info">
+        <h4 class="empty-title">No courses assigned yet</h4>
+        <p class="empty-desc">Your mentor's published courses will appear here once you are enrolled.</p>
+      </div>
+    </div>
+
     <!-- THE ONLY SCROLLABLE AREA: Explore Modules List -->
     <div class="explore-scroll-container" id="explore-scroll-area">
       <div class="explore-modules-list">
+        <!-- Loading State -->
+        <div v-if="isLoadingModules" class="modules-loading-card" id="modules-loading-indicator">
+          <div class="modules-spinner"></div>
+          <p class="modules-loading-text">Loading curriculum modules from database...</p>
+        </div>
+
+        <!-- Query Error State with Retry Button -->
+        <div v-else-if="loadError" class="modules-error-card" id="modules-error-indicator">
+          <div class="modules-error-icon">⚠️</div>
+          <div class="modules-error-body">
+            <h4 class="modules-error-title">Unable to Load Modules</h4>
+            <p class="modules-error-msg">{{ loadError }}</p>
+          </div>
+          <button type="button" class="btn-retry-load" id="btn-retry-modules" @click="loadModules">
+            Retry
+          </button>
+        </div>
+
+        <!-- Clean Database Empty State (When database legitimately returns 0 modules) -->
+        <div v-else-if="modulesList.length === 0" class="no-modules-placeholder clean-empty-state" id="empty-modules-catalog">
+          <div class="clean-empty-icon">✦</div>
+          <h4 class="clean-empty-title">No learning modules are available yet</h4>
+          <p class="clean-empty-desc">
+            {{
+              activeCatalogFilter === 'class-courses'
+                ? 'Your teacher has not published any courses for your class section yet.'
+                : activeCatalogFilter === 'foundation'
+                ? 'No platform curriculum modules are currently published in the database.'
+                : 'Your teacher has not published any courses for your class yet, and no platform curriculum modules are currently available.'
+            }}
+          </p>
+        </div>
+
+        <!-- Filter/Search Empty State (When modules exist in DB, but filtered out) -->
+        <div v-else-if="displayedModules.length === 0" class="no-modules-placeholder">
+          <p>No favorited or matching modules found.</p>
+          <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false; searchQuery = ''">Show All Modules</button>
+        </div>
+
+        <!-- Real Database-Driven Module Cards -->
         <article 
+          v-else
           v-for="module in displayedModules" 
           :key="module.id" 
           class="module-card-item"
@@ -286,11 +362,6 @@
             </div>
           </div>
         </article>
-
-        <div v-if="displayedModules.length === 0" class="no-modules-placeholder">
-          <p>No favorited or matching modules found.</p>
-          <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false; searchQuery = ''">Show All Modules</button>
-        </div>
       </div>
     </div>
 
@@ -386,6 +457,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore.js';
+import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
+import { supabase } from '../lib/supabaseClient.js';
 
 const emit = defineEmits(['notify', 'open-module']);
 const authStore = useAuthStore();
@@ -429,31 +502,15 @@ function getActiveUserEmail() {
   return '';
 }
 
-function getEnrolledStorageKey(email = getActiveUserEmail()) {
-  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
-  return safe ? `risse_email_${safe}_enrolled_modules` : 'risse_enrolled_modules';
-}
+const isValidUuid = (val) =>
+  typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
-function getInitialEnrolled() {
-  const email = getActiveUserEmail();
-  if (!email) return [];
-  try {
-    const userKey = getEnrolledStorageKey(email);
-    let raw = localStorage.getItem(userKey);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return [];
-}
-
-const enrolledList = ref(getInitialEnrolled());
-
-watch(enrolledList, (val) => {
-  const email = getActiveUserEmail();
-  if (!email) return;
-  try {
-    localStorage.setItem(getEnrolledStorageKey(email), JSON.stringify(val));
-  } catch (e) {}
-}, { deep: true });
+const isLoadingModules = ref(false);
+const loadError = ref(null);
+const enrolledList = ref([]);
+const modulesList = ref([]);
+const publishedClassModules = ref([]);
+const foundationCurriculumModules = ref([]);
 
 const filteredAllEnrolled = computed(() => {
   if (enrolledFilter.value === 'in-progress') {
@@ -513,6 +570,7 @@ async function handleUnenroll(enrolled) {
   if (modInExplore) {
     modInExplore.actionText = 'Enroll';
     modInExplore.status = 'unregistered';
+    modInExplore.progressPercent = 0;
   }
 
   emit('notify', `Unenrolled from "${targetTitle}".`);
@@ -522,124 +580,17 @@ async function handleUnenroll(enrolled) {
   } catch (e) {}
 }
 
-const BASE_EXPLORE_MODULES = [
-  {
-    id: 999,
-    title: 'Test Module: Quick Progression',
-    level: 'Beginner',
-    levelColor: 'yellow',
-    steps: '3 Learning Steps',
-    skillsAcquired: 'Rapid Prototyping, Checkpoint Progression, Star Chart Navigation',
-    badge: 'Speed Learner',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-    description: 'Fast-track test module to test enrolling, advancing checkpoints from 0, dynamic star chart states, and achievement unlocks.',
-  },
-  {
-    id: 101,
-    title: 'Sensors & Perception',
-    level: 'Beginner',
-    levelColor: 'yellow',
-    steps: '3 Learning Steps',
-    skillsAcquired: 'Component Identification, Circuit Assembly, Electrical Signals',
-    badge: 'Sensor Scout',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 102,
-    title: 'Programming Robot Behavior',
-    level: 'Intermediate',
-    levelColor: 'pink',
-    steps: '5 Learning Steps',
-    skillsAcquired: 'Programming Logic, Conditional Behavior, Sensor-Driven Motion',
-    badge: 'Behavior Programmer',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 103,
-    title: 'Robotics Fundamentals',
-    level: 'Beginner',
-    levelColor: 'yellow',
-    steps: '4 Learning Steps',
-    skillsAcquired: 'Circuit Fundamentals, Motor Control, Power Management',
-    badge: 'Motion Builder',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 104,
-    title: 'Sumobot Design & Competition',
-    level: 'Advanced',
-    levelColor: 'purple',
-    steps: '6 Learning Steps',
-    skillsAcquired: 'Mechanical Design, Strategic Programming, Performance Tuning',
-    badge: 'Sumo Champion',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 105,
-    title: 'Embedded Microcontroller Architecture',
-    level: 'Intermediate',
-    levelColor: 'pink',
-    steps: '4 Learning Steps',
-    skillsAcquired: 'Hardware Registers, SPI/I2C Communication, Clock Timers',
-    badge: 'System Architect',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 106,
-    title: 'Real-Time Motion Trajectory Planning',
-    level: 'Advanced',
-    levelColor: 'purple',
-    steps: '5 Learning Steps',
-    skillsAcquired: 'Kinematics Modeling, PID Vector Loops, Actuator Sync',
-    badge: 'Motion Master',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-];
-
-function getExploreStorageKey(email = getActiveUserEmail()) {
-  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
-  return safe ? `risse_email_${safe}_explore_modules` : 'risse_explore_modules';
-}
-
-function getInitialExplore() {
-  const email = getActiveUserEmail();
-  if (!email) return JSON.parse(JSON.stringify(BASE_EXPLORE_MODULES));
-  try {
-    const raw = localStorage.getItem(getExploreStorageKey(email));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {}
-  return JSON.parse(JSON.stringify(BASE_EXPLORE_MODULES));
-}
-
-const modulesList = ref(getInitialExplore());
-
-watch(modulesList, (val) => {
-  const email = getActiveUserEmail();
-  if (!email) return;
-  try {
-    localStorage.setItem(getExploreStorageKey(email), JSON.stringify(val));
-  } catch (e) {}
-}, { deep: true });
+const activeCatalogFilter = ref('all'); // 'all' | 'class-courses' | 'foundation'
 
 const displayedModules = computed(() => {
   let list = modulesList.value;
+
+  if (activeCatalogFilter.value === 'class-courses') {
+    list = list.filter(m => m.isClassCourse);
+  } else if (activeCatalogFilter.value === 'foundation') {
+    list = list.filter(m => !m.isClassCourse);
+  }
+
   if (showOnlyFavorites.value) {
     list = list.filter(m => m.isStarred);
   }
@@ -654,29 +605,193 @@ const displayedModules = computed(() => {
   return list;
 });
 
+// Phase 2C & Workflow Repair: Authoritative Database Loader
+async function loadModules() {
+  isLoadingModules.value = true;
+  loadError.value = null;
+
+  // 1. Purge any stale localStorage module keys across sessions
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('risse_') && (key.includes('explore_modules') || key.includes('enrolled_modules')))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (_) {}
+
+  const studentId = authStore?.currentUser?.id;
+
+  try {
+    // 2. Load authoritative platform curriculum modules from Supabase public.curriculum_modules
+    let dbFoundation = [];
+    try {
+      let rawModules = [];
+      const { data, error } = await supabase
+        .from('curriculum_modules')
+        .select('*, curriculum_checkpoints(*)')
+        .order('id', { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        rawModules = data;
+      } else {
+        // Fallback: separate queries joined in memory if FK relationship isn't configured in schema cache
+        const { data: mods } = await supabase
+          .from('curriculum_modules')
+          .select('*')
+          .order('id', { ascending: true });
+        if (Array.isArray(mods) && mods.length > 0) {
+          const { data: cps } = await supabase
+            .from('curriculum_checkpoints')
+            .select('*')
+            .order('step_number', { ascending: true });
+          rawModules = mods.map(m => ({
+            ...m,
+            curriculum_checkpoints: (cps || []).filter(c => String(c.module_id) === String(m.id)),
+          }));
+        }
+      }
+
+      if (Array.isArray(rawModules) && rawModules.length > 0) {
+        dbFoundation = rawModules.map(m => {
+          const cps = (m.curriculum_checkpoints || []).sort((a, b) => (a.step_number || 0) - (b.step_number || 0));
+          const totalSteps = m.total_steps || cps.length || 3;
+          const skills = Array.isArray(m.skills_acquired) ? m.skills_acquired.join(', ') : (m.skills_acquired || 'Robotics Fundamentals');
+          return {
+            id: m.id,
+            title: m.title,
+            level: m.level || 'Beginner',
+            levelColor: m.level_color || 'yellow',
+            steps: `${totalSteps} Learning Steps`,
+            skillsAcquired: skills,
+            badge: m.badge_name || 'Curriculum Scholar',
+            status: 'unregistered',
+            isStarred: false,
+            actionText: 'Enroll',
+            isClassCourse: false,
+            checkpoints: cps.map(c => ({
+              id: c.id,
+              name: c.title,
+              type: c.type || 'concept',
+              description: c.description || '',
+              estimated_minutes: c.estimated_minutes || 30,
+            })),
+          };
+        });
+      }
+    } catch (e) {
+      console.warn('[ModulesPage] Error loading curriculum_modules:', e);
+    }
+
+    foundationCurriculumModules.value = dbFoundation;
+
+    // 3. Load published courses assigned to student's enrolled sections via StudentSyncService
+    let dbClassCourses = [];
+    if (studentId) {
+      try {
+        const published = await StudentSyncService.getPublishedModulesForStudent(studentId);
+        if (Array.isArray(published)) {
+          dbClassCourses = published.map(p => ({
+            ...p,
+            isClassCourse: true,
+          }));
+        }
+      } catch (err) {
+        console.warn('[ModulesPage] Error loading published class courses:', err);
+      }
+    }
+    publishedClassModules.value = dbClassCourses;
+
+    // 4. Combine real database modules
+    const combined = [...dbClassCourses, ...dbFoundation];
+
+    // 5. Fetch student progress from Supabase student_module_memory
+    const progressMap = new Map();
+    if (studentId && isValidUuid(studentId)) {
+      try {
+        const { data: memData } = await supabase
+          .from('student_module_memory')
+          .select('*')
+          .eq('student_id', studentId);
+        if (Array.isArray(memData)) {
+          memData.forEach(r => progressMap.set(String(r.module_id), r));
+        }
+      } catch (_) {}
+    }
+
+    // Enrich combined list with live progress
+    const enrichedList = combined.map(mod => {
+      const prog = progressMap.get(String(mod.id));
+      const progressPercent = prog ? Number(prog.progress_percent) || 0 : (mod.progressPercent || 0);
+      const isCompleted = prog?.status === 'completed' || progressPercent >= 100;
+      const isStarted = progressPercent > 0 || prog?.status === 'in_progress' || mod.actionText === 'Resume';
+
+      let actionText = 'Enroll';
+      if (isCompleted) {
+        actionText = 'Review';
+      } else if (isStarted) {
+        actionText = 'Resume';
+      }
+
+      return {
+        ...mod,
+        progressPercent,
+        actionText,
+        status: isCompleted ? 'completed' : (isStarted ? 'in_progress' : 'unregistered'),
+        currentCheckpoint: prog?.current_checkpoint || mod.currentCheckpoint || 'Foundation',
+      };
+    });
+
+    modulesList.value = enrichedList;
+
+    // 6. Populate Currently Enrolled strictly from real active progress
+    const enrolledFromDb = enrichedList
+      .filter(m => (m.progressPercent || 0) > 0 || m.actionText === 'Resume' || m.actionText === 'Review')
+      .map(edm => {
+        const match = (edm.steps || '').match(/\d+/);
+        const totalSteps = match ? parseInt(match[0]) : (edm.totalSteps || 3);
+        const currentStep = edm.status === 'completed' || edm.progressPercent >= 100
+          ? totalSteps
+          : Math.min(totalSteps, Math.floor(((edm.progressPercent || 0) / 100) * totalSteps));
+        return {
+          id: edm.id,
+          title: edm.title,
+          subtitle: `${edm.level} • ${edm.currentCheckpoint || 'Foundation'}`,
+          theme: edm.levelColor || 'yellow',
+          currentStep,
+          totalSteps,
+          progressPercent: edm.progressPercent || 0,
+          badge: edm.badge,
+          isStarred: edm.isStarred,
+          courseTitle: edm.courseTitle,
+          isClassCourse: edm.isClassCourse,
+        };
+      });
+
+    enrolledList.value = enrolledFromDb;
+
+  } catch (err) {
+    console.error('[ModulesPage] loadModules critical error:', err);
+    loadError.value = 'Failed to load curriculum modules from database. Please check your network and retry.';
+    modulesList.value = [];
+    enrolledList.value = [];
+  } finally {
+    isLoadingModules.value = false;
+  }
+}
+
+const loadPublishedModules = loadModules;
+
 // Re-sync when authenticated user changes
 watch(() => authStore?.currentUser?.email, () => {
-  enrolledList.value = getInitialEnrolled();
-  modulesList.value = getInitialExplore();
+  loadModules();
 });
 
 onMounted(async () => {
   window.addEventListener('click', closeCardMenu);
-  try {
-    const email = getActiveUserEmail();
-    const res = await axios.get('/api/modules', {
-      headers: email ? { 'X-User-Email': email } : {}
-    });
-    if (res.data && Array.isArray(res.data.enrolled)) {
-      const userKey = getEnrolledStorageKey(email);
-      const hasLocal = email && localStorage.getItem(userKey);
-      if (!hasLocal) {
-        enrolledList.value = res.data.enrolled;
-      }
-    }
-  } catch (e) {
-    // Graceful offline fallback
-  }
+  await loadModules();
 });
 
 onUnmounted(() => {
@@ -737,6 +852,17 @@ async function handleModuleClick(module) {
     }
 
     emit('notify', `Enrolled in "${module.title}" at 0% progress! Added to Currently Enrolled.`);
+
+    // Phase 2C: Record initial enrollment in Supabase student_module_memory
+    const studentId = authStore?.currentUser?.id;
+    if (studentId) {
+      StudentSyncService.recordCheckpointProgress(
+        studentId,
+        module.id,
+        'Foundation',
+        0
+      ).catch(err => console.warn('[ModulesPage] Initial enroll sync non-fatal:', err));
+    }
 
     try {
       await axios.post('/api/modules/enroll', { moduleId: module.id });
@@ -1310,6 +1436,75 @@ async function handleModuleClick(module) {
   transform: translateY(-1px);
 }
 
+/* Catalog Filter Bar */
+.catalog-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.filter-pill-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.filter-pill-btn.is-active {
+  background: #fff7ed;
+  color: #ea580c;
+  border-color: #fdba74;
+}
+
+.no-assigned-courses-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 20px;
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.no-assigned-courses-card .empty-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff7ed;
+  color: #ea580c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.no-assigned-courses-card .empty-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 3px 0;
+}
+
+.no-assigned-courses-card .empty-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* Scrollable Explore Container */
 .explore-scroll-container {
   flex: 1;
@@ -1550,6 +1745,118 @@ async function handleModuleClick(module) {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+}
+
+/* Modules Loading & Error States */
+.modules-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  gap: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.modules-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f3f4f6;
+  border-top-color: #ff7a00;
+  border-radius: 50%;
+  animation: spin-modules 0.8s linear infinite;
+}
+
+@keyframes spin-modules {
+  to { transform: rotate(360deg); }
+}
+
+.modules-loading-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  margin: 0;
+}
+
+.modules-error-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: #fef2f2;
+  border-radius: 16px;
+  border: 1px solid #fecaca;
+}
+
+.modules-error-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.modules-error-body {
+  flex: 1;
+}
+
+.modules-error-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #991b1b;
+  margin: 0 0 4px 0;
+}
+
+.modules-error-msg {
+  font-size: 13px;
+  color: #b91c1c;
+  margin: 0;
+}
+
+.btn-retry-load {
+  background: #ff7a00;
+  color: #ffffff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-retry-load:hover {
+  background: #ff8c1a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(255, 122, 0, 0.25);
+}
+
+.clean-empty-state {
+  padding: 48px 24px;
+  border: 1px dashed #d1d5db;
+  background: #f9fafb;
+}
+
+.clean-empty-icon {
+  font-size: 28px;
+  color: #ff7a00;
+}
+
+.clean-empty-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.clean-empty-desc {
+  font-size: 13.5px;
+  color: #6b7280;
+  max-width: 480px;
+  line-height: 1.5;
+  margin: 0;
 }
 
 .btn-clear-filter {

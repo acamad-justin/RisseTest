@@ -34,7 +34,16 @@ import { Sparkles } from '@lucide/vue'
 const props = defineProps({
   userStats: { type: Object, default: () => ({ projects: 0, mastered: 0, badges: 0 }) },
   userEmail: { type: String, default: '' },
+  achievements: { type: Array, default: () => [] },
+  hasActiveActivity: { type: Boolean, default: false },
 })
+
+const isEmptyState = computed(() => {
+  const hasMastery = (props.userStats?.mastered || 0) > 0;
+  const hasAwards = (props.achievements?.length || 0) > 0;
+  const hasActivity = Boolean(props.hasActiveActivity);
+  return !hasMastery && !hasAwards && !hasActivity;
+});
 
 const displayStats = computed(() => {
   return {
@@ -126,8 +135,30 @@ function onPractice(id) {
 
     <!-- ── Body ──────────────────────────────────────────────────── -->
     <main class="dynamic-home__body">
+      <!-- Empty state when learner has 0 active modules, 0 mastered concepts, and 0 star awards -->
+      <div v-if="isEmptyState" class="dynamic-home__empty-state">
+        <div class="empty-star-ring">
+          <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10" stroke-dasharray="4 4"/>
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+        </div>
+        <h2 class="empty-state-title">Welcome to Your Star Station</h2>
+        <p class="empty-state-subtitle">
+          You don't have any active enrolled courses or star milestones yet.
+          Explore modules from the catalog or wait for your mentor to assign your cohort's courses.
+        </p>
+        <button 
+          type="button" 
+          class="btn-empty-explore" 
+          @click="$emit('explore', [])"
+        >
+          Explore Learning Modules →
+        </button>
+      </div>
+
       <!-- Constellation — takes all remaining space -->
-      <div class="dynamic-home__map">
+      <div v-else class="dynamic-home__map">
         <ConstellationMap
           ref="constellationRef"
           :concepts="activeConcepts"
@@ -253,6 +284,68 @@ function onPractice(id) {
   min-width: 0;
   min-height: 0;
   position: relative;
+}
+
+.dynamic-home__empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+  background: radial-gradient(circle at center, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0) 70%);
+  border-radius: var(--radius-xl, 16px);
+  margin: 16px;
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+.empty-star-ring {
+  color: var(--accent-orange, #f97316);
+  opacity: 0.9;
+  margin-bottom: 16px;
+  animation: pulseSlow 3s ease-in-out infinite;
+}
+
+@keyframes pulseSlow {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+.empty-state-title {
+  font-family: var(--font-family-display, inherit);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-heading, #ffffff);
+  margin: 0 0 8px 0;
+}
+
+.empty-state-subtitle {
+  font-size: 13.5px;
+  color: var(--text-secondary, #94a3b8);
+  max-width: 440px;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.btn-empty-explore {
+  background: #f97316;
+  color: #ffffff;
+  border: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);
+}
+
+.btn-empty-explore:hover {
+  background: #ea580c;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.35);
 }
 
 .dynamic-home__stats {
