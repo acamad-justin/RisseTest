@@ -236,33 +236,39 @@ export class StudentSyncService {
    * INVARIANT: Only returns published courses assigned to sections the student belongs to.
    * INVARIANT: Draft courses, proposals, and unrelated sections are strictly hidden.
    */
-  static async getPublishedModulesForStudent(studentId: string): Promise<StudentPublishedModule[]> {
-    if (!studentId) return [];
+  static async getPublishedModulesForStudent(studentId?: string): Promise<StudentPublishedModule[]> {
+    const effectiveStudentId = studentId ? normalizeStudentId(studentId) : '';
 
-    const effectiveStudentId = normalizeStudentId(studentId);
-
-    if (!isValidUuid(effectiveStudentId)) {
-      return testState.publishedCourses.get(studentId) || testState.publishedCourses.get(effectiveStudentId) || [];
+    if (effectiveStudentId && !isValidUuid(effectiveStudentId)) {
+      return testState.publishedCourses.get(studentId!) || testState.publishedCourses.get(effectiveStudentId) || [];
     }
 
     try {
-      // 1. Fetch student active section enrollments
-      const { data: enrollments, error: enrErr } = await supabase
-        .from('section_students')
-        .select('section_id')
-        .eq('student_id', effectiveStudentId)
-        .eq('status', 'active');
+      const hasValidUuid = Boolean(effectiveStudentId && isValidUuid(effectiveStudentId));
 
-      const sectionIds = (!enrErr && Array.isArray(enrollments)) ? enrollments.map(e => e.section_id) : [];
+      // 1. Fetch student active section enrollments
+      let sectionIds: string[] = [];
+      if (hasValidUuid) {
+        const { data: enrollments, error: enrErr } = await supabase
+          .from('section_students')
+          .select('section_id')
+          .eq('student_id', effectiveStudentId)
+          .eq('status', 'active');
+        if (!enrErr && Array.isArray(enrollments)) {
+          sectionIds = enrollments.map(e => e.section_id);
+        }
+      }
 
       // 2. Fetch direct course enrollments (self-paced or direct assignment)
-      const { data: directEnrollments } = await supabase
-        .from('course_enrollments')
-        .select('course_id, enrollment_type, status')
-        .eq('student_id', effectiveStudentId)
-        .eq('status', 'active');
-
-      const directEnrolledCourseIds = new Set((directEnrollments || []).map(de => de.course_id));
+      const directEnrolledCourseIds = new Set<string>();
+      if (hasValidUuid) {
+        const { data: directEnrollments } = await supabase
+          .from('course_enrollments')
+          .select('course_id, enrollment_type, status')
+          .eq('student_id', effectiveStudentId)
+          .eq('status', 'active');
+        (directEnrollments || []).forEach(de => directEnrolledCourseIds.add(de.course_id));
+      }
 
       // 3. Fetch courses assigned to those sections
       let sectionCourseIds: string[] = [];
@@ -325,39 +331,45 @@ export class StudentSyncService {
 
       if (resolvedCourses.length > 0) {
         // 5. Fetch student's module progress from student_module_memory
-        const { data: progressRecords } = await supabase
-          .from('student_module_memory')
-          .select('*')
-          .eq('student_id', effectiveStudentId);
-
-        const progressMap = new Map((progressRecords || []).map(p => [String(p.module_id), p]));
+        const progressMap = new Map();
+        if (hasValidUuid) {
+          const { data: progressRecords } = await supabase
+            .from('student_module_memory')
+            .select('*')
+            .eq('student_id', effectiveStudentId);
+          (progressRecords || []).forEach(p => progressMap.set(String(p.module_id), p));
+        }
 
         // Overlay in-memory testState progress if present
-        const testUserProgress = testState.checkpointProgress.get(studentId) || testState.checkpointProgress.get(effectiveStudentId);
-        if (testUserProgress) {
-          for (const [modId, prog] of Object.entries(testUserProgress)) {
-            const pObj = prog as any;
-            if (!progressMap.has(modId) || pObj.progressPercent > (progressMap.get(modId)?.progress_percent ?? 0)) {
-              progressMap.set(modId, {
-                student_id: effectiveStudentId,
-                module_id: modId,
-                progress_percent: pObj.progressPercent,
-                status: pObj.status,
-                current_checkpoint: pObj.currentCheckpoint,
-                updated_at: pObj.updatedAt,
-              });
+        if (studentId) {
+          const testUserProgress = testState.checkpointProgress.get(studentId) || testState.checkpointProgress.get(effectiveStudentId);
+          if (testUserProgress) {
+            for (const [modId, prog] of Object.entries(testUserProgress)) {
+              const pObj = prog as any;
+              if (!progressMap.has(modId) || pObj.progressPercent > (progressMap.get(modId)?.progress_percent ?? 0)) {
+                progressMap.set(modId, {
+                  student_id: effectiveStudentId,
+                  module_id: modId,
+                  progress_percent: pObj.progressPercent,
+                  status: pObj.status,
+                  current_checkpoint: pObj.currentCheckpoint,
+                  updated_at: pObj.updatedAt,
+                });
+              }
             }
           }
         }
 
         // 6. Fetch pending unenrollment requests for this student
-        const { data: pendingRequests } = await supabase
-          .from('course_unenrollment_requests')
-          .select('*')
-          .eq('student_id', effectiveStudentId)
-          .eq('status', 'pending');
-
-        const pendingRequestsMap = new Map((pendingRequests || []).map(pr => [pr.course_id, pr]));
+        const pendingRequestsMap = new Map();
+        if (hasValidUuid) {
+          const { data: pendingRequests } = await supabase
+            .from('course_unenrollment_requests')
+            .select('*')
+            .eq('student_id', effectiveStudentId)
+            .eq('status', 'pending');
+          (pendingRequests || []).forEach(pr => pendingRequestsMap.set(pr.course_id, pr));
+        }
 
         const resultModules: StudentPublishedModule[] = [];
 
@@ -457,14 +469,20 @@ export class StudentSyncService {
               type: node.type || 'concept',
               description: node.description || '',
               estimated_minutes: node.estimated_minutes || 45,
-              interactive_activity: node.node_content?.activities?.[0] || null,
-              engineering_challenge: node.node_content?.engineering_challenges?.[0] || null,
-              suggested_resources: node.node_content?.suggested_references?.map((r: any) => r.title) || [],
-              source_materials: node.source_materials || [],
+              interactive_activity: Array.isArray(node.node_content?.activities)
+                ? node.node_content.activities[0]
+                : (typeof node.node_content?.activities === 'string' ? node.node_content.activities : null),
+              engineering_challenge: Array.isArray(node.node_content?.engineering_challenges)
+                ? node.node_content.engineering_challenges[0]
+                : (typeof node.node_content?.engineering_challenges === 'string' ? node.node_content.engineering_challenges : null),
+              suggested_resources: Array.isArray(node.node_content?.suggested_references)
+                ? node.node_content.suggested_references.map((r: any) => typeof r === 'string' ? r : (r?.title || 'Resource'))
+                : (Array.isArray(node.suggested_resources) ? node.suggested_resources : []),
+              source_materials: Array.isArray(node.source_materials) ? node.source_materials : [],
               teacher_instructions: null,
               node_content: node.node_content || null,
               topic_group: node.topic_group || null,
-              blocks: node.blocks || null,
+              blocks: Array.isArray(node.blocks) ? node.blocks : null,
               assessment: node.assessment || null,
               source_reference: node.source_reference || null,
             }));
@@ -599,7 +617,8 @@ export class StudentSyncService {
         return resultModules;
       }
       return [];
-    } catch (_) {
+    } catch (err) {
+      console.error('[StudentSyncService.getPublishedModulesForStudent] CAUGHT ERROR:', err);
       // If error occurred querying Supabase for valid UUID, return empty
       return [];
     }

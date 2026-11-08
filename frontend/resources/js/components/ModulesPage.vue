@@ -978,18 +978,16 @@ async function loadModules() {
 
     // 3. Load published courses assigned to student's enrolled sections via StudentSyncService
     let dbClassCourses = [];
-    if (studentId) {
-      try {
-        const published = await StudentSyncService.getPublishedModulesForStudent(studentId);
-        if (Array.isArray(published)) {
-          dbClassCourses = published.map(p => ({
-            ...p,
-            isClassCourse: true,
-          }));
-        }
-      } catch (err) {
-        console.warn('[ModulesPage] Error loading published class courses:', err);
+    try {
+      const published = await StudentSyncService.getPublishedModulesForStudent(studentId || '');
+      if (Array.isArray(published)) {
+        dbClassCourses = published.map(p => ({
+          ...p,
+          isClassCourse: true,
+        }));
       }
+    } catch (err) {
+      console.warn('[ModulesPage] Error loading published class courses:', err);
     }
     publishedClassModules.value = dbClassCourses;
 
@@ -1110,10 +1108,10 @@ async function loadModules() {
 
 const loadPublishedModules = loadModules;
 
-// Re-sync when authenticated user changes
-watch(() => authStore?.currentUser?.email, () => {
+// Re-sync when authenticated user changes or auth finishes loading
+watch([() => authStore?.currentUser?.id, () => authStore?.currentUser?.email, () => authStore?.isAuthLoading], () => {
   loadModules();
-});
+}, { deep: true });
 
 let realtimeChannel = null;
 

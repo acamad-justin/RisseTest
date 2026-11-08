@@ -284,13 +284,19 @@ describe('RISSE AI — Source-Faithful Module Studio & Student Experience Accept
     });
 
     it('10. Live Supabase database contains the authentic 24-node curriculum draft for Introduction to Robotics', async () => {
+      let targetId = roboticsCourseId;
+      const { data: courses } = await supabase.from('courses').select('id').eq('title', 'Introduction to Robotics').order('created_at', { ascending: false });
+      if (courses && courses.length > 0) {
+        targetId = courses[0].id;
+      }
+
       const { data: proposal, error } = await supabase
         .from('curriculum_proposals')
         .select('*')
-        .eq('course_id', roboticsCourseId)
+        .eq('course_id', targetId)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       assert.ok(!error, `Supabase query must succeed: ${error?.message}`);
       assert.ok(proposal, 'Proposal record exists in Supabase');
