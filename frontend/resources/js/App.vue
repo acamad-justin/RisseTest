@@ -79,6 +79,7 @@
           :checkpoint-title="selectedCheckpoint"
           :parent-module-name="selectedModule.title"
           :module-data="selectedModule"
+          :checkpoint-data="selectedCheckpointObject"
           @back="moduleViewState = 'roadmap'"
           @notify="showToast"
           @complete-checkpoint="handleCheckpointCompleted"
@@ -244,7 +245,7 @@ import EditProfileModal from './components/EditProfileModal.vue';
 import BadgeModal from './components/BadgeModal.vue';
 import MentorWorkspaceLayout from './layouts/MentorWorkspaceLayout.vue';
 import { useMentorStore } from './stores/mentorStore.js';
-import { StudentSyncService } from '../../lib/student/studentSyncService.ts';
+import { StudentSyncService, isValidUuid } from '../../lib/student/studentSyncService.ts';
 
 const authStore = useAuthStore();
 const notebooksStore = useNotebooksStore();
@@ -403,6 +404,7 @@ const selectedModule = ref({
 });
 
 const selectedCheckpoint = ref('Inputs, Output, and Signals');
+const selectedCheckpointObject = ref(null);
 
 const isEditModalOpen = ref(false);
 const selectedBadge = ref(null);
@@ -733,6 +735,15 @@ onMounted(async () => {
   }
 
   await syncStarAwardsFromDatabase(authStore.currentUser);
+
+  // Handle direct module deep-link if requested via query parameter
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const deepModuleId = urlParams.get('moduleId');
+    if (deepModuleId && currentTab.value === 'Modules') {
+      await handleOpenModule({ id: deepModuleId });
+    }
+  } catch (_) {}
 });
 
 onUnmounted(() => {
@@ -982,13 +993,44 @@ watch(() => authStore.userRole, (newRole) => {
   }
 }, { immediate: true });
 
-function handleOpenModule(module) {
-  selectedModule.value = module;
+async function handleOpenModule(module) {
+  if (!module) return;
+  const studentId = authStore.currentUser?.id;
+  const modId = String(module.id || module.courseId);
+
+  // Authoritatively verify student access to this module
+  if (studentId && isValidUuid(studentId)) {
+    try {
+      const access = await StudentSyncService.verifyModuleAccess(studentId, modId);
+      if (!access.authorized) {
+        showToast(access.reason || 'Access denied: Module not found or you are not enrolled.');
+        moduleViewState.value = 'list';
+        modulesComponentKey.value++;
+        return;
+      }
+      if (access.module) {
+        selectedModule.value = { ...module, ...access.module };
+      } else {
+        selectedModule.value = module;
+      }
+    } catch (_) {
+      selectedModule.value = module;
+    }
+  } else {
+    selectedModule.value = module;
+  }
   moduleViewState.value = 'roadmap';
 }
 
-function handleSelectCheckpoint(checkpointName) {
-  selectedCheckpoint.value = checkpointName;
+function handleSelectCheckpoint(cpPayload) {
+  if (typeof cpPayload === 'object' && cpPayload !== null) {
+    selectedCheckpoint.value = cpPayload.name || cpPayload.title || 'Checkpoint';
+    selectedCheckpointObject.value = cpPayload;
+  } else {
+    selectedCheckpoint.value = cpPayload;
+    const found = selectedModule.value?.checkpoints?.find(c => (c.name || c.title) === cpPayload);
+    selectedCheckpointObject.value = found || null;
+  }
   moduleViewState.value = 'checkpoint';
 }
 

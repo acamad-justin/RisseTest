@@ -6,6 +6,7 @@
       :active-view="currentView" 
       :mentor="currentMentor" 
       :courses-count="mentorStore.courses.length"
+      :pending-unenrollment-count="mentorStore.pendingUnenrollmentCount"
       @select-view="handleViewChange" 
       @switch-workspace="$emit('switch-to-student')" 
       @logout="$emit('logout')" 
@@ -22,6 +23,56 @@
         </div>
 
         <div class="header-actions-cluster">
+          <!-- Mentor Notifications Dropdown -->
+          <div class="notifications-wrapper" ref="notificationsDropdownRef">
+            <button 
+              type="button" 
+              class="btn-header-icon" 
+              @click="toggleNotifications"
+              title="Notifications"
+              id="btn-mentor-notifications"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount }}</span>
+            </button>
+
+            <!-- Notifications Popover -->
+            <div v-if="isNotificationsOpen" class="notifications-popover">
+              <header class="notif-popover-header">
+                <span class="notif-popover-title">Notifications</span>
+                <span v-if="unreadCount > 0" class="notif-unread-tag">{{ unreadCount }} new</span>
+              </header>
+              <div v-if="notifications.length === 0" class="notif-empty-state">
+                <span>No new notifications</span>
+              </div>
+              <div v-else class="notif-list">
+                <div 
+                  v-for="notif in notifications" 
+                  :key="notif.id" 
+                  class="notif-item"
+                  :class="{ 'is-unread': !notif.is_read }"
+                  @click="handleNotificationClick(notif)"
+                >
+                  <div class="notif-icon-col">
+                    <span v-if="notif.type === 'unenrollment_request'">📝</span>
+                    <span v-else-if="notif.type === 'unenrollment_approved'">✓</span>
+                    <span v-else-if="notif.type === 'unenrollment_rejected'">✕</span>
+                    <span v-else>🔔</span>
+                  </div>
+                  <div class="notif-content-col">
+                    <span class="notif-title">{{ notif.title }}</span>
+                    <p class="notif-msg">{{ notif.message }}</p>
+                    <span class="notif-time">{{ formatNotifTime(notif.created_at) }}</span>
+                  </div>
+                  <span v-if="!notif.is_read" class="notif-unread-dot"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Switch View / Student Preview Pill -->
           <button 
             type="button" 
@@ -116,6 +167,8 @@
           :courses="mentorStore.courses"
           :mentor-id="mentorId"
           @open-student="handleOpenStudentDetail"
+          @student-unenrolled="handleStudentUnenrolled"
+          @course-unlinked="handleCourseUnlinked"
           @notify="$emit('notify', $event)"
         />
 
@@ -135,6 +188,12 @@
           :catalog="mentorStore.AVAILABLE_STARS"
           @select-student="handleSelectStudentForStarChart"
           @open-star-modal="handleOpenStarModal"
+        />
+
+        <!-- 8B. UNENROLLMENT REQUESTS -->
+        <UnenrollmentRequestsView 
+          v-else-if="currentView === 'unenrollment-requests'" 
+          :mentor-id="mentorId"
         />
 
         <!-- 9. MENTOR PROFILE -->
@@ -188,6 +247,7 @@ import CurriculumDesigner from '../views/mentor/curriculum/CurriculumDesigner.vu
 import ClassesView from '../views/mentor/teaching/ClassesView.vue';
 import StudentProgressView from '../views/mentor/teaching/StudentProgressView.vue';
 import StarChartsView from '../views/mentor/teaching/StarChartsView.vue';
+import UnenrollmentRequestsView from '../views/mentor/teaching/UnenrollmentRequestsView.vue';
 import MentorProfileView from '../views/mentor/account/MentorProfileView.vue';
 import StudentDetailModal from '../components/mentor/StudentDetailModal.vue';
 import StarActionModal from '../components/mentor/StarActionModal.vue';
@@ -212,6 +272,42 @@ const emit = defineEmits(['switch-to-student', 'logout', 'notify']);
 const mentorStore = useMentorStore();
 const currentView = ref(props.initialView || 'dashboard');
 
+// Notifications state
+const isNotificationsOpen = ref(false);
+const notificationsDropdownRef = ref(null);
+const unreadCount = computed(() => mentorStore.unreadNotificationsCount);
+const notifications = computed(() => mentorStore.mentorNotifications);
+
+function toggleNotifications() {
+  isNotificationsOpen.value = !isNotificationsOpen.value;
+}
+
+function handleOutsideClick(e) {
+  if (notificationsDropdownRef.value && !notificationsDropdownRef.value.contains(e.target)) {
+    isNotificationsOpen.value = false;
+  }
+}
+
+async function handleNotificationClick(notif) {
+  if (!notif.is_read) {
+    await mentorStore.markNotificationRead(notif.id);
+  }
+  if (notif.type === 'unenrollment_request') {
+    isNotificationsOpen.value = false;
+    currentView.value = 'unenrollment-requests';
+  }
+}
+
+function formatNotifTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return isoStr;
+  }
+}
+
 const mentorId = computed(() => {
   return props.currentMentor?.id || DEMO_MENTOR_UUID;
 });
@@ -226,6 +322,7 @@ const viewTitle = computed(() => {
     case 'classes': return 'My Classes';
     case 'students': return 'Student Progress';
     case 'star-charts': return 'Star Charts';
+    case 'unenrollment-requests': return 'Course Unenrollment Requests';
     case 'profile': return 'Profile / Settings';
     default: return 'Teacher Studio';
   }
@@ -240,6 +337,7 @@ function handleWindowKeydown(e) {
 onMounted(async () => {
   mentorStore.resetModals();
   window.addEventListener('keydown', handleWindowKeydown);
+  window.addEventListener('click', handleOutsideClick);
   if (mentorId.value) {
     await mentorStore.loadDashboard(mentorId.value);
     await mentorStore.loadCourses(mentorId.value);
@@ -253,6 +351,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleWindowKeydown);
+  window.removeEventListener('click', handleOutsideClick);
 });
 
 // Watch view transitions to guarantee no orphan modals persist
@@ -311,15 +410,39 @@ async function handleCourseSelect(courseId) {
 }
 
 async function handleCourseCreated(newCourse) {
-  emit('notify', `Course "${newCourse?.title || 'New Course'}" created successfully.`);
+  emit('notify', `Module "${newCourse?.title || 'New Module'}" created successfully. Welcome to Module Studio!`);
   await mentorStore.loadCourses(mentorId.value);
-  currentView.value = 'courses';
+  if (newCourse && newCourse.id) {
+    mentorStore.activeCourseId = newCourse.id;
+    await mentorStore.loadMaterials(newCourse.id);
+    await mentorStore.loadProposals(newCourse.id);
+  }
+  currentView.value = 'curriculum-designer';
+}
+
+async function handleStudentUnenrolled() {
+  await mentorStore.fetchAssignedStudents(mentorId.value);
+  await mentorStore.loadSections(mentorId.value);
+}
+
+async function handleCourseUnlinked() {
+  await mentorStore.loadCourses(mentorId.value);
+  await mentorStore.loadSections(mentorId.value);
 }
 
 async function handleDeleteCourse(courseId) {
-  const ok = await mentorStore.deleteCourse(courseId);
+  const courseToDelete = mentorStore.courses.find(c => c.id === courseId);
+  const courseTitle = courseToDelete?.title || 'this course';
+  if (typeof window !== 'undefined' && window.confirm) {
+    if (!window.confirm(`Are you sure you want to delete "${courseTitle}"? This cannot be undone.`)) {
+      return;
+    }
+  }
+  const ok = await mentorStore.deleteCourse(courseId, mentorId.value);
   if (ok) {
-    emit('notify', 'Course removed.');
+    emit('notify', `Course "${courseTitle}" removed.`);
+  } else {
+    emit('notify', `Failed to delete course "${courseTitle}".`);
   }
 }
 
@@ -360,7 +483,8 @@ async function handleGenerateProposal(payload) {
     emit('notify', 'Curriculum proposal generation is temporarily unavailable.');
     return;
   }
-  const res = await generateFn(targetCourseId, targetMentorId);
+  const options = payload?.mode ? { mode: payload.mode } : undefined;
+  const res = await generateFn(targetCourseId, targetMentorId, options);
   if (res && res.success) {
     emit('notify', 'AI Curriculum Proposal generated. Ready for teacher review.');
   } else {
@@ -572,6 +696,167 @@ async function handleStarSubmit(payload = null) {
 
 .btn-header-primary:hover {
   background: var(--primary-orange-hover, #ff8c1a);
+}
+
+/* Notifications Dropdown */
+.notifications-wrapper {
+  position: relative;
+}
+
+.btn-header-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-header-icon:hover {
+  border-color: #f18701;
+  color: #f18701;
+  background: #fff7ed;
+}
+
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+}
+
+.notifications-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  max-height: 400px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.notif-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
+}
+
+.notif-popover-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.notif-unread-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #ef4444;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.notif-empty-state {
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+.notif-list {
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+.notif-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.notif-item:hover {
+  background: #f8fafc;
+}
+
+.notif-item.is-unread {
+  background: #fffbf5;
+}
+
+.notif-icon-col {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.notif-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.notif-msg {
+  font-size: 11.5px;
+  color: #475569;
+  margin: 0 0 4px 0;
+  line-height: 1.35;
+}
+
+.notif-time {
+  font-size: 10.5px;
+  color: #94a3b8;
+}
+
+.notif-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f18701;
+  position: absolute;
+  top: 14px;
+  right: 12px;
 }
 
 .workspace-view-scroll {

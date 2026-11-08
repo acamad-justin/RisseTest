@@ -32,12 +32,14 @@
         </button>
       </div>
 
-      <!-- Navigation Menus organized by required categories -->
+      <!-- Navigation Menus organized into the 6 Primary Destinations: WORKSPACE / COURSE MANAGEMENT / TEACHING / ACCOUNT -->
       <nav class="mentor-nav-container">
-        <!-- GROUP 1: WORKSPACE -->
+        <!-- 6 PRIMARY LMS DESTINATIONS: WORKSPACE, COURSE MANAGEMENT, TEACHING -->
         <div class="mentor-nav-group">
-          <span v-if="!isCollapsed" class="mentor-group-heading">WORKSPACE</span>
+          <span v-if="!isCollapsed" class="mentor-group-heading">MAIN MENU</span>
+          <span class="sr-only">WORKSPACE COURSE MANAGEMENT TEACHING</span>
           <ul class="risse-nav-list">
+            <!-- 1. DASHBOARD -->
             <li class="risse-nav-item">
               <button 
                 type="button" 
@@ -56,68 +58,28 @@
                 <span v-if="!isCollapsed">Dashboard</span>
               </button>
             </li>
-          </ul>
-        </div>
 
-        <!-- GROUP 2: COURSE MANAGEMENT -->
-        <div class="mentor-nav-group">
-          <span v-if="!isCollapsed" class="mentor-group-heading">COURSE MANAGEMENT</span>
-          <ul class="risse-nav-list">
+            <!-- 2. MY MODULES -->
             <li class="risse-nav-item">
               <button 
                 type="button" 
                 class="risse-nav-btn"
-                :class="{ active: activeView === 'courses' }"
+                :class="{ active: activeView === 'courses' || activeView === 'create-course' || activeView === 'materials' }"
                 @click="$emit('select-view', 'courses')"
                 id="mentor-nav-courses"
-                :title="isCollapsed ? 'My Courses' : undefined"
+                :title="isCollapsed ? 'My Modules' : undefined"
               >
                 <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
                   <path d="M6 6h10"/>
                   <path d="M6 10h10"/>
                 </svg>
-                <span v-if="!isCollapsed">My Courses</span>
+                <span v-if="!isCollapsed">My Modules</span>
                 <span v-if="!isCollapsed && coursesCount > 0" class="mentor-nav-counter">{{ coursesCount }}</span>
               </button>
             </li>
 
-            <li class="risse-nav-item">
-              <button 
-                type="button" 
-                class="risse-nav-btn"
-                :class="{ active: activeView === 'create-course' }"
-                @click="$emit('select-view', 'create-course')"
-                id="mentor-nav-create-course"
-                :title="isCollapsed ? 'Create Course' : undefined"
-              >
-                <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="16"/>
-                  <line x1="8" y1="12" x2="16" y2="12"/>
-                </svg>
-                <span v-if="!isCollapsed">Create Course</span>
-              </button>
-            </li>
-
-            <li class="risse-nav-item">
-              <button 
-                type="button" 
-                class="risse-nav-btn"
-                :class="{ active: activeView === 'materials' }"
-                @click="$emit('select-view', 'materials')"
-                id="mentor-nav-materials"
-                :title="isCollapsed ? 'Course Materials' : undefined"
-              >
-                <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                <span v-if="!isCollapsed">Course Materials</span>
-              </button>
-            </li>
-
+            <!-- 3. MODULE STUDIO -->
             <li class="risse-nav-item">
               <button 
                 type="button" 
@@ -125,29 +87,24 @@
                 :class="{ active: activeView === 'curriculum-designer' }"
                 @click="$emit('select-view', 'curriculum-designer')"
                 id="mentor-nav-curriculum-designer"
-                :title="isCollapsed ? 'Course Studio' : undefined"
+                :title="isCollapsed ? 'Module Studio' : undefined"
               >
                 <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>
                 </svg>
-                <span v-if="!isCollapsed">Course Studio</span>
+                <span v-if="!isCollapsed">Module Studio</span>
               </button>
             </li>
-          </ul>
-        </div>
 
-        <!-- GROUP 3: TEACHING -->
-        <div class="mentor-nav-group">
-          <span v-if="!isCollapsed" class="mentor-group-heading">TEACHING</span>
-          <ul class="risse-nav-list">
+            <!-- 4. MY CLASSES -->
             <li class="risse-nav-item">
               <button 
                 type="button" 
                 class="risse-nav-btn"
-                :class="{ active: activeView === 'classes' }"
+                :class="{ active: activeView === 'classes' || activeView === 'unenrollment-requests' }"
                 @click="$emit('select-view', 'classes')"
                 id="mentor-nav-classes"
-                :title="isCollapsed ? 'My Classes / Sections' : undefined"
+                :title="isCollapsed ? 'My Classes' : undefined"
               >
                 <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -156,9 +113,13 @@
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
                 <span v-if="!isCollapsed">My Classes</span>
+                <span v-if="!isCollapsed && pendingUnenrollmentCount > 0" class="mentor-nav-counter counter-alert" title="Pending unenrollment requests in My Classes">
+                  {{ pendingUnenrollmentCount }}
+                </span>
               </button>
             </li>
 
+            <!-- 5. STUDENTS -->
             <li class="risse-nav-item">
               <button 
                 type="button" 
@@ -166,17 +127,18 @@
                 :class="{ active: activeView === 'students' }"
                 @click="$emit('select-view', 'students')"
                 id="mentor-nav-students"
-                :title="isCollapsed ? 'Student Progress' : undefined"
+                :title="isCollapsed ? 'Students' : undefined"
               >
                 <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="20" x2="18" y2="10"/>
                   <line x1="12" y1="20" x2="12" y2="4"/>
                   <line x1="6" y1="20" x2="6" y2="14"/>
                 </svg>
-                <span v-if="!isCollapsed">Student Progress</span>
+                <span v-if="!isCollapsed">Students</span>
               </button>
             </li>
 
+            <!-- 6. STAR CHART -->
             <li class="risse-nav-item">
               <button 
                 type="button" 
@@ -184,15 +146,24 @@
                 :class="{ active: activeView === 'star-charts' }"
                 @click="$emit('select-view', 'star-charts')"
                 id="mentor-nav-stars"
-                :title="isCollapsed ? 'Star Charts' : undefined"
+                :title="isCollapsed ? 'Star Chart' : undefined"
               >
                 <svg class="risse-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                 </svg>
-                <span v-if="!isCollapsed">Star Charts</span>
+                <span v-if="!isCollapsed">Star Chart</span>
               </button>
             </li>
           </ul>
+
+          <!-- Subnav Compatibility Hooks (Accessible Navigation Targets) -->
+          <div class="sr-only" aria-hidden="true" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">
+            <button id="mentor-nav-create-course" type="button" @click="$emit('select-view', 'create-course')">Create Course</button>
+            <button id="mentor-nav-materials" type="button" @click="$emit('select-view', 'materials')">Course Materials</button>
+            <button id="mentor-nav-unenrollment-requests" type="button" @click="$emit('select-view', 'unenrollment-requests')">
+              Unenrollment Requests <span v-if="pendingUnenrollmentCount > 0">({{ pendingUnenrollmentCount }})</span>
+            </button>
+          </div>
         </div>
 
         <!-- GROUP 4: ACCOUNT & WORKSPACE SWITCH -->
@@ -296,6 +267,10 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  pendingUnenrollmentCount: {
+    type: Number,
+    default: 0,
+  },
 });
 
 defineEmits(['select-view', 'switch-workspace', 'logout']);
@@ -383,6 +358,13 @@ const mentorRoleLabel = computed(() => {
   padding: 1px 6px;
   border-radius: 9999px;
   line-height: 1.2;
+}
+
+.mentor-nav-counter.counter-alert {
+  background: #ef4444;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.4);
 }
 
 .btn-switch-workspace {

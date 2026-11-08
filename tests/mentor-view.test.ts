@@ -15,12 +15,29 @@
  * 10. Manual stars do not automatically create verified mastery.
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert';
 import fs from 'fs';
 import path from 'path';
 
 import { MentorService } from '../frontend/lib/mentor/mentorService.ts';
+
+const originalCreateCourse = MentorService.createCourse.bind(MentorService);
+const testCreatedCourseIds: string[] = [];
+
+MentorService.createCourse = async function (params: any) {
+  const res = await originalCreateCourse(params);
+  if (res.course?.id) {
+    testCreatedCourseIds.push(res.course.id);
+  }
+  return res;
+};
+
+after(async () => {
+  for (const id of testCreatedCourseIds) {
+    await MentorService.deleteCourse(id);
+  }
+});
 
 function readProjectFile(relativePath: string): string {
   const candidates = [

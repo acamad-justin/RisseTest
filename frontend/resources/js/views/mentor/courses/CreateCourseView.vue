@@ -6,13 +6,13 @@
         type="button" 
         class="btn-back" 
         @click="$emit('navigate', 'courses')"
-        title="Back to My Courses"
+        title="Back to My Modules"
       >
-        ← Back to Courses
+        ← Back to Modules
       </button>
-      <h1 class="page-title">Create New Course</h1>
+      <h1 class="page-title">Create New Module</h1>
       <p class="page-subtitle">
-        Define course foundations. Once created, upload syllabus and lab documents to allow RISSE AI to assist in structuring the curriculum.
+        Define module foundations. Once created, upload syllabus and learning documents to allow RISSE AI to generate structured Learning Nodes.
       </p>
     </header>
 
@@ -25,19 +25,19 @@
 
         <!-- Section 1: Core Details -->
         <div class="form-section">
-          <h2 class="form-section-title">Course Information</h2>
+          <h2 class="form-section-title">Module Information</h2>
 
-          <!-- Course Title -->
+          <!-- Course/Module Title -->
           <div class="form-group">
             <label class="form-label" for="course-title">
-              Course Title <span class="required">*</span>
+              Module Title <span class="required">*</span>
             </label>
             <input 
               id="course-title"
               v-model="form.title"
               type="text" 
               class="form-input" 
-              placeholder="e.g. Autonomous Mobile Robotics & Feedback Systems" 
+              placeholder="e.g. Introduction to Microprocessors" 
               required
             />
           </div>
@@ -45,7 +45,7 @@
           <!-- Description -->
           <div class="form-group">
             <label class="form-label" for="course-description">
-              Course Description
+              Module Description
             </label>
             <textarea 
               id="course-description"
@@ -199,6 +199,66 @@
           </div>
         </div>
 
+        <!-- Section 1C: Course Enrollment Policy (Part 3) -->
+        <div class="form-section">
+          <h2 class="form-section-title">Course Enrollment Policy</h2>
+          <p class="form-section-hint">
+            Determine how students join and leave this course.
+          </p>
+
+          <div class="curriculum-option-toggle-grid">
+            <label 
+              class="option-radio-card"
+              :class="{ 'is-selected': form.enrollmentType === 'curriculum' }"
+              @click="form.enrollmentType = 'curriculum'"
+            >
+              <input 
+                type="radio" 
+                value="curriculum" 
+                v-model="form.enrollmentType" 
+                class="hidden-radio"
+              />
+              <div class="radio-indicator">
+                <span v-if="form.enrollmentType === 'curriculum'" class="radio-dot"></span>
+              </div>
+              <div class="radio-content">
+                <div class="radio-title-row">
+                  <span class="radio-title">Curriculum / Teacher-Controlled</span>
+                  <span class="badge-recommended">Default</span>
+                </div>
+                <p class="radio-desc">
+                  Students are enrolled via section assignment or direct teacher placement. Unenrollment requires teacher review and approval.
+                </p>
+              </div>
+            </label>
+
+            <label 
+              class="option-radio-card"
+              :class="{ 'is-selected': form.enrollmentType === 'self_paced' }"
+              @click="form.enrollmentType = 'self_paced'"
+            >
+              <input 
+                type="radio" 
+                value="self_paced" 
+                v-model="form.enrollmentType" 
+                class="hidden-radio"
+              />
+              <div class="radio-indicator">
+                <span v-if="form.enrollmentType === 'self_paced'" class="radio-dot"></span>
+              </div>
+              <div class="radio-content">
+                <div class="radio-title-row">
+                  <span class="radio-title">Self-Paced / Open Enrollment</span>
+                  <span class="badge-open">Open</span>
+                </div>
+                <p class="radio-desc">
+                  Students can freely discover, self-enroll, and unenroll in this course from their student Modules catalog anytime without waiting for approval.
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
+
         <!-- Section 2: Section Assignment -->
         <div class="form-section">
           <h2 class="form-section-title">Class Cohort Assignment</h2>
@@ -324,8 +384,8 @@
             class="btn-submit-course"
             :disabled="isSubmitting"
           >
-            <span v-if="isSubmitting">Creating Course...</span>
-            <span v-else>Create Course & Continue →</span>
+            <span v-if="isSubmitting">Creating Module...</span>
+            <span v-else>Create Module & Continue →</span>
           </button>
         </div>
       </form>
@@ -356,11 +416,49 @@ const isSubmitting = ref(false);
 const localError = ref(null);
 const newOutcomeText = ref('');
 
+const curriculumMode = ref('custom'); // 'upload' | 'custom'
+const curriculumFile = ref(null);
+const curriculumFileInputRef = ref(null);
+
+function triggerCurriculumFileInput() {
+  if (curriculumFileInputRef.value) {
+    curriculumFileInputRef.value.click();
+  }
+}
+
+function handleCurriculumFileSelect(e) {
+  const file = e.target.files?.[0];
+  if (file) {
+    if (file.size > 25 * 1024 * 1024) {
+      localError.value = 'Curriculum file exceeds 25MB maximum limit.';
+      return;
+    }
+    curriculumFile.value = file;
+    localError.value = null;
+  }
+}
+
+function clearCurriculumFile() {
+  curriculumFile.value = null;
+  if (curriculumFileInputRef.value) {
+    curriculumFileInputRef.value.value = '';
+  }
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 const form = reactive({
   title: '',
   description: '',
   subject: 'Robotics & Control Systems',
   academicLevel: 'Grade 10',
+  enrollmentType: 'curriculum',
   sectionIds: [],
   semester: '',
   schoolYear: '2026-2027',
@@ -393,6 +491,7 @@ async function handleSubmit() {
       description: form.description.trim() || undefined,
       subject: form.subject,
       academicLevel: form.academicLevel,
+      enrollmentType: form.enrollmentType || 'curriculum',
       semester: form.semester.trim() || undefined,
       schoolYear: form.schoolYear.trim() || undefined,
       learningOutcomes: [...form.learningOutcomes],
@@ -403,6 +502,21 @@ async function handleSubmit() {
     const res = await mentorStore.createCourse(coursePayload);
 
     if (res.success && res.course) {
+      // If Option A was selected with a curriculum document, upload and index it immediately
+      if (curriculumMode.value === 'upload' && curriculumFile.value) {
+        try {
+          await mentorStore.uploadCourseMaterial({
+            courseId: res.course.id,
+            title: `Prescribed Syllabus: ${curriculumFile.value.name.replace(/\.[^/.]+$/, '')}`,
+            description: 'Prescribed institutional curriculum / syllabus uploaded during course initialization. Serves as benchmark learning outcomes.',
+            file: curriculumFile.value,
+            uploaderId: props.mentorId,
+          });
+        } catch (uploadErr) {
+          console.warn('[CreateCourse] Curriculum upload note:', uploadErr);
+        }
+      }
+
       emit('course-created', res.course);
     } else {
       localError.value = res.error || 'Failed to create course. Please check inputs and retry.';
@@ -737,6 +851,223 @@ async function handleSubmit() {
 .btn-submit-course:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Curriculum Options Toggle */
+.curriculum-option-toggle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 680px) {
+  .curriculum-option-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.option-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.option-radio-card:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.option-radio-card.is-selected {
+  border-color: var(--primary-orange, #F18701);
+  background: #fffaf0;
+  box-shadow: 0 2px 8px rgba(241, 135, 1, 0.12);
+}
+
+.hidden-radio {
+  display: none;
+}
+
+.radio-indicator {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #cbd5e1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.option-radio-card.is-selected .radio-indicator {
+  border-color: var(--primary-orange, #F18701);
+}
+
+.radio-dot {
+  width: 9px;
+  height: 9px;
+  background: var(--primary-orange, #F18701);
+  border-radius: 50%;
+}
+
+.radio-content {
+  flex: 1;
+}
+
+.radio-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.radio-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.badge-recommended {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  background: #fef3c7;
+  color: #b45309;
+  border-radius: 999px;
+}
+
+.badge-open {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 999px;
+}
+
+.radio-desc {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.curriculum-upload-zone {
+  margin-top: 10px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.curriculum-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  background: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.curriculum-dropzone:hover {
+  border-color: var(--primary-orange, #F18701);
+  background: #fffaf0;
+}
+
+.curriculum-dropzone.has-file {
+  border-style: solid;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.dropzone-empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.drop-icon {
+  font-size: 26px;
+}
+
+.drop-primary-txt {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.drop-sub-txt {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.dropzone-selected-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.selected-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.file-name-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  display: block;
+}
+
+.file-size-text {
+  font-size: 11px;
+  color: #64748b;
+  display: block;
+}
+
+.btn-remove-curr-file {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.curriculum-disclaimer {
+  font-size: 11px;
+  color: #64748b;
+  margin: 8px 0 0 4px;
 }
 </style>
 

@@ -3,9 +3,9 @@
   <div class="course-list-page">
     <header class="page-header">
       <div>
-        <h1 class="page-title">My Courses</h1>
+        <h1 class="page-title">My Modules</h1>
         <p class="page-subtitle">
-          Central pedagogical tracks. Each course can be assigned to multiple sections while keeping student progress independent.
+          Central pedagogical tracks. Each module contains ordered Learning Nodes and can be assigned to multiple sections while keeping student progress independent.
         </p>
       </div>
 
@@ -19,7 +19,7 @@
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        Create Course
+        Create Module
       </button>
     </header>
 
@@ -32,16 +32,16 @@
           <path d="M6 10h10"/>
         </svg>
       </div>
-      <h2 class="empty-headline">No Courses Created Yet</h2>
+      <h2 class="empty-headline">No Modules Created Yet</h2>
       <p class="empty-subtext">
-        Courses define curriculum scope, learning objectives, and materials for students. Create your first course to begin uploading materials and drafting AI curriculums.
+        Modules represent subjects and coherent learning units with ordered Learning Nodes. Create your first module to begin uploading materials and drafting topic nodes.
       </p>
       <button 
         type="button" 
         class="btn-studio-primary" 
         @click="$emit('navigate', 'create-course')"
       >
-        + Create Your First Course
+        + Create Your First Module
       </button>
     </div>
 
@@ -55,8 +55,27 @@
         <div class="course-card-top">
           <div class="course-badges-row">
             <span class="badge-subject">{{ course.subject }}</span>
+            <span 
+              class="badge-enrollment-type"
+              :class="course.enrollment_type === 'self_paced' ? 'enrollment-self-paced' : 'enrollment-curriculum'"
+            >
+              {{ course.enrollment_type === 'self_paced' ? '⚡ Self-Paced' : '📚 Curriculum' }}
+            </span>
             <span class="badge-status" :class="`status-${course.status}`">
               {{ formatStatus(course.status) }}
+            </span>
+            <span 
+              v-if="course.assigned_sections && course.assigned_sections.length > 0" 
+              class="badge-assigned"
+            >
+              Assigned ({{ course.assigned_sections.length }})
+            </span>
+            <span 
+              v-else-if="course.status === 'published' && course.enrollment_type !== 'self_paced'" 
+              class="badge-unassigned-warning" 
+              title="This published module is not assigned to any class sections, so cohort students cannot see it yet."
+            >
+              ⚠️ No assigned sections
             </span>
           </div>
           <h2 class="course-card-title">{{ course.title }}</h2>
@@ -90,7 +109,7 @@
                 {{ sec.name }} ({{ sec.code }})
               </span>
             </div>
-            <span v-else class="meta-val text-muted">None assigned</span>
+            <span v-else class="meta-val text-warning-hint">⚠️ None assigned (Assign to a section for students to access)</span>
           </div>
 
           <!-- Counts -->
@@ -131,13 +150,13 @@
             type="button" 
             class="btn-card-action btn-course-studio" 
             @click="$emit('select-curriculum', course)"
-            title="Open Course Studio: AI Curriculum Transformation, Materials & Publishing"
+            title="Open Module Studio: Topic Nodes, Materials & Publishing"
             id="btn-open-studio"
           >
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>
-            Open Course Studio →
+            Open in Module Studio →
           </button>
 
           <button 
@@ -157,8 +176,10 @@
           <button 
             type="button" 
             class="btn-card-delete" 
-            @click="$emit('delete-course', course.id)"
+            @click.stop="$emit('delete-course', course.id)"
             title="Delete course"
+            :id="`btn-delete-course-${course.id}`"
+            :aria-label="`Delete course ${course.title}`"
           >
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
@@ -216,6 +237,19 @@
                 placeholder="e.g. Grade 11 STEM"
               />
             </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="edit-enrollment-type">Enrollment Policy *</label>
+            <select 
+              id="edit-enrollment-type" 
+              v-model="editForm.enrollment_type" 
+              class="form-select"
+              required
+            >
+              <option value="curriculum">Curriculum / Teacher-Controlled (Requires approval to unenroll)</option>
+              <option value="self_paced">Self-Paced / Open Enrollment (Student can self-enroll & unenroll freely)</option>
+            </select>
           </div>
 
           <div class="form-group">
@@ -327,6 +361,7 @@ const editForm = reactive({
   description: '',
   subject: '',
   academic_level: '',
+  enrollment_type: 'curriculum',
   school_year: '',
   semester: '',
   sectionIds: [],
@@ -338,6 +373,7 @@ function openEditModal(course) {
   editForm.description = course.description || '';
   editForm.subject = course.subject || '';
   editForm.academic_level = course.academic_level || '';
+  editForm.enrollment_type = course.enrollment_type || 'curriculum';
   editForm.school_year = course.school_year || '';
   editForm.semester = course.semester || '';
   editForm.sectionIds = [...(course.assigned_section_ids || (course.assigned_sections || []).map(s => s.id))];
@@ -376,6 +412,7 @@ async function handleSaveEdit() {
         description: editForm.description.trim(),
         subject: editForm.subject.trim(),
         academic_level: editForm.academic_level.trim(),
+        enrollment_type: editForm.enrollment_type || 'curriculum',
         school_year: editForm.school_year.trim(),
         semester: editForm.semester.trim(),
       },
@@ -534,6 +571,25 @@ function formatStatus(status) {
   border-radius: 4px;
 }
 
+.badge-enrollment-type {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.enrollment-self-paced {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.enrollment-curriculum {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 .badge-status {
   font-size: 10.5px;
   font-weight: 700;
@@ -545,6 +601,33 @@ function formatStatus(status) {
 .status-published { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 .status-review { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
 .status-archived { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+
+.badge-assigned {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.badge-unassigned-warning {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  cursor: help;
+}
+
+.text-warning-hint {
+  color: #b45309 !important;
+  font-weight: 600;
+  font-size: 11px;
+}
 
 .course-card-title {
   font-size: 15px;

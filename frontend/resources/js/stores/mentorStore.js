@@ -82,6 +82,17 @@ const starForm = reactive({
   note: '',
 });
 
+// ── Course Unenrollment Requests & Notifications State ───────────────────────
+const pendingUnenrollmentRequests = ref([]);
+const unenrollmentHistory = ref([]);
+const isLoadingUnenrollment = ref(false);
+const unenrollmentError = ref(null);
+const mentorNotifications = ref([]);
+const isLoadingNotifications = ref(false);
+
+const pendingUnenrollmentCount = computed(() => pendingUnenrollmentRequests.value.length);
+const unreadNotificationsCount = computed(() => mentorNotifications.value.filter(n => !n.is_read).length);
+
 // Available Star Catalog for Manual Awarding (Synchronized with curriculum_modules badges)
 const AVAILABLE_STARS = [
   { id: 'sensor-scout', title: 'Sensor Scout', category: 'Sensors & Perception', defaultModule: 101, description: 'Mastered noise filtering, ADC thresholds, and voltage dividers.' },
@@ -132,11 +143,13 @@ async function loadDashboard(mentorId) {
   dashboardError.value = null;
 
   try {
-    const [metricsResult, fetchedSections, fetchedCourses, fetchedStudents] = await Promise.all([
+    const [metricsResult, fetchedSections, fetchedCourses, fetchedStudents, pendingReqs, notifs] = await Promise.all([
       MentorService.getDashboardMetrics(mentorId),
       MentorService.getAssignedSections(mentorId),
       MentorService.getCourses(mentorId),
       MentorService.getAssignedStudents(mentorId),
+      MentorService.getPendingUnenrollmentRequests(mentorId),
+      MentorService.getMentorNotifications(mentorId),
     ]);
 
     if (metricsResult.error) {
@@ -148,6 +161,8 @@ async function loadDashboard(mentorId) {
     sections.value = fetchedSections;
     courses.value = fetchedCourses;
     students.value = fetchedStudents;
+    pendingUnenrollmentRequests.value = pendingReqs || [];
+    mentorNotifications.value = notifs || [];
 
     if (!activeCourseId.value && fetchedCourses.length > 0) {
       activeCourseId.value = fetchedCourses[0].id;
@@ -276,7 +291,11 @@ async function createCourse(courseData) {
  * Delete a course
  */
 async function deleteCourse(courseId, mentorId) {
-  const ok = await MentorService.deleteCourse(courseId, mentorId);
+  const targetMentorId = mentorId 
+    || currentMentorId.value 
+    || (typeof activeMentorProfile !== 'undefined' && activeMentorProfile?.value ? activeMentorProfile.value.id : null) 
+    || DEMO_MENTOR_UUID;
+  const ok = await MentorService.deleteCourse(courseId, targetMentorId);
   if (ok) {
     courses.value = courses.value.filter(c => c.id !== courseId);
     if (activeCourseId.value === courseId) {
@@ -446,13 +465,34 @@ async function generateProposalDraft(courseId, mentorId, options) {
 
   try {
     const res = await MentorService.generateDraftCurriculumProposal(targetCourseId, targetMentorId, options);
-    if (res.success && res.proposal) {
-      curriculumProposals.value.unshift(res.proposal);
-      activeProposal.value = res.proposal;
+    if (res.success && (res.proposal || res.draft)) {
+      const prop = res.proposal || {
+        id: res.draft?.id || targetCourseId,
+        course_id: targetCourseId,
+        proposal_data: {
+          title: res.draft?.title,
+          summary: res.draft?.description,
+          description: res.draft?.description,
+          learning_nodes: res.draft?.learning_nodes,
+          topic_groups: res.draft?.topic_groups,
+          source_coverage: res.draft?.source_coverage,
+          modules: [
+            {
+              id: `mod-${targetCourseId}-1`,
+              module_number: 1,
+              title: res.draft?.title,
+              checkpoints: res.draft?.learning_nodes,
+            }
+          ],
+        },
+        status: 'draft',
+      };
+      curriculumProposals.value.unshift(prop);
+      activeProposal.value = prop;
       if (!activeCourseId.value) {
         activeCourseId.value = targetCourseId;
       }
-      return { success: true, proposal: res.proposal };
+      return { success: true, proposal: prop, draft: res.draft };
     }
     proposalError.value = res.error || 'Failed to generate proposal.';
     return { success: false, error: proposalError.value };
@@ -732,6 +772,198 @@ async function submitStarAction(mentorId, mentorName, noteOverride = null) {
   }
 }
 
+/**
+ * Fetch pending course unenrollment requests for mentor
+ */
+async function fetchPendingUnenrollmentRequests(mentorId) {
+  const mId = mentorId || currentMentorId.value || DEMO_MENTOR_UUID;
+  isLoadingUnenrollment.value = true;
+  unenrollmentError.value = null;
+  try {
+    const list = await MentorService.getPendingUnenrollmentRequests(mId);
+    pendingUnenrollmentRequests.value = list;
+    return list;
+  } catch (err) {
+    unenrollmentError.value = err.message || 'Failed to fetch unenrollment requests.';
+    return [];
+  } finally {
+    isLoadingUnenrollment.value = false;
+  }
+}
+
+/**
+ * Fetch historical unenrollment requests
+ */
+async function fetchUnenrollmentHistory(mentorId) {
+  const mId = mentorId || currentMentorId.value || DEMO_MENTOR_UUID;
+  try {
+    const list = await MentorService.getUnenrollmentRequestsHistory(mId);
+    unenrollmentHistory.value = list;
+    return list;
+  } catch (err) {
+    console.warn('[MentorStore] fetchUnenrollmentHistory error:', err);
+    return [];
+  }
+}
+
+/**
+ * Approve unenrollment request
+ */
+async function approveUnenrollmentRequest(requestId, mentorId) {
+  const mId = mentorId || currentMentorId.value || DEMO_MENTOR_UUID;
+  try {
+    const res = await MentorService.approveUnenrollmentRequest(requestId, mId);
+    if (res.success) {
+      pendingUnenrollmentRequests.value = pendingUnenrollmentRequests.value.filter(r => r.id !== requestId);
+      await fetchUnenrollmentHistory(mId);
+      // Refresh students roster
+      const updatedStudents = await MentorService.getAssignedStudents(mId);
+      students.value = updatedStudents;
+    }
+    return res;
+  } catch (err) {
+    return { success: false, error: err.message || 'Failed to approve request.' };
+  }
+}
+
+/**
+ * Reject unenrollment request with review notes
+ */
+async function rejectUnenrollmentRequest(requestId, mentorId, notes) {
+  const mId = mentorId || currentMentorId.value || DEMO_MENTOR_UUID;
+  try {
+    const res = await MentorService.rejectUnenrollmentRequest(requestId, mId, notes);
+    if (res.success) {
+      pendingUnenrollmentRequests.value = pendingUnenrollmentRequests.value.filter(r => r.id !== requestId);
+      await fetchUnenrollmentHistory(mId);
+    }
+    return res;
+  } catch (err) {
+    return { success: false, error: err.message || 'Failed to reject request.' };
+  }
+}
+
+/**
+ * Fetch persistent notifications for mentor
+ */
+async function fetchMentorNotifications(mentorId) {
+  const mId = mentorId || currentMentorId.value || DEMO_MENTOR_UUID;
+  isLoadingNotifications.value = true;
+  try {
+    const list = await MentorService.getMentorNotifications(mId);
+    mentorNotifications.value = list;
+    return list;
+  } catch (err) {
+    console.warn('[MentorStore] fetchMentorNotifications error:', err);
+    return [];
+  } finally {
+    isLoadingNotifications.value = false;
+  }
+}
+
+/**
+ * Mark notification as read
+ */
+async function markNotificationRead(notificationId) {
+  if (!notificationId) return;
+  try {
+    await MentorService.markNotificationRead(notificationId);
+    const notif = mentorNotifications.value.find(n => n.id === notificationId);
+    if (notif) notif.is_read = true;
+  } catch (err) {
+    console.warn('[MentorStore] markNotificationRead error:', err);
+  }
+}
+
+/**
+ * Module-Centered Learning System Methods & Computed Getters
+ */
+const modules = computed(() => courses.value);
+const activeModule = computed(() => activeCourse.value);
+const activeModuleId = activeCourseId;
+const moduleMaterials = computed(() => courseMaterials.value);
+const activeModuleDraft = computed(() => activeProposal.value);
+
+async function loadModules(mentorId) {
+  return loadCourses(mentorId);
+}
+
+async function createModule(payload) {
+  return createCourse(payload);
+}
+
+async function updateModule(id, payload) {
+  return updateCourse(id, payload);
+}
+
+async function deleteModule(id) {
+  return deleteCourse(id);
+}
+
+async function generateModuleStructure(moduleId, options = {}) {
+  const targetId = moduleId || activeCourseId.value;
+  if (!targetId) return { success: false, error: 'Module ID is required' };
+  isGeneratingProposal.value = true;
+  proposalError.value = null;
+  try {
+    const res = await MentorService.generateModuleStructure(targetId, currentMentorId.value || DEMO_MENTOR_UUID, options);
+    if (res.success && res.draft) {
+      activeProposal.value = res.proposal || res.draft;
+      await loadProposals(targetId);
+    }
+    return res;
+  } catch (err) {
+    proposalError.value = err.message || 'Failed to generate module structure';
+    return { success: false, error: proposalError.value };
+  } finally {
+    isGeneratingProposal.value = false;
+  }
+}
+
+async function saveModuleDraft(moduleId, draftData) {
+  const targetId = moduleId || activeCourseId.value;
+  if (!targetId) return { success: false, error: 'Module ID is required' };
+  try {
+    const res = await MentorService.saveModuleDraft(targetId, draftData, currentMentorId.value || DEMO_MENTOR_UUID);
+    if (res.success) {
+      activeProposal.value = res.draft;
+      await loadProposals(targetId);
+    }
+    return res;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function reorderLearningNodes(moduleId, orderedNodeIds) {
+  const targetId = moduleId || activeCourseId.value;
+  if (!targetId) return { success: false, error: 'Module ID is required' };
+  try {
+    const res = await MentorService.reorderLearningNodes(targetId, orderedNodeIds, currentMentorId.value || DEMO_MENTOR_UUID);
+    if (res.success) {
+      activeProposal.value = res.draft;
+    }
+    return res;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function publishModule(moduleId) {
+  const targetId = moduleId || activeCourseId.value;
+  if (!targetId) return { success: false, error: 'Module ID is required' };
+  try {
+    const res = await MentorService.publishModule(targetId, currentMentorId.value || DEMO_MENTOR_UUID);
+    if (res.success) {
+      await loadCourses(currentMentorId.value);
+      await loadProposals(targetId);
+    }
+    return res;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 // ── Export Store ─────────────────────────────────────────────────────────────
 const mentorStoreSingleton = reactive({
   // Navigation & Identity
@@ -743,6 +975,11 @@ const mentorStoreSingleton = reactive({
   courses,
   activeCourseId,
   activeCourse,
+  modules,
+  activeModuleId,
+  activeModule,
+  moduleMaterials,
+  activeModuleDraft,
   sections,
   activeSectionFilter,
   activeSection,
@@ -753,6 +990,11 @@ const mentorStoreSingleton = reactive({
   activeProposal,
   foundationModules,
   dashboardMetrics,
+  pendingUnenrollmentRequests,
+  unenrollmentHistory,
+  pendingUnenrollmentCount,
+  mentorNotifications,
+  unreadNotificationsCount,
 
   // Status & Errors
   isLoadingDashboard,
@@ -763,6 +1005,9 @@ const mentorStoreSingleton = reactive({
   materialsError,
   isGeneratingProposal,
   proposalError,
+  isLoadingUnenrollment,
+  unenrollmentError,
+  isLoadingNotifications,
 
   // Modals & Drawers
   selectedStudent,
@@ -781,10 +1026,18 @@ const mentorStoreSingleton = reactive({
   // Actions
   loadDashboard,
   loadCourses,
+  loadModules,
   loadFoundationModules,
   createCourse,
+  createModule,
   updateCourse,
+  updateModule,
   deleteCourse,
+  deleteModule,
+  generateModuleStructure,
+  saveModuleDraft,
+  reorderLearningNodes,
+  publishModule,
   createSection,
   updateSection,
   deleteSection,
@@ -811,6 +1064,12 @@ const mentorStoreSingleton = reactive({
   openStarModal,
   closeStarModal,
   submitStarAction,
+  fetchPendingUnenrollmentRequests,
+  fetchUnenrollmentHistory,
+  approveUnenrollmentRequest,
+  rejectUnenrollmentRequest,
+  fetchMentorNotifications,
+  markNotificationRead,
 });
 
 export const useMentorStore = () => mentorStoreSingleton;

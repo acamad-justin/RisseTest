@@ -165,8 +165,12 @@
           </template>
         </svg>
 
-        <!-- HTML/CSS Bokeh Glowing Orbs (Dynamic based on currentStep) -->
-        <div class="nodes-overlay">
+        <!-- Dynamic Checkpoint Nodes or Empty State -->
+        <div v-if="checkpoints.length === 0" class="no-checkpoints-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #64748b; text-align: center; padding: 24px;">
+          <p style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">No checkpoints available for this module yet.</p>
+          <p style="font-size: 13px; color: #94a3b8;">Check back once your instructor publishes learning path milestones.</p>
+        </div>
+        <div v-else class="nodes-overlay">
           <div 
             v-for="(cp, idx) in checkpoints" 
             :key="cp.id"
@@ -231,11 +235,14 @@
       <!-- Right: Learning Objectives Panel -->
       <aside class="objectives-panel">
         <h3 class="objectives-title">Learning Objectives</h3>
-        <ul class="objectives-list">
+        <ul v-if="objectives.length > 0" class="objectives-list">
           <li v-for="(obj, i) in objectives" :key="i">
             {{ obj }}
           </li>
         </ul>
+        <p v-else class="objectives-empty-note" style="font-size: 13px; color: #64748b; font-style: italic; margin: 4px 0 16px 0;">
+          No learning objectives specified for this module yet.
+        </p>
 
         <!-- Achievement Badge Preview Card -->
         <div class="badge-preview-card" @click="handleBadgeCardClick">
@@ -319,26 +326,23 @@ const checkpoints = computed(() => {
       const pos = predefinedPositions[idx % predefinedPositions.length];
       const yDynamic = total > 1 ? Math.round(840 - (idx / (total - 1)) * 700) : 500;
       return {
+        ...cp,
         id: cp.id || idx + 1,
         name: cp.name || cp.title || `Checkpoint ${idx + 1}`,
+        title: cp.title || cp.name || `Checkpoint ${idx + 1}`,
         x: pos.x,
         y: yDynamic,
         labelPos: pos.labelPos,
         desc: cp.description || cp.desc || '',
         type: cp.type || 'concept',
+        node_content: cp.node_content || null,
+        raw: cp,
       };
     });
   }
 
-  // Default checkpoints for other modules
-  return [
-    { id: 1, name: 'Robotics Basics', x: 740, y: 840, labelPos: 'right', desc: 'Introduction to foundational mechanical concepts' },
-    { id: 2, name: 'Robot Anatomy', x: 480, y: 720, labelPos: 'left', desc: 'Structural components and motor links' },
-    { id: 3, name: 'Inputs, Output, and Signals', x: 680, y: 500, labelPos: 'top', desc: 'Digital logic and signal routing' },
-    { id: 4, name: 'Microcontrollers', x: 220, y: 400, labelPos: 'bottom', desc: 'Processing sensor inputs and registers' },
-    { id: 5, name: 'Sensing', x: 460, y: 160, labelPos: 'bottom', desc: 'Perception of surrounding environment' },
-    { id: 6, name: 'Action & Actuation', x: 720, y: 120, labelPos: 'bottom', desc: 'Closed-loop motion and motors' },
-  ];
+  // Strictly return empty if module has no checkpoints in database
+  return [];
 });
 
 // Constellation lines connecting consecutive checkpoints
@@ -376,13 +380,14 @@ const objectives = computed(() => {
       'Achieve 100% mastery to unlock the Speed Learner achievement badge.',
     ];
   }
-  return [
-    'Identify the main components of a robot and explain their functions.',
-    'Describe how microcontrollers process information.',
-    'Distinguish inputs, outputs, and signals in a robotic system.',
-    'Explain how sensors and actuators enable robots to sense and act.',
-    'Trace the basic flow of information from sensing to action.',
-  ];
+  const rawObjs = props.moduleData?.learningObjectives || props.moduleData?.learning_objectives || props.moduleData?.objectives;
+  if (Array.isArray(rawObjs) && rawObjs.length > 0) {
+    return rawObjs.map(o => String(o).trim()).filter(Boolean);
+  }
+  if (typeof rawObjs === 'string' && rawObjs.trim().length > 0) {
+    return rawObjs.split('\n').map(o => o.trim()).filter(Boolean);
+  }
+  return [];
 });
 
 function toggleStar() {
@@ -398,7 +403,7 @@ function getNodeTooltip(cp, idx) {
 
 function handleNodeClick(cp, idx) {
   if (idx <= currentStep.value) {
-    emit('select-checkpoint', cp.name);
+    emit('select-checkpoint', cp);
   } else {
     emit('notify', `Checkpoint "${cp.name}" is locked. Complete Step ${currentStep.value + 1} first!`);
   }

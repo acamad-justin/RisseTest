@@ -178,6 +178,7 @@ async function login(email, password) {
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanPass = (password || '').trim();
   authError.value = null;
+  purgeModuleCaches();
 
   if (!cleanEmail || !cleanPass) {
     return { success: false, message: 'Please provide both email and password.' };
@@ -382,6 +383,7 @@ async function register({ name, email, password, school = null, grade = null, av
  * Fast Demo Login Helper (Attempts standard demo credentials)
  */
 async function quickLogin(userId) {
+  purgeModuleCaches();
   if (userId === 'usr_mentor' || userId === 'mentor') {
     const res = await login('mentor@risse.edu', 'password123');
     if (res.success && res.user) return res;
@@ -473,12 +475,34 @@ export function purgeModuleCaches() {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('risse_') && (key.includes('explore_modules') || key.includes('enrolled_modules')))) {
-          keysToRemove.push(key);
+        if (key && key.startsWith('risse_')) {
+          if (
+            key.includes('explore_modules') ||
+            key.includes('enrolled_modules') ||
+            key.includes('courses') ||
+            key.includes('students') ||
+            key.includes('sections') ||
+            key.includes('curriculum_proposals') ||
+            key.includes('active_module') ||
+            key.includes('course_materials') ||
+            key.includes('unenrollment')
+          ) {
+            keysToRemove.push(key);
+          }
         }
       }
       keysToRemove.forEach(k => localStorage.removeItem(k));
     }
+  } catch (_) {}
+
+  // Synchronously reset service caches
+  try {
+    import('../../../lib/student/studentSyncService.ts').then(({ StudentSyncService }) => {
+      StudentSyncService?.purgeAllCaches?.();
+    }).catch(() => {});
+    import('../../../lib/mentor/mentorService.ts').then(({ MentorService }) => {
+      MentorService?.resetTestState?.();
+    }).catch(() => {});
   } catch (_) {}
 }
 

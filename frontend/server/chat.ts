@@ -355,8 +355,10 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
     apiKey: googleApiKey,
   });
 
+  const chatModel = process.env.GEMINI_CHAT_MODEL || 'gemini-3.5-flash-lite';
+
   const streamResult = streamText({
-    model: google('gemini-3.5-flash-lite'),
+    model: google(chatModel),
     system: fullSystemPrompt,
     messages: modelMessages,
   });

@@ -108883,7 +108883,7 @@ SOCRATIC GUIDANCE INSTRUCTION:
 Follow the Socratic Progression steps provided in the retrieved context above. Lead the student to discover the answers through targeted scaffolding, metric units (mm, cm, m, kg), and finish your response with at most ONE single, focused guiding question.
 `;
 	const streamResult = streamText({
-		model: createGoogleGenerativeAI({ apiKey: googleApiKey })("gemini-3.5-flash-lite"),
+		model: createGoogleGenerativeAI({ apiKey: googleApiKey })(process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite"),
 		system: fullSystemPrompt,
 		messages: modelMessages
 	});

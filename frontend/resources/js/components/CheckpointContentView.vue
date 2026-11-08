@@ -82,27 +82,233 @@
         </div>
       </header>
 
-      <!-- Educational Lesson Text & Core Concepts (Dynamic to active topic) -->
-      <section class="lesson-lecture-column">
-        <h2 class="concepts-heading">Explore The Core Concepts</h2>
+      <!-- When content is in preparation, display honest empty state -->
+      <div v-if="!activeLessonData.hasContent" class="lesson-empty-state-card" id="lesson-empty-state-card">
+        <div class="empty-state-icon">📚</div>
+        <h2 class="empty-state-title">Lesson Content In Preparation</h2>
+        <p class="empty-state-message">
+          Lesson content is not available yet. Please check back later.
+        </p>
+        <button type="button" class="btn-return-roadmap" @click="$emit('back')">
+          ← Return to Progression Map
+        </button>
+      </div>
 
-        <!-- Dynamic Concept Blocks -->
-        <article 
-          v-for="(concept, cIdx) in activeLessonData.concepts" 
-          :key="cIdx" 
-          class="concept-block"
-        >
-          <h3 class="concept-title dashed-underline">{{ concept.title }}</h3>
-          <p class="concept-text">
-            {{ concept.text }}
+      <!-- Educational Lesson Text & Core Concepts (When content is populated) -->
+      <section v-else class="lesson-lecture-column">
+        <!-- Structured Content Blocks Stream (When blocks exist) -->
+        <div v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0" class="lesson-blocks-stream">
+          <template v-for="(block, bIdx) in activeLessonData.blocks" :key="block.id || bIdx">
+            <!-- Text Block -->
+            <div v-if="block.type === 'text'" class="lesson-section-box block-text-box">
+              <h3 v-if="block.title" class="block-title">{{ block.title }}</h3>
+              <div class="markdown-body block-markdown" v-html="renderMarkdown(block.content)"></div>
+            </div>
+
+            <!-- Callout / Analogy Block -->
+            <div v-else-if="block.type === 'callout'" class="lesson-section-box block-callout-card" :class="{ 'is-analogy': block.analogy }">
+              <div class="callout-header">
+                <span class="callout-icon">💡</span>
+                <h3 class="callout-title">{{ block.title || 'Key Principle / Analogy' }}</h3>
+              </div>
+              <div class="callout-content" v-html="renderMarkdown(block.content)"></div>
+              <div v-if="block.analogy" class="analogy-takeaway-box">
+                <span class="takeaway-label">Key Takeaway:</span>
+                <span class="takeaway-text">{{ block.analogy }}</span>
+              </div>
+            </div>
+
+            <!-- Code Block with Copy Action -->
+            <div v-else-if="block.type === 'code'" class="lesson-section-box block-code-card">
+              <div class="code-header-bar">
+                <div class="code-tag-group">
+                  <span class="code-lang-badge">{{ block.code_language || 'cpp' }}</span>
+                  <span v-if="block.title" class="code-title-text">{{ block.title }}</span>
+                </div>
+                <button type="button" class="btn-copy-code" @click="copyCode(block.content, bIdx)">
+                  <span v-if="codeCopiedIndex === bIdx">✓ Copied</span>
+                  <span v-else>📋 Copy Code</span>
+                </button>
+              </div>
+              <pre class="code-pre-block"><code>{{ block.content }}</code></pre>
+              <p v-if="block.caption" class="code-caption-text">{{ block.caption }}</p>
+            </div>
+
+            <!-- Table Block -->
+            <div v-else-if="block.type === 'table'" class="lesson-section-box block-table-card">
+              <h3 v-if="block.title" class="table-title">{{ block.title }}</h3>
+              <div class="markdown-body block-markdown-table" v-html="renderMarkdown(block.content)"></div>
+            </div>
+
+            <!-- Activity Block -->
+            <div v-else-if="block.type === 'activity'" class="lesson-section-box block-activity-card">
+              <div class="activity-header">
+                <span class="activity-icon">🛠️</span>
+                <h3 class="activity-title">{{ block.title || 'Hands-on Activity' }}</h3>
+              </div>
+              <div class="activity-content" v-html="renderMarkdown(block.content)"></div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Fallback Standard 8-Section Layout (When blocks are not present) -->
+        <template v-else>
+          <!-- 1. Introduction & Overview -->
+          <div v-if="activeLessonData.introduction" class="lesson-section-box lesson-intro-card">
+            <h2 class="section-title">Overview & Introduction</h2>
+            <p class="intro-text">{{ activeLessonData.introduction }}</p>
+          </div>
+
+          <!-- 2. Core Lesson Guide (Rendered Markdown) -->
+          <div v-if="activeLessonData.coreLesson" class="lesson-section-box lesson-guide-card">
+            <h2 class="section-title">Instructional Guide</h2>
+            <div class="markdown-body lesson-markdown-content" v-html="renderMarkdown(activeLessonData.coreLesson)"></div>
+          </div>
+
+          <!-- 3. Core Concepts -->
+          <div v-if="activeLessonData.concepts && activeLessonData.concepts.length > 0" class="lesson-section-box concepts-section">
+            <h2 class="concepts-heading">Explore The Core Concepts</h2>
+            <article 
+              v-for="(concept, cIdx) in activeLessonData.concepts" 
+              :key="cIdx" 
+              class="concept-block"
+            >
+              <h3 class="concept-title dashed-underline">{{ concept.title }}</h3>
+              <p v-if="concept.text" class="concept-text">{{ concept.text }}</p>
+              <p v-if="concept.example" class="concept-example">
+                <strong>Example:</strong> {{ concept.example }}
+              </p>
+              <p v-if="concept.keyIdea" class="concept-key-idea">
+                <strong>Key idea:</strong> {{ concept.keyIdea }}
+              </p>
+            </article>
+          </div>
+
+          <!-- 4. Practical Demonstrations & Examples -->
+          <div v-if="activeLessonData.examples && activeLessonData.examples.length > 0" class="lesson-section-box examples-section">
+            <h2 class="section-title">Demonstrations & Real-World Examples</h2>
+            <ul class="examples-list">
+              <li v-for="(ex, exIdx) in activeLessonData.examples" :key="exIdx">
+                {{ ex }}
+              </li>
+            </ul>
+          </div>
+
+          <!-- 5. Guided Activities -->
+          <div v-if="activeLessonData.activities && activeLessonData.activities.length > 0" class="lesson-section-box activities-section">
+            <h2 class="section-title">Guided Practice & Laboratory Activities</h2>
+            <div v-for="(act, actIdx) in activeLessonData.activities" :key="actIdx" class="activity-card">
+              <span class="activity-num">Activity {{ actIdx + 1 }}:</span>
+              <p class="activity-text">{{ act }}</p>
+            </div>
+          </div>
+
+          <!-- 6. Engineering Challenges & Troubleshooting -->
+          <div v-if="activeLessonData.challenges && activeLessonData.challenges.length > 0" class="lesson-section-box challenges-section">
+            <h2 class="section-title">Engineering Challenges & Diagnostics</h2>
+            <div v-for="(ch, chIdx) in activeLessonData.challenges" :key="chIdx" class="challenge-card">
+              <span class="challenge-badge">Challenge {{ chIdx + 1 }}</span>
+              <p class="challenge-text">{{ ch }}</p>
+            </div>
+          </div>
+
+          <!-- 7. Assessment Questions & Interactive Quiz -->
+          <div v-if="activeLessonData.quiz && activeLessonData.quiz.length > 0" class="lesson-section-box assessment-section">
+            <h2 class="section-title">Formative Assessment Questions</h2>
+            <div v-for="(q, qIdx) in activeLessonData.quiz" :key="qIdx" class="quiz-question-box">
+              <h4 class="question-title">Question {{ qIdx + 1 }}: {{ q.question }}</h4>
+              <div class="question-options">
+                <div v-for="(opt, oIdx) in (q.options || [])" :key="oIdx" class="opt-item">
+                  <span class="opt-prefix">{{ String.fromCharCode(65 + oIdx) }}.</span>
+                  <span class="opt-content">{{ opt }}</span>
+                </div>
+              </div>
+              <div v-if="q.explanation" class="question-explanation">
+                <strong>Answer & Rationale:</strong> {{ q.correct_answer ? `(${q.correct_answer}) ` : '' }}{{ q.explanation }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Interactive End-of-Topic Assessment (When configured) -->
+        <div v-if="activeLessonData.assessment && activeLessonData.assessment.questions && activeLessonData.assessment.questions.length > 0" class="lesson-section-box interactive-assessment-section" id="topic-assessment-section">
+          <div class="assessment-section-header">
+            <span class="assessment-icon">🎯</span>
+            <div>
+              <h2 class="section-title">End-of-Topic Assessment & Mastery Check</h2>
+              <p class="section-subtitle">Answer the checkpoint question correctly to complete this topic and unlock sequential progression.</p>
+            </div>
+          </div>
+
+          <div v-for="(q, qIdx) in activeLessonData.assessment.questions" :key="q.id || qIdx" class="assessment-question-card">
+            <h4 class="question-header">Question {{ qIdx + 1 }}: {{ q.question }}</h4>
+
+            <!-- Multiple Choice Options -->
+            <div v-if="q.type === 'multiple_choice' && q.options" class="mcq-options-grid">
+              <button 
+                v-for="(opt, optIdx) in q.options" 
+                :key="optIdx"
+                type="button" 
+                class="mcq-option-btn" 
+                :class="{ 
+                  'is-selected': selectedAssessmentAnswer[q.id] === opt.slice(0, 1),
+                  'is-correct': isAssessmentSubmitted && assessmentResults[q.id]?.passed && selectedAssessmentAnswer[q.id] === opt.slice(0, 1),
+                  'is-incorrect': isAssessmentSubmitted && !assessmentResults[q.id]?.passed && selectedAssessmentAnswer[q.id] === opt.slice(0, 1)
+                }"
+                @click="handleSelectOption(q.id, opt.slice(0, 1))"
+              >
+                <span class="opt-key">{{ opt.slice(0, 2) }}</span>
+                <span class="opt-label">{{ opt.slice(3) }}</span>
+              </button>
+            </div>
+
+            <!-- Fill in the blanks -->
+            <div v-else-if="q.type === 'fill_in_the_blanks'" class="fib-input-wrap">
+              <input 
+                type="text" 
+                v-model="selectedAssessmentAnswer[q.id]" 
+                class="assessment-text-input" 
+                placeholder="Type your answer here..."
+              />
+            </div>
+
+            <!-- Short answer -->
+            <div v-else-if="q.type === 'short_answer'" class="sa-input-wrap">
+              <textarea 
+                rows="3" 
+                v-model="selectedAssessmentAnswer[q.id]" 
+                class="assessment-textarea" 
+                placeholder="Explain in your own words..."
+              ></textarea>
+            </div>
+
+            <!-- Evaluation Feedback Result -->
+            <div v-if="isAssessmentSubmitted && assessmentResults[q.id]" class="assessment-feedback-alert" :class="assessmentResults[q.id].passed ? 'alert-success' : 'alert-danger'">
+              <div class="feedback-badge-row">
+                <span class="feedback-status-pill">{{ assessmentResults[q.id].passed ? '✓ Passed (Score: 100%)' : '✗ Needs Revision' }}</span>
+              </div>
+              <p class="feedback-text">{{ assessmentResults[q.id].feedback }}</p>
+            </div>
+          </div>
+
+          <div class="assessment-actions-bar">
+            <button 
+              type="button" 
+              class="btn-submit-assessment" 
+              @click="submitAssessment"
+              id="btn-submit-topic-assessment"
+            >
+              {{ isAssessmentPassed ? '✓ Assessment Satisfied' : 'Submit Answers & Verify Mastery' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 8. Grounding Disclosure & References -->
+        <footer v-if="activeLessonData.groundingDisclosure || activeLessonData.references" class="lesson-footer-citations">
+          <p v-if="activeLessonData.groundingDisclosure" class="grounding-text">
+            <strong>Source Citation:</strong> {{ activeLessonData.groundingDisclosure }}
           </p>
-          <p class="concept-example">
-            <strong>Example:</strong> {{ concept.example }}
-          </p>
-          <p class="concept-key-idea">
-            <strong>Key idea:</strong> {{ concept.keyIdea }}
-          </p>
-        </article>
+        </footer>
       </section>
     </div>
 
@@ -270,6 +476,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore.js';
 import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
+import { ROBOTICS_AUTHENTIC_TOPICS, evaluateAssessmentAnswer } from '../../../lib/mentor/sourceFaithfulCurriculum.ts';
 
 const authStore = useAuthStore();
 
@@ -286,6 +493,10 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  checkpointData: {
+    type: Object,
+    default: () => null,
+  },
 });
 
 const emit = defineEmits(['back', 'notify', 'complete-checkpoint']);
@@ -298,6 +509,54 @@ const chatMessagesContainer = ref(null);
 const isStarred = ref(false);
 const isChatMaximized = ref(false);
 const isKebabOpen = ref(false);
+
+// Interactive End-of-Topic Assessment state
+const selectedAssessmentAnswer = ref({});
+const assessmentResults = ref({});
+const isAssessmentSubmitted = ref(false);
+const isAssessmentPassed = ref(false);
+const codeCopiedIndex = ref(null);
+
+function copyCode(code, idx) {
+  if (navigator?.clipboard) {
+    navigator.clipboard.writeText(code);
+    codeCopiedIndex.value = idx;
+    setTimeout(() => {
+      codeCopiedIndex.value = null;
+    }, 2000);
+  }
+}
+
+function handleSelectOption(qId, optionPrefix) {
+  selectedAssessmentAnswer.value[qId] = optionPrefix;
+}
+
+function submitAssessment() {
+  const assessment = activeLessonData.value.assessment;
+  if (!assessment || !assessment.questions || assessment.questions.length === 0) return;
+
+  let allPassed = true;
+  const results = {};
+
+  for (const q of assessment.questions) {
+    const studentAns = selectedAssessmentAnswer.value[q.id] || '';
+    const evalRes = evaluateAssessmentAnswer(q, studentAns);
+    results[q.id] = evalRes;
+    if (!evalRes.passed) {
+      allPassed = false;
+    }
+  }
+
+  assessmentResults.value = results;
+  isAssessmentSubmitted.value = true;
+  isAssessmentPassed.value = allPassed;
+
+  if (allPassed) {
+    emit('notify', 'Assessment passed! You have satisfied the completion requirement for this topic.');
+  } else {
+    emit('notify', 'Review feedback and try again to satisfy the topic requirement.');
+  }
+}
 
 function getActiveEmail() {
   try {
@@ -364,301 +623,244 @@ const activeLessonData = computed(() => {
   const title = (props.checkpointTitle || '').trim();
   const parent = (props.parentModuleName || '').trim();
 
-  // Knowledge dictionary aligned with competitive robotics curriculum
-  const library = {
-    // Test Module Checkpoints
-    'Orientation & Signal Basics': {
-      subtitle: 'Signal Flow & Fast Calibration',
-      introGreeting: 'Welcome to your test calibration! ⚡',
-      p1: `In this path, we explore rapid signal routing and foundational logic in robotics systems.`,
-      p2: `Consider a microcontroller receiving a raw voltage pulse when a calibration button is pressed: how does the system recognize that transition?`,
-      question: `What must happen to an analog voltage reading before a microcontroller can evaluate it as a logical condition (HIGH or LOW)?`,
-      concepts: [
-        {
-          title: 'A. Signal Representation',
-          text: 'Signals carry electrical or digital states between sensors, microcontrollers, and actuators.',
-          example: 'A push-button or micro-switch sends a 3.3V pulse to an input pin when actuated.',
-          keyIdea: 'A signal is raw information in transit; processing decides what that signal means.',
-        },
-        {
-          title: 'B. Latency & Sampling',
-          text: 'How frequently a system samples an incoming signal dictates how quickly it can react.',
-          example: 'If a sensor updates at 10Hz but a robot moves at 1 m/s, it travels 10cm between readings.',
-          keyIdea: 'Appropriate sampling rates are necessary to prevent missed events.',
-        },
-        {
-          title: 'C. Closed-Loop Feedback',
-          text: 'Feedback allows a robot to verify whether its executed action achieved the intended target.',
-          example: 'Reading optical encoder ticks to confirm that a wheel completed a 90-degree pivot.',
-          keyIdea: 'Without feedback, actions assume ideal conditions that rarely exist in the arena.',
-        },
-      ]
-    },
-    'Rapid Prototyping Trial': {
-      subtitle: 'Fast Iteration & Component Interfacing',
-      introGreeting: 'Ready for rapid prototyping! 🚀',
-      p1: `In this trial, we test fast iteration between sensor feedback and motor actuation.`,
-      p2: `Suppose you want your prototype robot to halt within 5 milliseconds of sensing an arena border line.`,
-      question: `Between sensor thresholding, code conditional branches, and motor driver braking, where is delay most commonly introduced?`,
-      concepts: [
-        {
-          title: 'A. Rapid Breadboarding & Interfacing',
-          text: 'Quickly wiring sensors to test inputs before finalizing soldered harnesses saves critical troubleshooting time.',
-          example: 'Verifying optical line sensor contrast against arena mats with an oscilloscope or LED indicator.',
-          keyIdea: 'Validate sensor signals independently before writing complex behavior loops.',
-        },
-        {
-          title: 'B. Blocking vs Non-Blocking Logic',
-          text: 'Using delays halts the microcontroller, preventing it from reading other emergency sensors.',
-          example: 'Replacing delay() with timer interrupts or millis() tracking keeps all sensor loops responsive.',
-          keyIdea: 'Never halt the main loop when competitive robots need continuous situational awareness.',
-        },
-        {
-          title: 'C. Electrical Power Isolation',
-          text: 'Motors draw high surge currents that can cause microcontrollers to brown-out or reset.',
-          example: 'Powering logic and motors from separated regulators or decoupling capacitors.',
-          keyIdea: 'Stable logic power prevents erratic rebooting during heavy motor draw.',
-        },
-      ]
-    },
-    'Final Calibration & Mastery': {
-      subtitle: 'Consistency & Star Chart Graduation',
-      introGreeting: 'Final calibration sequence! 🌟',
-      p1: `In this final checkpoint, we verify end-to-end repeatability and calibrate full system consistency.`,
-      p2: `A competitive robot that works once in testing is a prototype; a robot that performs identical moves 10 times in a row demonstrates true consistency.`,
-      question: `What environmental or mechanical variables (such as battery voltage sag or wheel traction) cause a robot to drift over consecutive runs?`,
-      concepts: [
-        {
-          title: 'A. Consistency as the Apex Standard',
-          text: 'Consistency represents the ability to reliably repeat successful performance across multiple match rounds.',
-          example: 'A sumobot executing the exact same opening charge and edge-stop 10 rounds consecutively.',
-          keyIdea: 'Consistency cannot be achieved until proportionality, balance, and precision are satisfied.',
-        },
-        {
-          title: 'B. Battery Discharge & Speed Drift',
-          text: 'As battery voltage drops from 12.6V to 11.1V, open-loop motors spin slower for the exact same PWM command.',
-          example: 'Using voltage compensation algorithms or closed-loop PID velocity control.',
-          keyIdea: 'Compensate for energy depletion in software to preserve maneuver repeatability.',
-        },
-        {
-          title: 'C. Graduation to Autonomous Mastery',
-          text: 'Calibrating all sensor baselines and thresholds locks in competition readiness.',
-          example: 'Storing line sensor min/max calibrations in EEPROM or flash memory at startup.',
-          keyIdea: 'A calibrated system adapts to arena lighting and surface variations effortlessly.',
-        },
-      ]
-    },
-    // Robotics Fundamentals
-    'Inputs, Output, and Signals': {
-      subtitle: 'Signal Flow & System Interaction',
-      introGreeting: 'Welcome back! ✨',
-      p1: `In this path, we'll explore Inputs, Outputs, and Signals — how a robot receives information, processes it, and responds to the world around it.`,
-      p2: `Think about a Sumobot: how does it know an opponent is nearby, and how does it decide when to move?`,
-      question: `Let's start there. What do you think a robot needs to receive or detect before it can respond to something in its environment?`,
-      concepts: [
-        {
-          title: 'A. Inputs — Information coming in',
-          text: 'Inputs are information a robot receives from its environment or from another system. Sensors often provide these inputs.',
-          example: 'Sumobot example: An infrared sensor detects a change in the surface beneath the robot, suggesting that it has reached the arena boundary.',
-          keyIdea: 'An input gives the robot information to work with.',
-        },
-        {
-          title: 'B. Signals — Information represented',
-          text: 'Signals carry information between components. They can be electrical voltages, digital values, pulses, or other measurable forms.',
-          example: 'Sumobot example: The sensor sends an electrical signal that the microcontroller reads as a value indicating the surface detected.',
-          keyIdea: 'A signal carries information; it is not necessarily the information-processing decision itself.',
-        },
-        {
-          title: 'C. Outputs — Commands or results going out',
-          text: 'Outputs are the results a system sends to other components or systems. A microcontroller may produce output signals to control an actuator.',
-          example: 'Sumobot example: The microcontroller sends a command to the motor driver to reverse the motors, allowing the robot to move away from the edge.',
-          keyIdea: 'An output communicates the result of the system\'s processing.',
-        },
-      ]
-    },
-    'Robotics Basics': {
-      subtitle: 'Foundations & System Architecture',
-      introGreeting: 'Welcome to Robotics Basics! 🤖',
-      p1: `In this path, we explore what truly defines a robot: the integration of sensing, computation, and physical actuation.`,
-      p2: `Everyday machines perform repetitive tasks, but robots perceive their environment and adjust actions autonomously.`,
-      question: `What is the key difference between a pre-programmed washing machine cycle and an autonomous robot vacuum cleaner?`,
-      concepts: [
-        {
-          title: 'A. The Robotic Sense-Plan-Act Loop',
-          text: 'Robots continuously cycle through three phases: sensing the environment, computing a decision, and executing motion.',
-          example: 'A mobile robot reads ultrasonic distance (Sense), computes steering angle (Plan), and spins left motor (Act).',
-          keyIdea: 'The closed loop allows continuous adaptation to real-time changes.',
-        },
-        {
-          title: 'B. Hardware vs Firmware Roles',
-          text: 'Mechanical frames provide rigidity, electrical circuits distribute power and signals, and firmware executes decision logic.',
-          example: 'If a chassis flexes excessively, wheel encoders miscalculate travel distance regardless of firmware quality.',
-          keyIdea: 'Software cannot compensate for poor mechanical structural integrity.',
-        },
-        {
-          title: 'C. Autonomy Levels',
-          text: 'Robotics spans from remote-controlled teleoperation to fully autonomous systems navigating unmapped terrains.',
-          example: 'Competitive RC combat robots vs fully autonomous match robots with line and opponent detection.',
-          keyIdea: 'Greater autonomy demands higher sensor fidelity and robust error recovery.',
-        },
-      ]
-    },
-    'Robot Anatomy': {
-      subtitle: 'Structural Mechanics & Component Layout',
-      introGreeting: 'Exploring Robot Anatomy! 🦾',
-      p1: `In this path, we inspect the mechanical anatomy of competitive robots — structural chassis, drive trains, and component placement.`,
-      p2: `Where you mount the battery, motors, and heavy steel plates directly dictates how stable your robot is during collisions.`,
-      question: `If you mount a heavy battery high up on the robot rather than low near the wheel axles, how does that affect balance during rapid turns?`,
-      concepts: [
-        {
-          title: 'A. The Structural Chassis',
-          text: 'The chassis serves as the backbone of the robot, absorbing collision impacts and maintaining component alignment.',
-          example: 'Aluminum or carbon fiber plates machined with mounting patterns for motors and gearboxes.',
-          keyIdea: 'A rigid chassis ensures gear meshes stay aligned and sensors remain calibrated.',
-        },
-        {
-          title: 'B. Drive Train Configuration',
-          text: 'Differential drive, omnidirectional wheels, and tank treads provide vastly different traction and maneuverability trade-offs.',
-          example: 'Differential two-wheel drive with a rear caster enables high speed and tight zero-radius turns in small arenas.',
-          keyIdea: 'Select drive geometry based on acceleration, top speed, and pushing power requirements.',
-        },
-        {
-          title: 'C. Weight Distribution & Traction',
-          text: 'Traction between rubber tires and the arena floor depends directly on normal force (weight pressing down on the driven wheels).',
-          example: 'Placing heavy batteries directly over the drive wheels doubles pushing force against opponents.',
-          keyIdea: 'Weight placed over non-driven casters wastes potential wheel traction.',
-        },
-      ]
-    },
-    'Microcontrollers': {
-      subtitle: 'Processing, Registers & Logic Execution',
-      introGreeting: 'Welcome to Microcontroller Architecture! ⚡',
-      p1: `In this path, we dive into the microcontroller — the embedded brain that processes sensor inputs and drives hardware outputs.`,
-      p2: `Microcontrollers execute instructions in microsecond clock cycles, reading digital I/O pins, ADC converters, and timing interrupts.`,
-      question: `When reading an analog sensor like a potentiometer or sharp distance sensor, why does the microcontroller need an ADC (Analog-to-Digital Converter)?`,
-      concepts: [
-        {
-          title: 'A. Analog-to-Digital Conversion (ADC)',
-          text: 'Physical sensors produce continuous voltage levels (0V to 5V), whereas microcontrollers compute in discrete binary bits.',
-          example: 'A 10-bit ADC maps 0V–5V to integer values between 0 and 1023.',
-          keyIdea: 'ADC resolution dictates the smallest sensor change the robot can perceive.',
-        },
-        {
-          title: 'B. Pulse Width Modulation (PWM)',
-          text: 'Microcontrollers modulate digital square wave duty cycles to simulate variable power for motor speed and servo angles.',
-          example: 'A 50% duty cycle delivers half power to the motor driver without generating massive resistive heat.',
-          keyIdea: 'PWM controls average power delivery efficiently by switching rapidly between ON and OFF.',
-        },
-        {
-          title: 'C. Hardware Interrupts vs Polling',
-          text: 'Interrupts immediately pause the main loop to handle time-critical events like boundary line detection or collision switches.',
-          example: 'An arena edge sensor hooked to an interrupt pin guarantees immediate motor reversal before momentum carries it out.',
-          keyIdea: 'Interrupts protect against latency in mission-critical safety events.',
-        },
-      ]
-    },
-    'Sensing': {
-      subtitle: 'Perception, Noise Filtering & Sensor Fusion',
-      introGreeting: 'Exploring Perception & Sensing! 📡',
-      p1: `In this path, we explore how robots perceive their surrounding arena using optical, ultrasonic, and inertial sensors.`,
-      p2: `Real-world sensor signals are noisy — light reflections flicker, ultrasonic echoes bounce off walls, and motors inject electrical noise.`,
-      question: `If an optical line sensor occasionally misreads due to arena glare, what software filtering method could prevent false-positive trigger stops?`,
-      concepts: [
-        {
-          title: 'A. Digital vs Analog Perception',
-          text: 'Digital sensors output binary HIGH/LOW states with built-in thresholding, while analog sensors provide raw continuous signal levels.',
-          example: 'An analog line sensor lets code detect subtle gray arena gradients, whereas digital switches only trigger at a fixed cutoff.',
-          keyIdea: 'Analog data provides gradient nuance; digital signals provide speed and simplicity.',
-        },
-        {
-          title: 'B. Noise Filtering & Debouncing',
-          text: 'Averaging rolling buffers or enforcing minimum trigger durations filters out electrical spikes and surface reflections.',
-          example: 'Requiring an infrared line sensor to stay LOW for 3 consecutive samples before committing to a motor stop.',
-          keyIdea: 'Filters trade a tiny amount of latency for immense reliability against false alarms.',
-        },
-        {
-          title: 'C. Sensor Placement & Blind Spots',
-          text: 'Where sensors are positioned determines the robot\'s field of view and reaction distance.',
-          example: 'Angling line sensors slightly outward detects arena corners before the wheels slip over.',
-          keyIdea: 'Geometric sensor arrangement often solves detection problems faster than complex code.',
-        },
-      ]
-    },
-    'Action & Actuation': {
-      subtitle: 'Motors, Motor Drivers & Kinematics',
-      introGreeting: 'Action & Actuation Sequence! ⚙️',
-      p1: `In this path, we investigate actuators, H-bridge motor drivers, and translating algorithmic commands into mechanical torque.`,
-      p2: `Microcontroller pins can only source 20mA of current, whereas DC motors require 2A to 20A under stall load.`,
-      question: `What would happen if you connected a high-power DC motor directly to a microcontroller pin without a motor driver or MOSFET?`,
-      concepts: [
-        {
-          title: 'A. The Role of the H-Bridge Driver',
-          text: 'An H-bridge uses switching transistors to safely control high-current motor direction and speed from low-power microcontroller logic pins.',
-          example: 'An L298N or TB6612FNG driver directing 12V motor battery power based on 3.3V logic signals.',
-          keyIdea: 'Motor drivers protect the microcontroller logic circuit while directing heavy actuator current.',
-        },
-        {
-          title: 'B. Stall Torque vs Free-Run Speed',
-          text: 'DC motors produce their maximum torque at zero RPM (stall), while drawing maximum stall current.',
-          example: 'When pushing an opponent sumobot, motors operate near stall and draw peak battery current.',
-          keyIdea: 'Size motor drivers and wiring harnesses for worst-case stall currents, not idle free-run currents.',
-        },
-        {
-          title: 'C. Back-EMF & Flyback Protection',
-          text: 'When a spinning motor stops or reverses, collapsing magnetic fields induce reverse voltage spikes (Back-EMF).',
-          example: 'Flyback diodes inside drivers clamp negative voltage spikes to prevent transistor burnout.',
-          keyIdea: 'Inductive motor loads must always have reverse transient protection.',
-        },
-      ]
-    },
-  };
-
-  // 1. Exact match
-  let matched = library[title];
-
-  // 2. Substring match
-  if (!matched) {
-    for (const key of Object.keys(library)) {
-      if (title.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(title.toLowerCase())) {
-        matched = library[key];
-        break;
-      }
+  // 1. Check if checkpoint has authentic node_content
+  let nc = props.checkpointData?.node_content;
+  if (!nc && props.moduleData?.checkpoints) {
+    const found = props.moduleData.checkpoints.find(c => 
+      (c.name || c.title) === title || String(c.id) === String(props.checkpointData?.id)
+    );
+    if (found?.node_content) {
+      nc = found.node_content;
     }
   }
 
-  // 3. Dynamic fallback synthesized from title and parent module
-  if (!matched) {
-    matched = {
-      subtitle: `${parent} • Checkpoint`,
-      introGreeting: `Welcome to ${title}! 🚀`,
-      p1: `In this path, we explore ${title} — examining how this foundational concept operates within ${parent} and impacts robotic system performance.`,
-      p2: `Consider how a competitive robot in the arena must navigate real-world constraints, sensor variance, and timing demands when executing ${title}.`,
-      question: `What is the first observation or physical condition you must verify when calibrating ${title} on your robot?`,
-      concepts: [
-        {
-          title: `A. Core Principles of ${title}`,
-          text: `${title} provides essential capabilities in ${parent}, establishing predictable behavior and reliable performance.`,
-          example: `Applying ${title} during competitive match operations to ensure correct execution.`,
-          keyIdea: `Mastering ${title} is key to satisfying higher-order robotic standards.`,
-        },
-        {
-          title: `B. Signal & Mechanical Interaction`,
-          text: `How ${title} interfaces with the system's electrical signals, sensor inputs, and actuator mechanisms.`,
-          example: `Monitoring latency, voltage stability, or mechanical tolerances during active execution.`,
-          keyIdea: `Hardware stability and clear signal paths ensure ${title} functions as designed.`,
-        },
-        {
-          title: `C. Verification & Arena Application`,
-          text: `Testing ${title} repeatedly across varied conditions to ensure it meets competitive performance standards.`,
-          example: `Executing multiple trial runs to verify stability, accuracy, and reliability before tournament deployment.`,
-          keyIdea: `Repeated testing confirms that ${title} operates consistently under competition pressure.`,
-        },
-      ]
+  // 2. Test Module Checkpoints (explicitly supported for rapid testing and invariant verification)
+  const isTestModule = props.moduleData?.id === 999 || 
+    (props.moduleData?.title && props.moduleData.title.includes('Test Module')) ||
+    title === 'Orientation & Signal Basics' ||
+    title === 'Rapid Prototyping Trial' ||
+    title === 'Final Calibration & Mastery';
+
+  if (isTestModule) {
+    const testLibrary = {
+      'Orientation & Signal Basics': {
+        subtitle: 'Signal Flow & Fast Calibration',
+        introGreeting: 'Welcome to your test calibration! ⚡',
+        p1: 'In this path, we explore rapid signal routing and foundational logic in robotics systems.',
+        p2: 'Consider a microcontroller receiving a raw voltage pulse when a calibration button is pressed: how does the system recognize that transition?',
+        question: 'What must happen to an analog voltage reading before a microcontroller can evaluate it as a logical condition (HIGH or LOW)?',
+        concepts: [
+          {
+            title: 'A. Signal Representation',
+            text: 'Electronic sensors convey physical events through variations in electrical potential.',
+            example: 'A photoresistor circuit where brightness changes resistance, generating varying analog voltage.',
+            keyIdea: 'Voltage is the language sensors use to communicate physical state.',
+          },
+          {
+            title: 'B. Latency & Sampling',
+            text: 'How frequently a system samples an incoming signal dictates how quickly it can react.',
+            example: 'If a sensor updates at 10Hz but a robot moves at 1 m/s, it travels 10cm between readings.',
+            keyIdea: 'Appropriate sampling rates are necessary to prevent missed events.',
+          },
+          {
+            title: 'C. Closed-Loop Feedback',
+            text: 'Feedback allows a robot to verify whether its executed action achieved the intended target.',
+            example: 'Reading optical encoder ticks to confirm that a wheel completed a 90-degree pivot.',
+            keyIdea: 'Without feedback, actions assume ideal conditions that rarely exist in the arena.',
+          },
+        ],
+      },
+      'Rapid Prototyping Trial': {
+        subtitle: 'Fast Iteration & Feedback Calibration',
+        introGreeting: 'Ready for rapid prototyping! 🚀',
+        p1: 'In this trial, we test fast iteration between sensor feedback and motor actuation.',
+        p2: 'Suppose you want your prototype robot to halt within 5 milliseconds of sensing an arena border line.',
+        question: 'Between sensor thresholding, code conditional branches, and motor driver braking, where is delay most commonly introduced?',
+        concepts: [
+          {
+            title: 'A. Dynamic Braking vs Coasting',
+            text: 'Cutting motor power lets momentum carry the robot forward, while shorting motor leads produces dynamic counter-torque.',
+            example: 'H-bridge motor drivers shorting both low-side MOSFETs to stop immediately.',
+            keyIdea: 'Active braking stops inertial drift orders of magnitude faster than coasting.',
+          },
+          {
+            title: 'B. Threshold Hysteresis',
+            text: 'Applying dual thresholds prevents rapid toggling when analog sensor readings hover right near a trigger line.',
+            example: 'A Schmitt trigger circuit or software band that requires high transition above 3.0V and low transition below 1.5V.',
+            keyIdea: 'Hysteresis prevents erratic jitter on borderline readings.',
+          },
+        ],
+      },
+      'Final Calibration & Mastery': {
+        subtitle: 'System Integration & Badge Verification',
+        introGreeting: 'Final calibration milestone! 🏆',
+        p1: 'Review your complete sensor-to-action feedback loop and verify end-to-end timing guarantees.',
+        p2: 'Mastering this checkpoint completes the test module constellation.',
+        question: 'How do you verify that your complete firmware control loop satisfies hard real-time timing deadlines?',
+        concepts: [
+          {
+            title: 'A. Deterministic Loop Timing',
+            text: 'Ensuring every cycle of the primary control loop completes within a fixed, measured interval.',
+            example: 'Using a hardware timer interrupt to trigger sensor sampling at exactly 100 Hz.',
+            keyIdea: 'Deterministic execution prevents accumulated phase lag in control loops.',
+          },
+        ],
+      },
+    };
+
+    if (testLibrary[title]) {
+      return {
+        hasContent: true,
+        isTest: true,
+        ...testLibrary[title],
+      };
+    }
+  }
+
+  // 3. Check for authentic blocks and source-faithful curriculum
+  let blocks = props.checkpointData?.blocks || found?.blocks;
+  let assessment = props.checkpointData?.assessment || found?.assessment;
+  let sourceRef = props.checkpointData?.source_reference || found?.source_reference;
+  let topicGroup = props.checkpointData?.topic_group || found?.topic_group;
+
+  if (!blocks || blocks.length === 0) {
+    const authMatch = ROBOTICS_AUTHENTIC_TOPICS.find(t => {
+      const matchT = t.title.toLowerCase();
+      const currT = title.toLowerCase();
+      return matchT === currT || currT.includes(matchT) || matchT.includes(currT);
+    });
+    if (authMatch) {
+      blocks = authMatch.blocks;
+      assessment = authMatch.assessment;
+      sourceRef = authMatch.sourceReference;
+      topicGroup = authMatch.groupTitle;
+    }
+  }
+
+  if (blocks && blocks.length > 0) {
+    const introBlock = blocks.find(b => b.type === 'text');
+    return {
+      hasContent: true,
+      isTest: false,
+      subtitle: `${parent} • ${topicGroup || 'Learning Node'}`,
+      introGreeting: `Welcome to ${title}! 🎓`,
+      p1: introBlock?.content || nc?.introduction || `In this checkpoint, we study ${title} within ${parent}.`,
+      p2: 'Read the source-faithful lesson material, examine circuit blueprints and code, and complete the end-of-topic assessment below.',
+      question: `What question do you have about ${title}?`,
+      introduction: nc?.introduction || introBlock?.content || '',
+      coreLesson: nc?.core_lesson || '',
+      blocks,
+      assessment,
+      sourceReference: sourceRef,
+      topicGroup,
+      sourceExcerpt: sourceRef?.sourceExcerpt || '',
+      concepts: [],
+      examples: [],
+      activities: [],
+      challenges: [],
+      quiz: [],
+      groundingDisclosure: sourceRef ? `Grounded in ${sourceRef.section} > ${sourceRef.heading}` : '',
     };
   }
 
-  return matched;
+  // 4. If genuine node_content exists
+  if (nc) {
+    const rawConcepts = nc.key_concepts || nc.core_concepts || [];
+    let formattedConcepts = [];
+    if (Array.isArray(rawConcepts)) {
+      formattedConcepts = rawConcepts.map((c, i) => {
+        if (typeof c === 'string') {
+          return {
+            title: `${String.fromCharCode(65 + (i % 26))}. Key Concept`,
+            text: c,
+            example: '',
+            keyIdea: c,
+          };
+        }
+        return {
+          title: c.title || `${String.fromCharCode(65 + (i % 26))}. ${c.concept || 'Concept'}`,
+          text: c.explanation || c.text || '',
+          example: c.example || '',
+          keyIdea: c.keyIdea || c.key_idea || c.concept || '',
+        };
+      });
+    }
+
+    const examples = Array.isArray(nc.examples) ? nc.examples : (nc.examples ? [String(nc.examples)] : []);
+    const activities = Array.isArray(nc.activities) ? nc.activities : (nc.activities ? [String(nc.activities)] : []);
+    const challenges = Array.isArray(nc.engineering_challenges) ? nc.engineering_challenges : (nc.troubleshooting ? [String(nc.troubleshooting)] : []);
+    const quiz = Array.isArray(nc.assessment_questions) ? nc.assessment_questions : (Array.isArray(nc.interactive_quiz) ? nc.interactive_quiz : []);
+    const intro = nc.introduction || nc.overview || '';
+    const coreLesson = nc.core_lesson || nc.step_by_step_guide || '';
+
+    return {
+      hasContent: Boolean(intro || coreLesson || formattedConcepts.length > 0),
+      isTest: false,
+      subtitle: `${parent} • Checkpoint`,
+      introGreeting: `Welcome to ${title}! 🎓`,
+      p1: intro || `In this checkpoint, we study ${title} within ${parent}.`,
+      p2: 'Explore the instructional guide, key concepts, and practical challenges below. Use the AI Assistant to investigate questions or debug implementation scenarios.',
+      question: `What question do you have about ${title}?`,
+      introduction: intro,
+      coreLesson,
+      concepts: formattedConcepts,
+      examples,
+      activities,
+      challenges,
+      quiz,
+      references: nc.suggested_references,
+      groundingDisclosure: nc.grounding_disclosure,
+    };
+  }
+
+  // 4. Content is NOT available yet (Honest empty state, no mock robotics fallback!)
+  return {
+    hasContent: false,
+    isTest: false,
+    subtitle: `${parent} • Checkpoint`,
+    introGreeting: 'Hello! 💬',
+    p1: `Lesson content for "${title}" is currently in preparation by your instructor.`,
+    p2: `You can ask general questions about ${parent} or return to the module roadmap.`,
+    question: `Would you like to ask a question about ${parent}?`,
+    concepts: [],
+  };
 });
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  let safe = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Headings
+  safe = safe.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
+  safe = safe.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
+  safe = safe.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
+
+  // Bold & Italic
+  safe = safe.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  safe = safe.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // Code blocks & inline code
+  safe = safe.replace(/```([a-z]*)\n([\s\S]*?)```/gim, '<pre class="md-code-block"><code>$2</code></pre>');
+  safe = safe.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+  // Bullet points
+  safe = safe.replace(/^\s*-\s+(.*$)/gim, '<li class="md-li">$1</li>');
+  safe = safe.replace(/(<li class="md-li">.*<\/li>)/s, '<ul class="md-ul">$1</ul>');
+
+  // Paragraph breaks
+  safe = safe.split(/\n\s*\n/).map(p => {
+    if (p.startsWith('<h') || p.startsWith('<pre') || p.startsWith('<ul') || p.startsWith('<li')) {
+      return p;
+    }
+    return `<p class="md-p">${p.replace(/\n/g, '<br/>')}</p>`;
+  }).join('\n');
+
+  return safe;
+}
 
 function toggleStar() {
   isStarred.value = !isStarred.value;
@@ -666,6 +868,11 @@ function toggleStar() {
 }
 
 async function handleCompleteCheckpoint() {
+  if (activeLessonData.value.assessment?.required_to_unlock_next && !isAssessmentPassed.value) {
+    emit('notify', 'Please complete and pass the end-of-topic assessment before advancing to the next node.');
+    return;
+  }
+
   const currentStep = props.moduleData?.currentStep || 0;
   const nextStep = currentStep + 1;
   const totalSteps = props.moduleData?.totalSteps || 3;
@@ -770,6 +977,8 @@ async function sendMessage() {
       moduleTitle: props.parentModuleName,
       moduleId: props.moduleData?.id ? String(props.moduleData.id) : undefined,
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
+      sourceExcerpt: activeLessonData.value.sourceExcerpt || activeLessonData.value.sourceReference?.sourceExcerpt,
+      topicGroup: activeLessonData.value.topicGroup,
     };
 
     let response;
@@ -1500,5 +1709,521 @@ function formatMessageText(text) {
   .chatbot-panel-card {
     height: 400px;
   }
+}
+
+/* ── Clean Section Styles for Generated Educational Content ──────────────── */
+.lesson-empty-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  background: #f8fafc;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 12px;
+  margin: 24px 0;
+}
+
+.empty-state-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.empty-state-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+}
+
+.empty-state-message {
+  font-size: 14px;
+  color: #64748b;
+  max-width: 440px;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.btn-return-roadmap {
+  background: #ff7a00;
+  color: #ffffff;
+  border: none;
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.btn-return-roadmap:hover {
+  background: #ea580c;
+  transform: translateY(-1px);
+}
+
+.lesson-section-box {
+  margin-bottom: 24px;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #ff7a00;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.2px;
+}
+
+.intro-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #334155;
+  margin: 0;
+}
+
+.lesson-markdown-content {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: #334155;
+}
+
+.lesson-markdown-content .md-h1,
+.lesson-markdown-content .md-h2,
+.lesson-markdown-content .md-h3 {
+  font-weight: 700;
+  color: #0f172a;
+  margin: 16px 0 8px 0;
+}
+
+.lesson-markdown-content .md-h1 { font-size: 16px; }
+.lesson-markdown-content .md-h2 { font-size: 15px; }
+.lesson-markdown-content .md-h3 { font-size: 14px; }
+
+.lesson-markdown-content .md-p {
+  margin: 0 0 10px 0;
+}
+
+.lesson-markdown-content .md-ul {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.lesson-markdown-content .md-li {
+  margin-bottom: 4px;
+}
+
+.lesson-markdown-content .md-inline-code {
+  background: #f1f5f9;
+  color: #0f172a;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-family: monospace;
+}
+
+.lesson-markdown-content .md-code-block {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  margin: 10px 0;
+}
+
+.examples-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.examples-list li {
+  margin-bottom: 6px;
+}
+
+.activity-card {
+  background: #f8fafc;
+  border-left: 3px solid #ff7a00;
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 10px;
+}
+
+.activity-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff7a00;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.activity-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #1e293b;
+  margin: 0;
+}
+
+.challenge-card {
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.challenge-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #ff7a00;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.challenge-text {
+  font-size: 13.5px;
+  color: #7c2d12;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.quiz-question-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.question-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 10px 0;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.opt-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.opt-prefix {
+  font-weight: 700;
+  color: #64748b;
+  min-width: 18px;
+}
+
+.question-explanation {
+  font-size: 12.5px;
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+.lesson-footer-citations {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.grounding-text {
+  margin: 0;
+}
+
+/* ── SOURCE-FAITHFUL LESSON BLOCKS & INTERACTIVE ASSESSMENT STYLING ───────── */
+
+.lesson-blocks-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.block-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 10px 0;
+}
+
+.block-text-box {
+  line-height: 1.65;
+  color: #334155;
+}
+
+.block-callout-card {
+  background: #f8fafc;
+  border-left: 4px solid #f97316;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.block-callout-card.is-analogy {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+}
+
+.callout-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.callout-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0;
+}
+
+.analogy-takeaway-box {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: #78350f;
+  line-height: 1.5;
+}
+
+.takeaway-label {
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.block-code-card {
+  background: #0f172a;
+  border-radius: 10px;
+  overflow: hidden;
+  color: #f8fafc;
+  padding: 0;
+}
+
+.code-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+.code-lang-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #334155;
+  color: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.code-title-text {
+  font-size: 12.5px;
+  color: #94a3b8;
+  margin-left: 10px;
+}
+
+.btn-copy-code {
+  background: #334155;
+  color: #f8fafc;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-copy-code:hover {
+  background: #475569;
+}
+
+.code-pre-block {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #e2e8f0;
+}
+
+.code-caption-text {
+  padding: 8px 16px 12px 16px;
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
+  border-top: 1px solid #1e293b;
+}
+
+.interactive-assessment-section {
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-top: 24px;
+}
+
+.assessment-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.assessment-icon {
+  font-size: 28px;
+}
+
+.assessment-question-card {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.question-header {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 14px 0;
+  line-height: 1.45;
+}
+
+.mcq-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcq-option-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.mcq-option-btn:hover {
+  border-color: #f97316;
+  background: #fff7ed;
+}
+
+.mcq-option-btn.is-selected {
+  border-color: #ea580c;
+  background: #ffedd5;
+  font-weight: 600;
+  color: #9a3412;
+}
+
+.mcq-option-btn.is-correct {
+  border-color: #16a34a;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.mcq-option-btn.is-incorrect {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.opt-key {
+  font-weight: 700;
+  min-width: 24px;
+}
+
+.assessment-feedback-alert {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.assessment-feedback-alert.alert-success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.assessment-feedback-alert.alert-danger {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+.feedback-status-pill {
+  font-weight: 700;
+  display: inline-block;
+  margin-bottom: 4px;
+}
+
+.feedback-text {
+  margin: 0;
+}
+
+.btn-submit-assessment {
+  width: 100%;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.25);
+  transition: all 0.15s ease;
+}
+
+.btn-submit-assessment:hover {
+  background: linear-gradient(135deg, #fb923c, #f97316);
+  transform: translateY(-1px);
 }
 </style>

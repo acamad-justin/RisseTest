@@ -14,7 +14,7 @@
  * 6. Modal dismissal, lifecycle, and backdrop non-trapping invariants
  */
 
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -29,6 +29,23 @@ import {
   DEMO_STUDENT_2_UUID 
 } from '../frontend/lib/mentor/mentorService.ts';
 import { StudentSyncService } from '../frontend/lib/student/studentSyncService.ts';
+
+const originalCreateCourse = MentorService.createCourse.bind(MentorService);
+const testCreatedCourseIds: string[] = [];
+
+MentorService.createCourse = async function (params: any) {
+  const res = await originalCreateCourse(params);
+  if (res.course?.id) {
+    testCreatedCourseIds.push(res.course.id);
+  }
+  return res;
+};
+
+after(async () => {
+  for (const id of testCreatedCourseIds) {
+    await MentorService.deleteCourse(id);
+  }
+});
 
 function findProjectFile(relativePath: string): string {
   const candidates = [
@@ -120,7 +137,7 @@ describe('Critical Mentor Workspace Workflow Repair Suite', () => {
     test('4. CourseListView.vue has exactly one primary Create Course button in header', () => {
       const content = readProjectFile('frontend/resources/js/views/mentor/courses/CourseListView.vue');
       assert.match(content, /id="btn-create-course"/, 'CourseListView must have the primary Create Course button');
-      assert.match(content, /Create Course\s*<\/button>/, 'Header button text must be clear');
+      assert.match(content, /Create (Course|Module)\s*<\/button>/, 'Header button text must be clear');
     });
 
     test('5. MentorDashboard.vue contextualizes course creation only when courses are empty', () => {
@@ -617,7 +634,7 @@ describe('Critical Mentor Workspace Workflow Repair Suite', () => {
 
     test('29. UI contracts in CourseListView.vue and CurriculumDesigner.vue', () => {
       const courseListContent = readProjectFile('frontend/resources/js/views/mentor/courses/CourseListView.vue');
-      assert.match(courseListContent, /Open Course Studio →/, 'CourseListView must have Open Course Studio button');
+      assert.match(courseListContent, /Open (Course|in Module) Studio →/, 'CourseListView must have Open Course/Module Studio button');
       assert.match(courseListContent, /btn-course-studio/, 'CourseListView must style Course Studio button');
 
       const studioContent = readProjectFile('frontend/resources/js/views/mentor/curriculum/CurriculumDesigner.vue');
