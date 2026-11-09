@@ -533,6 +533,80 @@
         </div>
       </section>
 
+      <!-- Publishing Format Stage: Option A (Separate Modules) vs Option B (One Combined Module) -->
+      <section v-if="editableProposal.proposal_data.modules && editableProposal.proposal_data.modules.length > 0" class="publishing-format-section" id="publishing-format-stage">
+        <div class="format-section-header">
+          <div class="format-header-badge">
+            <span class="step-num-pill">PUBLISHING FORMAT</span>
+            <span class="required-asterisk">* Required before publishing</span>
+          </div>
+          <h3 class="format-section-title">Choose Student Delivery Structure</h3>
+          <p class="format-section-desc">
+            Decide how students in your assigned sections will access this curriculum. Select an option below to set the delivery format.
+          </p>
+        </div>
+
+        <div class="format-options-grid">
+          <!-- Option A: Publish as Separate Modules -->
+          <div 
+            class="format-option-card"
+            :class="{ 'is-selected': selectedPublishingFormat === 'separate_modules' }"
+            @click="selectPublishingFormat('separate_modules')"
+            id="format-option-separate"
+          >
+            <div class="format-card-header">
+              <div class="radio-indicator">
+                <span v-if="selectedPublishingFormat === 'separate_modules'" class="radio-dot"></span>
+              </div>
+              <div class="format-title-group">
+                <h4 class="format-card-title">Option A: Publish as Separate Modules</h4>
+                <span class="format-tag tag-modular">Multi-Module Track</span>
+              </div>
+            </div>
+            <p class="format-card-body">
+              Each top-level curriculum section becomes its own <strong>independently accessible student module</strong> in the Student Modules catalog. Students unlock and track checkpoints per module.
+            </p>
+            <div class="format-preview-pill">
+              <span class="preview-icon">📚</span>
+              <span>Creates <strong>{{ totalModulesCount }}</strong> distinct modules in Student Catalog</span>
+            </div>
+          </div>
+
+          <!-- Option B: Publish as One Combined Module -->
+          <div 
+            class="format-option-card"
+            :class="{ 'is-selected': selectedPublishingFormat === 'one_module' }"
+            @click="selectPublishingFormat('one_module')"
+            id="format-option-combined"
+          >
+            <div class="format-card-header">
+              <div class="radio-indicator">
+                <span v-if="selectedPublishingFormat === 'one_module'" class="radio-dot"></span>
+              </div>
+              <div class="format-title-group">
+                <h4 class="format-card-title">Option B: Publish as One Combined Module</h4>
+                <span class="format-tag tag-single">Single Unified Module</span>
+              </div>
+            </div>
+            <p class="format-card-body">
+              All top-level curriculum sections are grouped inside <strong>one student-facing module</strong>. The original sections become sequential lessons or units within that single module roadmap.
+            </p>
+            <div class="format-preview-pill">
+              <span class="preview-icon">📦</span>
+              <span>Creates <strong>1</strong> unified module containing {{ totalCheckpointsCount }} lessons</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!selectedPublishingFormat" class="format-selection-warning">
+          <span>⚠️ Please select a publishing format above before publishing this curriculum.</span>
+        </div>
+        <div v-else class="format-selection-confirmed">
+          <span class="check-icon">✓</span>
+          <span>Selected: <strong>{{ selectedPublishingFormat === 'separate_modules' ? 'Option A (Separate Modules)' : 'Option B (One Combined Module)' }}</strong>. This configuration is saved with your proposal.</span>
+        </div>
+      </section>
+
       <!-- D. Course Actions Footer -->
       <footer class="course-actions-footer">
         <div class="footer-left">
@@ -1706,6 +1780,51 @@
               <span class="pub-label">Assigned Classes</span>
             </div>
           </div>
+
+          <!-- Publishing Format Selector within Modal -->
+          <div class="publish-modal-format-box" id="publish-modal-format-choice">
+            <label class="modal-format-label">Delivery Format:</label>
+            <div class="modal-format-radios">
+              <label 
+                class="modal-format-radio-card"
+                :class="{ 'is-selected': selectedPublishingFormat === 'separate_modules' }"
+                @click="selectPublishingFormat('separate_modules')"
+              >
+                <input 
+                  type="radio" 
+                  name="modal-pub-format" 
+                  value="separate_modules" 
+                  :checked="selectedPublishingFormat === 'separate_modules'"
+                  @change="selectPublishingFormat('separate_modules')" 
+                />
+                <div class="modal-radio-text">
+                  <strong>Option A: Separate Modules</strong>
+                  <span>Each section becomes an independent module ({{ totalModulesCount }} modules)</span>
+                </div>
+              </label>
+
+              <label 
+                class="modal-format-radio-card"
+                :class="{ 'is-selected': selectedPublishingFormat === 'one_module' }"
+                @click="selectPublishingFormat('one_module')"
+              >
+                <input 
+                  type="radio" 
+                  name="modal-pub-format" 
+                  value="one_module" 
+                  :checked="selectedPublishingFormat === 'one_module'"
+                  @change="selectPublishingFormat('one_module')" 
+                />
+                <div class="modal-radio-text">
+                  <strong>Option B: One Combined Module</strong>
+                  <span>Group sections inside 1 module ({{ totalCheckpointsCount }} lessons)</span>
+                </div>
+              </label>
+            </div>
+            <p v-if="!selectedPublishingFormat" class="format-modal-required-note">
+              * A format must be chosen before publishing.
+            </p>
+          </div>
         </div>
 
         <div class="publish-dialog-footer">
@@ -1715,7 +1834,7 @@
           <button 
             type="button" 
             class="btn-primary-action btn-confirm-publish"
-            :disabled="isPublishing"
+            :disabled="isPublishing || !selectedPublishingFormat"
             @click="handlePublishProposal"
           >
             {{ isPublishing ? 'Publishing...' : 'Confirm & Publish Live' }}
@@ -1826,6 +1945,22 @@ const isEditCourseModalOpen = ref(false);
 const isAiDrawerOpen = ref(false);
 const isInstructionsOpen = ref(false);
 const isCoverageModalOpen = ref(false);
+
+// Publishing Format Selector (Part 1: Option A - separate_modules vs Option B - one_module)
+const selectedPublishingFormat = ref('separate_modules');
+
+function selectPublishingFormat(format) {
+  if (format !== 'separate_modules' && format !== 'one_module') return;
+  selectedPublishingFormat.value = format;
+  if (!editableProposal.value.proposal_data) {
+    editableProposal.value.proposal_data = { modules: [] };
+  }
+  editableProposal.value.proposal_data.publishing_format = format;
+  editableProposal.value.proposal_data.organization_mode = format;
+  markDirty();
+  // Auto-persist selection with curriculum proposal without publishing
+  handleSaveEdits();
+}
 
 function addContentBlock(type = 'text') {
   if (!activeLesson.value) return;
@@ -2222,6 +2357,12 @@ watch(
   newProp => {
     if (newProp && newProp.proposal_data) {
       editableProposal.value = JSON.parse(JSON.stringify(newProp));
+      // Restore saved publishing format if available, falling back to organization_mode or default
+      if (newProp.proposal_data.publishing_format) {
+        selectedPublishingFormat.value = newProp.proposal_data.publishing_format;
+      } else if (newProp.proposal_data.organization_mode) {
+        selectedPublishingFormat.value = newProp.proposal_data.organization_mode;
+      }
       isDirty.value = false;
     } else {
       editableProposal.value = {
@@ -2654,12 +2795,27 @@ function openPublishModal() {
     alert('Cannot publish curriculum: at least 1 module is required.');
     return;
   }
+  if (!selectedPublishingFormat.value) {
+    alert('Please select a publishing format (Option A or Option B) before publishing.');
+    const el = document.getElementById('publishing-format-stage');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
   isPublishModalOpen.value = true;
 }
 
 function handlePublishProposal() {
   if (!props.proposal) return;
+  if (!selectedPublishingFormat.value) {
+    alert('Please choose a publishing format before confirming.');
+    return;
+  }
   isPublishing.value = true;
+  // Ensure the publishing_format is saved into proposal_data
+  if (editableProposal.value.proposal_data) {
+    editableProposal.value.proposal_data.publishing_format = selectedPublishingFormat.value;
+    editableProposal.value.proposal_data.organization_mode = selectedPublishingFormat.value;
+  }
   emit('publish-proposal', {
     proposalId: props.proposal.id,
     mentorId: props.mentorId,
@@ -4750,5 +4906,270 @@ function saveCourseDetails() {
   color: #ffffff;
   padding: 2px 7px;
   border-radius: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/* PUBLISHING FORMAT SELECTOR STYLES                                       */
+/* ═══════════════════════════════════════════════════════════════════════ */
+.publishing-format-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 28px 0 20px 0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.format-section-header {
+  margin-bottom: 20px;
+}
+
+.format-header-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.step-num-pill {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.required-asterisk {
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.format-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+}
+
+.format-section-desc {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.format-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.format-option-card {
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 18px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  flex-direction: column;
+}
+
+.format-option-card:hover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.format-option-card.is-selected {
+  border-color: #ff7a00;
+  background: #fffbf7;
+  box-shadow: 0 4px 14px rgba(255, 122, 0, 0.12);
+}
+
+.format-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.radio-indicator {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  flex-shrink: 0;
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.format-option-card.is-selected .radio-indicator {
+  border-color: #ff7a00;
+}
+
+.radio-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff7a00;
+}
+
+.format-title-group {
+  flex: 1;
+}
+
+.format-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.format-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.format-tag.tag-modular {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.format-tag.tag-single {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.format-card-body {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.55;
+  margin: 0 0 14px 0;
+  flex: 1;
+}
+
+.format-preview-pill {
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.format-option-card.is-selected .format-preview-pill {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.preview-icon {
+  font-size: 14px;
+}
+
+.format-selection-warning {
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.format-selection-confirmed {
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #166534;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.format-selection-confirmed .check-icon {
+  font-weight: 800;
+  color: #16a34a;
+}
+
+/* Modal Selector Styles */
+.publish-modal-format-box {
+  margin-top: 18px;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.modal-format-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.modal-format-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-format-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modal-format-radio-card.is-selected {
+  border-color: #ff7a00;
+  background: #fffbf7;
+}
+
+.modal-radio-text {
+  display: flex;
+  flex-direction: column;
+  font-size: 12.5px;
+}
+
+.modal-radio-text strong {
+  color: #0f172a;
+}
+
+.modal-radio-text span {
+  color: #64748b;
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+
+.format-modal-required-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: #dc2626;
+  font-weight: 600;
 }
 </style>

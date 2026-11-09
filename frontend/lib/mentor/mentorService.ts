@@ -191,15 +191,20 @@ export interface CurriculumProposalModule {
   module_number?: number;
   title: string;
   description: string;
-  source_materials: string[];
+  source_materials?: string[];
   provenance_type?: 'grounded_in_materials' | 'ai_suggestion';
-  learning_objectives: string[];
+  learning_objectives?: string[];
   badge_name?: string;
   level?: string;
   level_color?: string;
   concepts?: string[];
   prerequisites?: string[];
-  checkpoints: CurriculumProposalCheckpoint[];
+  checkpoints: any[];
+  learning_nodes?: LearningNode[];
+  source_section?: string;
+  section_number?: string;
+  page_range?: string;
+  status?: 'draft' | 'under_review' | 'published';
 }
 
 export interface CurriculumProposalRecord {
@@ -210,6 +215,8 @@ export interface CurriculumProposalRecord {
     title: string;
     summary: string;
     modules: CurriculumProposalModule[];
+    publishing_format?: 'separate_modules' | 'one_module';
+    [key: string]: any;
   };
   status: 'draft' | 'under_review' | 'approved' | 'published';
   created_by: string;

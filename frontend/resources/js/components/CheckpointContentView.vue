@@ -367,31 +367,16 @@
 
       <!-- Chat Conversation Messages Flow -->
       <div class="chatbot-messages-scroll" ref="chatMessagesContainer">
-        <!-- Dynamic Initial AI Prompt based on current checkpoint -->
-        <div class="message-bubble ai-message">
-          <p class="ai-greeting">{{ activeLessonData.introGreeting }}</p>
-          <p>
-            {{ activeLessonData.p1 }}
-          </p>
-          <p>
-            {{ activeLessonData.p2 }}
-          </p>
-          <p>
-            {{ activeLessonData.question }}
-          </p>
+        <!-- Dynamic Initial AI Tutor Greeting based on current topic (Separated from lesson text) -->
+        <div class="message-bubble ai-message initial-tutor-greeting">
+          <p class="ai-greeting">{{ initialTutorGreeting }}</p>
 
           <!-- Message Action Toolbar -->
           <div class="message-actions-toolbar">
-            <button type="button" class="btn-msg-tool" title="Copy Message" @click="copyPrompt">
+            <button type="button" class="btn-msg-tool" title="Copy Greeting" @click="copyPrompt">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
-              </svg>
-            </button>
-
-            <button type="button" class="btn-msg-tool" title="Bookmark Insight" @click="bookmarkInsight(activeLessonData.question)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
               </svg>
             </button>
           </div>
@@ -826,6 +811,52 @@ const activeLessonData = computed(() => {
   };
 });
 
+// Dynamic natural topic-based AI Tutor greeting (Separated from the full lesson text)
+const initialTutorGreeting = computed(() => {
+  const title = (props.checkpointTitle || '').trim() || 'this topic';
+  const type = props.checkpointData?.type || 'concept';
+  if (type === 'lab' || type === 'laboratory') {
+    return `Hi! Ready for the hands-on lab on "${title}"? Ask me anything about the setup, code, or wiring!`;
+  } else if (type === 'challenge') {
+    return `Hi! We're tackling "${title}". Which part of the challenge would you like to brainstorm or test?`;
+  } else if (type === 'assessment') {
+    return `Hi! Reviewing "${title}"? Let me know which concepts you'd like to check before the assessment!`;
+  }
+  return `Hi! We're exploring "${title}". What would you like to understand better?`;
+});
+
+// Collects structured background lesson context for the AI Tutor (passed to system prompt, never as a fake chat message)
+function getLessonContextText() {
+  const data = activeLessonData.value;
+  if (!data) return '';
+  const sections = [];
+  if (data.introduction) {
+    sections.push(`OVERVIEW:\n${data.introduction}`);
+  }
+  if (data.blocks && data.blocks.length > 0) {
+    sections.push('LESSON BLOCKS:');
+    data.blocks.forEach((b, idx) => {
+      sections.push(`[${(b.type || 'text').toUpperCase()}] ${b.title || `Block ${idx + 1}`}:\n${b.content || ''}`);
+      if (b.analogy) sections.push(`Key Takeaway / Analogy: ${b.analogy}`);
+    });
+  } else if (data.coreLesson) {
+    sections.push(`INSTRUCTIONAL GUIDE:\n${data.coreLesson}`);
+  }
+  if (data.concepts && data.concepts.length > 0) {
+    sections.push('CORE CONCEPTS:');
+    data.concepts.forEach(c => {
+      sections.push(`- ${c.title}: ${c.text || ''}${c.example ? ` (Example: ${c.example})` : ''}${c.keyIdea ? ` (Key Idea: ${c.keyIdea})` : ''}`);
+    });
+  }
+  if (data.examples && data.examples.length > 0) {
+    sections.push(`EXAMPLES:\n${data.examples.map(e => `- ${e}`).join('\n')}`);
+  }
+  if (data.activities && data.activities.length > 0) {
+    sections.push(`ACTIVITIES:\n${data.activities.map(a => typeof a === 'string' ? `- ${a}` : `- ${a.title || 'Activity'}: ${a.instructions || ''}`).join('\n')}`);
+  }
+  return sections.join('\n\n');
+}
+
 function renderMarkdown(text) {
   if (!text) return '';
   let safe = text
@@ -946,11 +977,9 @@ async function sendMessage() {
   // 1. Append user's message
   chatHistory.value.push({ sender: 'user', text: q });
 
-  // 2. Prepare conversation messages payload for RAG & context flow with dynamic lesson intro
-  const initialGreetingText = `${activeLessonData.value.introGreeting}\n\n${activeLessonData.value.p1}\n\n${activeLessonData.value.p2}\n\n${activeLessonData.value.question}`;
-
+  // 2. Prepare conversation messages payload with the short initial greeting (NOT duplicating the lesson text)
   const formattedMessages = [
-    { role: 'assistant', content: initialGreetingText },
+    { role: 'assistant', content: initialTutorGreeting.value },
     ...chatHistory.value.map(m => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
       content: m.text,
@@ -970,15 +999,17 @@ async function sendMessage() {
   scrollToBottom();
 
   try {
-    // 4. Request /api/chat with dynamic checkpoint and module context
+    // 4. Request /api/chat with dynamic checkpoint, module context, and background lesson context
     const payload = {
       messages: formattedMessages,
       checkpointTitle: props.checkpointTitle,
       moduleTitle: props.parentModuleName,
       moduleId: props.moduleData?.id ? String(props.moduleData.id) : undefined,
+      checkpointDescription: props.checkpointData?.description || '',
       mode: aiMode.value === 'competition' ? 'competition' : 'socratic',
       sourceExcerpt: activeLessonData.value.sourceExcerpt || activeLessonData.value.sourceReference?.sourceExcerpt,
       topicGroup: activeLessonData.value.topicGroup,
+      lessonContext: getLessonContextText(),
     };
 
     let response;
@@ -1062,9 +1093,8 @@ async function sendMessage() {
 }
 
 function copyPrompt() {
-  const fullIntro = `${activeLessonData.value.introGreeting}\n\n${activeLessonData.value.p1}\n\n${activeLessonData.value.p2}\n\n${activeLessonData.value.question}`;
-  navigator.clipboard.writeText(fullIntro);
-  emit('notify', 'Copied message to clipboard!');
+  navigator.clipboard.writeText(initialTutorGreeting.value);
+  emit('notify', 'Copied greeting to clipboard!');
 }
 
 function copyText(text) {

@@ -75,6 +75,7 @@ export interface ModuleDraftRecord {
   learning_nodes: LearningNode[];
   topic_groups?: TopicGroup[];
   source_coverage?: SourceCoverageReport;
+  organization_mode?: 'one_module' | 'separate_modules';
   modules?: CurriculumProposalModule[];
   learning_path_summary?: {
     total_learning_nodes: number;
@@ -98,6 +99,7 @@ export interface ModuleStructureParams {
     customInstructions?: string;
     targetNodeCount?: number;
     mode?: 'mode_a' | 'mode_b' | 'mode_c';
+    organizationMode?: 'one_module' | 'separate_modules';
   };
 }
 
@@ -1548,6 +1550,42 @@ export class CurriculumAiEngine {
         })),
       };
 
+      const orgMode = options.organizationMode || 'one_module';
+
+      const separateModules: CurriculumProposalModule[] = groupNames.map((gName, gIdx) => {
+        const gNodes = learningNodes.filter(n => n.topic_group === gName);
+        const firstRef = gNodes[0]?.source_reference;
+        const lastRef = gNodes[gNodes.length - 1]?.source_reference;
+        const pageRange = firstRef?.pageReference && lastRef?.pageReference
+          ? `${firstRef.pageReference} – ${lastRef.pageReference}`
+          : (firstRef?.pageReference || `Section ${gIdx + 1}`);
+
+        return {
+          id: `mod-${courseRecord.id}-${gIdx + 1}`,
+          module_number: gIdx + 1,
+          title: gName.replace(/^\d+[\s—–-]+/, '').trim(),
+          description: `Independent module covering ${gName}, derived from Section ${String(gIdx + 1).padStart(2, '0')} of the uploaded document.`,
+          source_section: gName,
+          section_number: String(gIdx + 1).padStart(2, '0'),
+          page_range: pageRange,
+          checkpoints: gNodes,
+          learning_nodes: gNodes,
+          learning_objectives: gNodes.flatMap(n => n.learning_objectives || []).slice(0, 4),
+          status: 'draft',
+        };
+      });
+
+      const singleModuleWrapper: CurriculumProposalModule[] = [
+        {
+          id: `mod-${courseRecord.id}-1`,
+          module_number: 1,
+          title: courseRecord.title || 'Introduction to Robotics',
+          description: courseRecord.description || 'Comprehensive module covering all document topics.',
+          checkpoints: learningNodes,
+          learning_nodes: learningNodes,
+        }
+      ];
+
       return {
         id: `draft-${courseRecord.id}`,
         module_id: courseRecord.id,
@@ -1562,15 +1600,19 @@ export class CurriculumAiEngine {
           'Master voltage, current, resistance, and breadboard circuit prototyping',
           'Write, verify, and upload Arduino sketches for sensor acquisition and PWM control'
         ],
+        organization_mode: orgMode,
+        modules: orgMode === 'separate_modules' ? separateModules : singleModuleWrapper,
         learning_nodes: learningNodes,
         topic_groups: topicGroups,
         source_coverage: sourceCoverage,
-        overview: `Comprehensive course structured into 4 Topic Groups and 24 Learning Nodes derived directly from uploaded source document.`,
+        overview: orgMode === 'separate_modules'
+          ? `4 Separate Modules generated from detected document sections with 24 total Learning Nodes.`
+          : `Comprehensive course structured into 4 Topic Groups and 24 Learning Nodes derived directly from uploaded source document.`,
         version: 1,
         status: 'draft',
         learning_path_summary: {
           total_learning_nodes: learningNodes.length,
-          total_modules: 1,
+          total_modules: orgMode === 'separate_modules' ? separateModules.length : 1,
           total_lessons: learningNodes.length,
           estimated_total_hours: Math.round((learningNodes.length * 25) / 60),
           curriculum_grounding: '100% Grounded in Introduction to Robotics.pdf',
