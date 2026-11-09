@@ -27,7 +27,16 @@ import {
   type ModuleStructureParams 
 } from './curriculumAiEngine.ts';
 
+import {
+  buildPublishingPlan,
+  resolvePublishingFormat,
+  type PublishingFormat,
+  type PublishingPlan,
+} from './publishingPlan.ts';
+
 export type { LearningNode, ModuleDraftRecord, ModuleStructureParams };
+export { buildPublishingPlan, resolvePublishingFormat };
+export type { PublishingFormat, PublishingPlan };
 export type ModuleRecord = CourseRecord;
 export type ModuleMaterialRecord = CourseMaterialRecord;
 
@@ -2693,6 +2702,21 @@ export class MentorService {
   }
 
   /**
+   * Normalized publishing plan for a proposal. The Designer previews and
+   * publishCurriculumProposal both use this, so counts cannot disagree.
+   * When `format` is omitted, the format saved on the proposal is used
+   * (publishing_format, then organization_mode, then 'separate_modules' as the Designer defaults to).
+   */
+  static getPublishingPlan(
+    proposalData: any,
+    format?: PublishingFormat | null,
+    baseId?: string
+  ): PublishingPlan {
+    const effectiveFormat = format || resolvePublishingFormat(proposalData) || 'separate_modules';
+    return buildPublishingPlan(proposalData, effectiveFormat, { baseId });
+  }
+
+  /**
    * Approve and publish curriculum proposal (updates course status to published)
    * Validates curriculum completeness: min 1 module, every module has title & min 1 checkpoint,
    * every checkpoint has title and type.
@@ -2722,28 +2746,21 @@ export class MentorService {
     }
 
     const dataToPublish = proposalData || targetProposal?.proposal_data;
-    if (!dataToPublish || !Array.isArray(dataToPublish.modules) || dataToPublish.modules.length === 0) {
+    if (!dataToPublish) {
       return false;
     }
 
-    for (let mIdx = 0; mIdx < dataToPublish.modules.length; mIdx++) {
-      const mod = dataToPublish.modules[mIdx];
-      if (!mod.title || !mod.title.trim()) {
-        return false;
-      }
-      if (!Array.isArray(mod.checkpoints) || mod.checkpoints.length === 0) {
-        return false;
-      }
-      for (let cIdx = 0; cIdx < mod.checkpoints.length; cIdx++) {
-        const cp = mod.checkpoints[cIdx];
-        if (!cp.title || !cp.title.trim()) {
-          return false;
-        }
-        const validTypes = ['concept', 'lab', 'challenge', 'assessment', 'project', 'demonstration', 'guided_practice'];
-        if (!cp.type || !validTypes.includes(cp.type)) {
-          return false;
-        }
-      }
+    // Validate against the SAME normalized plan the Curriculum Designer previews.
+    // (Counting proposal_data.modules directly was the source of the 1-vs-4 mismatch.)
+    const publishingPlan = this.getPublishingPlan(dataToPublish, undefined, targetProposal?.course_id || proposalId);
+    if (!publishingPlan.canPublish) {
+      return false;
+    }
+
+    // Option A: one independent, student-facing module per top-level section (atomic RPC).
+    const effectiveFormat = resolvePublishingFormat(dataToPublish) || 'separate_modules';
+    if (effectiveFormat === 'separate_modules' && isValidUuid(proposalId)) {
+      return await this.publishSeparateModules(proposalId, effectiveMentorId, dataToPublish, publishingPlan);
     }
 
     if (isValidUuid(proposalId)) {
@@ -2772,6 +2789,12 @@ export class MentorService {
             .from('courses')
             .update({ status: 'published', updated_at: new Date().toISOString() })
             .eq('id', prop.course_id);
+
+          // If this proposal was previously published as separate modules, take those offline.
+          await supabase
+            .from('courses')
+            .update({ status: 'draft', updated_at: new Date().toISOString() })
+            .eq('source_proposal_id', proposalId);
 
           testState.curriculumProposals.set(proposalId, prop);
           const localCourse = testState.courses.get(prop.course_id);
@@ -2805,6 +2828,86 @@ export class MentorService {
   }
 
   /**
+   * Option A publishing: creates one independent module (courses row + its own
+   * curriculum_proposals row, section links, enrollments) per top-level section,
+   * in ONE database transaction. Safe to retry: modules are keyed by
+   * (source_proposal_id, section key), so a retry updates instead of duplicating.
+   */
+  private static async publishSeparateModules(
+    proposalId: string,
+    mentorId: string,
+    proposalData: any,
+    plan: PublishingPlan
+  ): Promise<boolean> {
+    const now = new Date().toISOString();
+    const modulesPayload = plan.modules.map((mod, i) => {
+      const nodes = mod.nodes.map(n => ({ ...n.node, type: n.node?.type || 'concept' }));
+      return {
+        key: mod.id,
+        title: mod.title,
+        description: mod.description || mod.title,
+        proposal_data: {
+          title: mod.title,
+          summary: mod.description || mod.title,
+          modules: [
+            {
+              id: `mod-${mod.id}`,
+              module_number: 1,
+              title: mod.title,
+              description: mod.description || mod.title,
+              source_materials: [],
+              learning_objectives: [],
+              checkpoints: nodes,
+            },
+          ],
+          learning_nodes: nodes,
+          topic_groups: [mod.title],
+          publishing_format: 'separate_modules',
+          organization_mode: 'separate_modules',
+          source_proposal_id: proposalId,
+          module_order: i + 1,
+          learning_path_summary: {
+            total_learning_nodes: nodes.length,
+            total_topic_groups: 1,
+            generated_at: now,
+          },
+        },
+      };
+    });
+
+    try {
+      const { data, error } = await supabase.rpc('publish_curriculum_as_separate_modules', {
+        p_proposal_id: proposalId,
+        p_mentor_id: isValidUuid(mentorId) ? mentorId : null,
+        p_proposal_data: proposalData || null,
+        p_modules: modulesPayload,
+      });
+      if (error || !data?.success) {
+        console.warn('[MentorService] publishSeparateModules failed:', error || data);
+        return false;
+      }
+    } catch (err) {
+      console.warn('[MentorService] publishSeparateModules error:', err);
+      return false;
+    }
+
+    const cached = testState.curriculumProposals.get(proposalId);
+    if (cached) {
+      if (proposalData) cached.proposal_data = proposalData;
+      cached.status = 'published';
+      cached.updated_at = now;
+      setLocalItem('curriculum_proposals', Array.from(testState.curriculumProposals.values()));
+    }
+
+    try {
+      const { StudentSyncService } = await import('../student/studentSyncService.ts');
+      StudentSyncService.purgeAllCaches();
+    } catch (_) {}
+
+    return true;
+  }
+
+  /**
    * Unpublish or archive a curriculum proposal, returning course to draft review status
    */
   static async unpublishCurriculumProposal(
@@ -2828,6 +2931,12 @@ export class MentorService {
             .from('courses')
             .update({ status: 'draft', updated_at: new Date().toISOString() })
             .eq('id', prop.course_id);
+
+          // Also take any separately-published modules generated from this proposal offline.
+          await supabase
+            .from('courses')
+            .update({ status: 'draft', updated_at: new Date().toISOString() })
+            .eq('source_proposal_id', proposalId);
 
           testState.curriculumProposals.set(proposalId, prop);
           const c = testState.courses.get(prop.course_id);

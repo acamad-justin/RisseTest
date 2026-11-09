@@ -51,6 +51,17 @@
         <!-- Unsaved changes indicator -->
         <span v-if="isDirty" class="badge-dirty-pill">● Unsaved edits</span>
 
+        <button
+          v-if="studioStage === 'editor'"
+          type="button"
+          class="btn-outline-action"
+          id="btn-studio-home"
+          @click="returnToIntake"
+          title="Upload materials or open another draft"
+        >
+          ＋ Upload / Drafts
+        </button>
+
         <!-- Course Selector Dropdown -->
         <div v-if="courses.length > 0" class="course-selector-wrap">
           <label for="select-curr-course" class="selector-label">Course:</label>
@@ -71,7 +82,113 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- LEVEL 1: COURSE OVERVIEW                                               -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-if="currentLevel === 'overview'" class="level-container level-course-overview">
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- STUDIO ENTRY: UPLOAD LEARNING MATERIALS (creates/updates a DRAFT only)  -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <main v-if="studioStage === 'intake'" class="level-container studio-intake" aria-labelledby="intake-title">
+      <section class="intake-card">
+        <span class="badge-studio-ai">MODULE STUDIO • START WITH YOUR MATERIALS</span>
+        <h1 id="intake-title" class="intake-title">Upload learning materials</h1>
+        <p class="intake-sub">
+          Upload a syllabus, PDF, PPTX, DOCX, or notes. RISSE builds a draft curriculum from them that you can review and edit.
+          Nothing is visible to students until you explicitly publish it.
+        </p>
+
+        <div v-if="draftCourses.length > 0" class="intake-field">
+          <label for="intake-target" class="intake-label">Add materials to</label>
+          <select id="intake-target" v-model="intakeTarget" class="intake-input" :disabled="isIntakeBusy || Boolean(intakeDraftCourseId)">
+            <option value="new">A new draft curriculum</option>
+            <option v-for="c in draftCourses" :key="c.id" :value="c.id">Existing draft: {{ c.title }}</option>
+          </select>
+        </div>
+
+        <template v-if="intakeTarget === 'new' && !intakeDraftCourseId">
+          <div class="intake-field">
+            <label for="intake-title-input" class="intake-label">Curriculum title <span class="intake-req">*</span></label>
+            <input id="intake-title-input" v-model="intakeForm.title" type="text" class="intake-input" placeholder="e.g., Introduction to Microprocessors" />
+          </div>
+          <div class="intake-row">
+            <div class="intake-field">
+              <label for="intake-subject" class="intake-label">Subject <span class="intake-req">*</span></label>
+              <input id="intake-subject" v-model="intakeForm.subject" type="text" class="intake-input" placeholder="e.g., Robotics" />
+            </div>
+            <div class="intake-field">
+              <label for="intake-level" class="intake-label">Academic level <span class="intake-req">*</span></label>
+              <input id="intake-level" v-model="intakeForm.academic_level" type="text" class="intake-input" placeholder="e.g., Grade 10" />
+            </div>
+          </div>
+        </template>
+        <p v-else-if="intakeDraftCourseId" class="intake-note">
+          Your draft was created. Retry the files below; they will be added to the same draft.
+        </p>
+
+        <div class="intake-field">
+          <span class="intake-label">Learning materials <span class="intake-req">*</span></span>
+          <div class="intake-drop" :class="{ 'has-files': intakeFiles.length > 0 }" @click="triggerIntakeFileInput" @dragover.prevent @drop.prevent="handleIntakeDrop">
+            <input
+              ref="intakeFileInput"
+              type="file"
+              class="intake-hidden-input"
+              multiple
+              accept=".pdf,.pptx,.ppt,.docx,.doc,.txt,.md,.markdown"
+              @change="handleIntakeFilesSelected"
+            />
+            <p class="intake-drop-text">Click to choose or drop files</p>
+            <p class="intake-drop-sub">PDF, PPTX, DOCX, TXT, or Markdown, up to 25MB each</p>
+          </div>
+          <ul v-if="intakeFiles.length > 0" class="intake-file-list">
+            <li v-for="(f, i) in intakeFiles" :key="f.name + i" class="intake-file-item">
+              <span class="intake-file-name">📄 {{ f.name }}</span>
+              <span class="intake-file-size">{{ formatFileSize(f.size) }}</span>
+              <button type="button" class="intake-file-remove" :disabled="isIntakeBusy" @click="removeIntakeFile(i)" aria-label="Remove file">✕</button>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="intakeError" class="intake-error" role="alert">{{ intakeError }}</div>
+
+        <div class="intake-actions">
+          <button
+            v-if="intakeTarget === 'new'"
+            type="button"
+            id="btn-intake-generate"
+            class="btn-primary-action"
+            :disabled="isIntakeBusy || intakeFiles.length === 0"
+            @click="submitIntake(true)"
+          >
+            {{ isIntakeBusy ? 'Uploading…' : '✨ Upload & Generate Curriculum' }}
+          </button>
+          <button
+            type="button"
+            id="btn-intake-upload"
+            :class="intakeTarget === 'new' ? 'btn-outline-action' : 'btn-primary-action'"
+            :disabled="isIntakeBusy || intakeFiles.length === 0"
+            @click="submitIntake(false)"
+          >
+            {{ intakeTarget === 'new' ? 'Upload Only (save as draft)' : 'Add to Draft' }}
+          </button>
+        </div>
+      </section>
+
+      <section v-if="draftCourses.length > 0" class="intake-card intake-drafts" aria-label="Continue an existing draft">
+        <h2 class="intake-drafts-title">Continue a draft</h2>
+        <p class="intake-sub">Unpublished curricula. These stay private to you until published.</p>
+        <ul class="intake-draft-list">
+          <li v-for="c in draftCourses" :key="c.id" class="intake-draft-item">
+            <div class="intake-draft-meta">
+              <span class="intake-draft-name">{{ c.title }}</span>
+              <span class="intake-draft-sub">
+                {{ formatStatus(c.status) }} • {{ c.materials_count || 0 }} source doc(s)
+                <template v-if="c.updated_at"> • updated {{ new Date(c.updated_at).toLocaleDateString() }}</template>
+              </span>
+            </div>
+            <button type="button" class="btn-outline-action" @click="openDraft(c)">Open draft</button>
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <main v-if="studioStage === 'editor' && currentLevel === 'overview'" class="level-container level-course-overview">
       
       <!-- A. Course Header Banner -->
       <section class="course-studio-banner" aria-labelledby="banner-course-title">
@@ -534,7 +651,7 @@
       </section>
 
       <!-- Publishing Format Stage: Option A (Separate Modules) vs Option B (One Combined Module) -->
-      <section v-if="editableProposal.proposal_data.modules && editableProposal.proposal_data.modules.length > 0" class="publishing-format-section" id="publishing-format-stage">
+      <section v-if="separatePlan.totals.sections > 0 || (editableProposal.proposal_data.modules && editableProposal.proposal_data.modules.length > 0)" class="publishing-format-section" id="publishing-format-stage">
         <div class="format-section-header">
           <div class="format-header-badge">
             <span class="step-num-pill">PUBLISHING FORMAT</span>
@@ -568,8 +685,14 @@
             </p>
             <div class="format-preview-pill">
               <span class="preview-icon">📚</span>
-              <span>Creates <strong>{{ totalModulesCount }}</strong> distinct modules in Student Catalog</span>
+              <span>Creates <strong>{{ separatePlan.totals.modules }}</strong> distinct modules ({{ separatePlan.totals.nodes }} nodes) in Student Catalog</span>
             </div>
+            <ul class="format-plan-list" data-testid="plan-separate-list">
+              <li v-for="m in separatePlan.modules" :key="m.id">
+                <span class="plan-item-title">{{ m.title }}</span>
+                <span class="plan-item-count">{{ m.nodeCount }} {{ m.nodeCount === 1 ? 'node' : 'nodes' }}</span>
+              </li>
+            </ul>
           </div>
 
           <!-- Option B: Publish as One Combined Module -->
@@ -593,11 +716,20 @@
             </p>
             <div class="format-preview-pill">
               <span class="preview-icon">📦</span>
-              <span>Creates <strong>1</strong> unified module containing {{ totalCheckpointsCount }} lessons</span>
+              <span>Creates <strong>{{ combinedPlan.totals.modules }}</strong> unified module containing <strong>{{ combinedPlan.totals.sections }}</strong> sections and {{ combinedPlan.totals.nodes }} nodes</span>
             </div>
+            <ol class="format-plan-list" data-testid="plan-combined-list">
+              <li v-for="sec in (combinedPlan.modules[0]?.sections || [])" :key="sec.id">
+                <span class="plan-item-title">{{ sec.title }}</span>
+                <span class="plan-item-count">{{ sec.nodeCount }} {{ sec.nodeCount === 1 ? 'node' : 'nodes' }}</span>
+              </li>
+            </ol>
           </div>
         </div>
 
+        <div v-for="(issue, iIdx) in selectedPlanBlockingIssues" :key="'plan-issue-' + iIdx" class="format-selection-warning">
+          <span>⚠️ {{ issue.message }}</span>
+        </div>
         <div v-if="!selectedPublishingFormat" class="format-selection-warning">
           <span>⚠️ Please select a publishing format above before publishing this curriculum.</span>
         </div>
@@ -1768,12 +1900,12 @@
 
           <div class="publish-stats-summary">
             <div class="pub-stat">
-              <span class="pub-num">{{ totalModulesCount }}</span>
-              <span class="pub-label">Modules</span>
+              <span class="pub-num">{{ selectedPlan.totals.modules }}</span>
+              <span class="pub-label">{{ selectedPlan.totals.modules === 1 ? 'Module' : 'Modules' }}</span>
             </div>
             <div class="pub-stat">
-              <span class="pub-num">{{ totalCheckpointsCount }}</span>
-              <span class="pub-label">Lessons</span>
+              <span class="pub-num">{{ selectedPlan.totals.nodes }}</span>
+              <span class="pub-label">Nodes</span>
             </div>
             <div class="pub-stat">
               <span class="pub-num">{{ activeCourse?.assigned_sections?.length || 0 }}</span>
@@ -1799,7 +1931,7 @@
                 />
                 <div class="modal-radio-text">
                   <strong>Option A: Separate Modules</strong>
-                  <span>Each section becomes an independent module ({{ totalModulesCount }} modules)</span>
+                  <span>Each section becomes an independent module ({{ separatePlan.totals.modules }} modules, {{ separatePlan.totals.nodes }} nodes)</span>
                 </div>
               </label>
 
@@ -1817,12 +1949,23 @@
                 />
                 <div class="modal-radio-text">
                   <strong>Option B: One Combined Module</strong>
-                  <span>Group sections inside 1 module ({{ totalCheckpointsCount }} lessons)</span>
+                  <span>Group {{ combinedPlan.totals.sections }} sections inside 1 module ({{ combinedPlan.totals.nodes }} nodes)</span>
                 </div>
               </label>
             </div>
             <p v-if="!selectedPublishingFormat" class="format-modal-required-note">
               * A format must be chosen before publishing.
+            </p>
+            <ul v-if="selectedPublishingFormat" class="format-plan-list" data-testid="plan-modal-list">
+              <li v-for="m in selectedPlan.modules" :key="m.id">
+                <span class="plan-item-title">{{ m.title }}</span>
+                <span class="plan-item-count">
+                  <template v-if="selectedPlan.format === 'one_module'">{{ m.sectionCount }} sections · </template>{{ m.nodeCount }} {{ m.nodeCount === 1 ? 'node' : 'nodes' }}
+                </span>
+              </li>
+            </ul>
+            <p v-for="(issue, iIdx) in selectedPlanBlockingIssues" :key="'modal-issue-' + iIdx" class="format-modal-required-note">
+              * {{ issue.message }}
             </p>
           </div>
         </div>
@@ -1834,7 +1977,7 @@
           <button 
             type="button" 
             class="btn-primary-action btn-confirm-publish"
-            :disabled="isPublishing || !selectedPublishingFormat"
+            :disabled="isPublishing || !selectedPublishingFormat || !selectedPlan.canPublish"
             @click="handlePublishProposal"
           >
             {{ isPublishing ? 'Publishing...' : 'Confirm & Publish Live' }}
@@ -1883,6 +2026,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
+import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
 
 const mentorStore = useMentorStore();
 
@@ -1919,6 +2063,11 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  // Deep-link escape hatch: a parent that opens a specific course can skip the upload-first entry screen.
+  skipIntake: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits([
@@ -1930,6 +2079,22 @@ const emit = defineEmits([
   'publish-proposal',
   'update-course',
 ]);
+
+// ── Studio entry: upload-first intake (creates/updates a DRAFT; never publishes) ──
+const INTAKE_EXTENSIONS = ['.pdf', '.pptx', '.ppt', '.docx', '.doc', '.txt', '.md', '.markdown']; // mirrors MentorService.uploadCourseMaterial
+const INTAKE_MAX_BYTES = 25 * 1024 * 1024; // mirrors MentorService.uploadCourseMaterial
+const studioStage = ref(props.skipIntake ? 'editor' : 'intake'); // 'intake' | 'editor'
+const intakeTarget = ref('new'); // 'new' or the id of an existing unpublished draft
+const intakeForm = ref({ title: '', subject: '', academic_level: '' });
+const intakeFiles = ref([]);
+const intakeFileInput = ref(null);
+const intakeError = ref('');
+const isIntakeBusy = ref(false);
+// Set once the draft course row exists so a retry after a failed upload reuses it (no duplicate courses).
+const intakeDraftCourseId = ref(null);
+
+// Unpublished courses = drafts the teacher can return to. Published modules are managed in My Modules.
+const draftCourses = computed(() => (props.courses || []).filter(c => c && c.status !== 'published'));
 
 // ── Three-Level Navigation State ───────────────────────────────────────────
 const currentLevel = ref('overview'); // 'overview' | 'module' | 'lesson'
@@ -2395,10 +2560,141 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown);
-  if (!props.activeCourseId && props.courses && props.courses.length > 0) {
+  // Only auto-open a course when skipping intake; otherwise the teacher chooses via upload or "Continue a draft".
+  if (studioStage.value === 'editor' && !props.activeCourseId && props.courses && props.courses.length > 0) {
     emit('select-course', props.courses[0].id);
   }
 });
+
+// ── Intake handlers ────────────────────────────────────────────────────────
+function triggerIntakeFileInput() {
+  intakeFileInput.value?.click();
+}
+
+function addIntakeFiles(fileList) {
+  const accepted = [];
+  const rejected = [];
+  for (const f of Array.from(fileList || [])) {
+    const okExt = INTAKE_EXTENSIONS.some(ext => (f.name || '').toLowerCase().endsWith(ext));
+    if (!okExt) rejected.push(`${f.name}: unsupported format`);
+    else if (f.size > INTAKE_MAX_BYTES) rejected.push(`${f.name}: exceeds 25MB`);
+    else if (!intakeFiles.value.some(x => x.name === f.name && x.size === f.size)) accepted.push(f);
+  }
+  intakeFiles.value = [...intakeFiles.value, ...accepted];
+  intakeError.value = rejected.length ? `Skipped: ${rejected.join('; ')}` : '';
+}
+
+function handleIntakeFilesSelected(event) {
+  addIntakeFiles(event.target.files);
+  event.target.value = '';
+}
+
+function handleIntakeDrop(event) {
+  addIntakeFiles(event.dataTransfer?.files);
+}
+
+function removeIntakeFile(idx) {
+  intakeFiles.value = intakeFiles.value.filter((_, i) => i !== idx);
+}
+
+function fileTitle(name) {
+  return (name || 'Untitled material').replace(/\.[^.]+$/, '');
+}
+
+async function submitIntake(generateAfter) {
+  if (isIntakeBusy.value) return;
+  intakeError.value = '';
+  if (intakeFiles.value.length === 0) {
+    intakeError.value = 'Please choose at least one file.';
+    return;
+  }
+
+  let courseId = intakeTarget.value !== 'new' ? intakeTarget.value : intakeDraftCourseId.value;
+  const f = intakeForm.value;
+  if (!courseId && (!f.title.trim() || !f.subject.trim() || !f.academic_level.trim())) {
+    intakeError.value = 'Title, subject, and academic level are required to start a draft.';
+    return;
+  }
+
+  isIntakeBusy.value = true;
+  try {
+    if (!courseId) {
+      // Creates ONE course row with status 'draft'. It is not student-facing until published.
+      const res = await mentorStore.createCourse({
+        title: f.title.trim(),
+        subject: f.subject.trim(),
+        academicLevel: f.academic_level.trim(),
+        mentorId: props.mentorId,
+      });
+      if (!res.success || !res.course) {
+        intakeError.value = res.error || 'Could not create the draft workspace.';
+        return;
+      }
+      courseId = res.course.id;
+      intakeDraftCourseId.value = courseId;
+    }
+
+    const failures = [];
+    for (const file of [...intakeFiles.value]) {
+      const res = await mentorStore.uploadMaterial({
+        courseId,
+        title: fileTitle(file.name),
+        file,
+        uploaderId: props.mentorId,
+      });
+      if (res.success) {
+        intakeFiles.value = intakeFiles.value.filter(x => x !== file);
+      } else {
+        failures.push(`${file.name}: ${res.error || 'upload failed'}`);
+      }
+    }
+    if (failures.length > 0) {
+      intakeError.value = `Some files were not uploaded. ${failures.join('; ')}`;
+      return;
+    }
+
+    const wasNewDraft = intakeTarget.value === 'new';
+    openWorkspace(courseId);
+    if (generateAfter && wasNewDraft) {
+      emit('generate-proposal', { courseId, mentorId: props.mentorId, mode: 'mode_b' });
+    } else {
+      isAiDrawerOpen.value = true; // generation CTA lives in the AI drawer
+    }
+    intakeFiles.value = [];
+    intakeForm.value = { title: '', subject: '', academic_level: '' };
+    intakeDraftCourseId.value = null;
+    intakeTarget.value = 'new';
+  } catch (err) {
+    intakeError.value = err?.message || 'Upload failed.';
+  } finally {
+    isIntakeBusy.value = false;
+  }
+}
+
+// Open a draft workspace through the existing select-course flow (loads its materials + saved proposal).
+function openWorkspace(courseId) {
+  isDirty.value = false;
+  currentLevel.value = 'overview';
+  activeModuleIndex.value = null;
+  activeLessonIndex.value = null;
+  studioStage.value = 'editor';
+  emit('select-course', courseId);
+  mentorStore.loadMaterials?.(courseId);
+  mentorStore.loadProposals?.(courseId);
+}
+
+function openDraft(course) {
+  if (!course?.id) return;
+  openWorkspace(course.id);
+}
+
+function returnToIntake() {
+  if (isDirty.value && !window.confirm('You have unsaved edits. Leave without saving?')) return;
+  isDirty.value = false;
+  currentLevel.value = 'overview';
+  intakeTarget.value = 'new';
+  studioStage.value = 'intake';
+}
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
@@ -2413,12 +2709,25 @@ function handleKeydown(e) {
 }
 
 // ── Metrics & Formatting ───────────────────────────────────────────────────
-const totalModulesCount = computed(() => editableProposal.value?.proposal_data?.modules?.length || 0);
+// Single normalized publishing plan (same builder the publish operation uses).
+// proposal_data.modules.length is NOT the section count: generated proposals keep all
+// nodes in ONE compatibility module and carry the sections as node.topic_group.
+function planFor(format) {
+  return buildPublishingPlan(editableProposal.value?.proposal_data, format, {
+    baseId: props.activeCourseId || props.activeCourse?.id || undefined,
+    fallbackTitle: props.activeCourse?.title || editableProposal.value?.proposal_data?.title || undefined,
+  });
+}
+const separatePlan = computed(() => planFor('separate_modules'));
+const combinedPlan = computed(() => planFor('one_module'));
+const selectedPlan = computed(() =>
+  selectedPublishingFormat.value === 'one_module' ? combinedPlan.value : separatePlan.value
+);
+const selectedPlanBlockingIssues = computed(() => selectedPlan.value.issues.filter(i => i.level === 'error'));
 
-const totalCheckpointsCount = computed(() => {
-  const mods = editableProposal.value?.proposal_data?.modules || [];
-  return mods.reduce((sum, m) => sum + (m.checkpoints?.length || 0), 0);
-});
+const totalModulesCount = computed(() => separatePlan.value.totals.modules);
+
+const totalCheckpointsCount = computed(() => separatePlan.value.totals.nodes);
 
 const totalObjectivesCount = computed(() => {
   const mods = editableProposal.value?.proposal_data?.modules || [];
@@ -2791,8 +3100,8 @@ function handleApproveProposal() {
 
 function openPublishModal() {
   const data = editableProposal.value?.proposal_data;
-  if (!data || !Array.isArray(data.modules) || data.modules.length === 0) {
-    alert('Cannot publish curriculum: at least 1 module is required.');
+  if (!data || separatePlan.value.totals.nodes === 0) {
+    alert('Cannot publish curriculum: at least 1 learning node is required.');
     return;
   }
   if (!selectedPublishingFormat.value) {
@@ -2808,6 +3117,10 @@ function handlePublishProposal() {
   if (!props.proposal) return;
   if (!selectedPublishingFormat.value) {
     alert('Please choose a publishing format before confirming.');
+    return;
+  }
+  if (!selectedPlan.value.canPublish) {
+    alert(selectedPlan.value.issues.filter(i => i.level === 'error').map(i => i.message).join('\n'));
     return;
   }
   isPublishing.value = true;
@@ -5108,6 +5421,36 @@ function saveCourseDetails() {
   color: #16a34a;
 }
 
+.format-plan-list {
+  list-style: none;
+  margin: 10px 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.format-plan-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+}
+
+.plan-item-title {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.plan-item-count {
+  color: #64748b;
+  white-space: nowrap;
+}
+
 /* Modal Selector Styles */
 .publish-modal-format-box {
   margin-top: 18px;
@@ -5172,4 +5515,35 @@ function saveCourseDetails() {
   color: #dc2626;
   font-weight: 600;
 }
+
+/* ── Studio entry: upload-first intake ───────────────────────────────────── */
+.studio-intake { display: flex; flex-direction: column; gap: 20px; max-width: 820px; margin: 0 auto; }
+.intake-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
+.intake-title { font-size: 24px; font-weight: 800; margin: 12px 0 6px; }
+.intake-sub { font-size: 13.5px; color: #475569; margin: 0 0 20px; line-height: 1.5; }
+.intake-note { font-size: 12.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
+.intake-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; flex: 1; }
+.intake-row { display: flex; gap: 16px; }
+.intake-label { font-size: 12.5px; font-weight: 700; color: #334155; }
+.intake-req { color: #dc2626; }
+.intake-input { border: 1px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 13.5px; font-family: inherit; color: #0f172a; background: #ffffff; }
+.intake-input:focus { outline: 2px solid #ff6b00; outline-offset: 1px; }
+.intake-hidden-input { display: none; }
+.intake-drop { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 28px 16px; text-align: center; cursor: pointer; background: #f8fafc; }
+.intake-drop:hover, .intake-drop.has-files { border-color: #ff6b00; background: #fff7ed; }
+.intake-drop-text { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
+.intake-drop-sub { font-size: 12px; color: #64748b; margin: 0; }
+.intake-file-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.intake-file-item { display: flex; align-items: center; gap: 10px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 12.5px; }
+.intake-file-name { flex: 1; font-weight: 600; word-break: break-all; }
+.intake-file-size { color: #64748b; }
+.intake-file-remove { background: none; border: none; cursor: pointer; color: #64748b; }
+.intake-error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 6px; padding: 10px 12px; font-size: 12.5px; margin-bottom: 16px; }
+.intake-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.intake-drafts-title { font-size: 16px; font-weight: 800; margin: 0 0 4px; }
+.intake-draft-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.intake-draft-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+.intake-draft-meta { display: flex; flex-direction: column; gap: 2px; }
+.intake-draft-name { font-size: 14px; font-weight: 700; }
+.intake-draft-sub { font-size: 12px; color: #64748b; }
 </style>
