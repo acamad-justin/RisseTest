@@ -8,23 +8,10 @@
           Central pedagogical tracks. Each module contains ordered Learning Nodes and can be assigned to multiple sections while keeping student progress independent.
         </p>
       </div>
-
-      <button 
-        type="button" 
-        class="btn-studio-primary" 
-        @click="$emit('navigate', 'create-course')"
-        id="btn-create-course"
-      >
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        Create Module
-      </button>
     </header>
 
     <!-- Empty State -->
-    <div v-if="courses.length === 0" class="courses-empty-container">
+    <div v-if="publishedCourses.length === 0" class="courses-empty-container">
       <div class="empty-icon-circle">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#64748b" stroke-width="2">
           <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
@@ -32,23 +19,16 @@
           <path d="M6 10h10"/>
         </svg>
       </div>
-      <h2 class="empty-headline">No Modules Created Yet</h2>
+      <h2 class="empty-headline">No Published Modules Yet</h2>
       <p class="empty-subtext">
-        Modules represent subjects and coherent learning units with ordered Learning Nodes. Create your first module to begin uploading materials and drafting topic nodes.
+        Published modules appear here, ready to assign to your classes. Build and publish modules in Module Studio.
       </p>
-      <button 
-        type="button" 
-        class="btn-studio-primary" 
-        @click="$emit('navigate', 'create-course')"
-      >
-        + Create Your First Module
-      </button>
     </div>
 
     <!-- Courses Grid -->
     <div v-else class="courses-grid">
       <div 
-        v-for="course in courses" 
+        v-for="course in publishedCourses" 
         :key="course.id" 
         class="course-card"
       >
@@ -59,7 +39,7 @@
               class="badge-enrollment-type"
               :class="course.enrollment_type === 'self_paced' ? 'enrollment-self-paced' : 'enrollment-curriculum'"
             >
-              {{ course.enrollment_type === 'self_paced' ? '⚡ Self-Paced' : '📚 Curriculum' }}
+              {{ course.enrollment_type === 'self_paced' ? '⚡ Self-Paced' : '📚 Module' }}
             </span>
             <span class="badge-status" :class="`status-${course.status}`">
               {{ formatStatus(course.status) }}
@@ -125,7 +105,7 @@
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
               </svg>
-              <span>Curriculum Ready</span>
+              <span>Module Ready</span>
             </div>
           </div>
         </div>
@@ -330,7 +310,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 
 const props = defineProps({
   courses: {
@@ -342,6 +322,9 @@ const props = defineProps({
     default: () => [],
   },
 });
+
+// My Modules is the published-module library. Drafts and publishing containers live in Module Studio.
+const publishedCourses = computed(() => (props.courses || []).filter(c => c && c.status === 'published'));
 
 const emit = defineEmits([
   'navigate', 

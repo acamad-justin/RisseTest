@@ -1444,6 +1444,52 @@ export class MentorService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
+   * Published child modules (publish_curriculum_as_separate_modules) carry courses.source_proposal_id.
+   * Their source/reference materials are the course_materials of the course that owns that proposal.
+   */
+  private static async getSourceParentCourseId(sourceProposalId?: string | null): Promise<string | null> {
+    if (!sourceProposalId || !isValidUuid(sourceProposalId)) return null;
+    try {
+      const { data } = await supabase
+        .from('curriculum_proposals')
+        .select('course_id')
+        .eq('id', sourceProposalId)
+        .maybeSingle();
+      return data?.course_id || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static async getInheritedCourseMaterials(sourceProposalId?: string | null): Promise<CourseMaterialRecord[]> {
+    const parentId = await this.getSourceParentCourseId(sourceProposalId);
+    if (!parentId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('course_materials')
+        .select('*')
+        .eq('course_id', parentId)
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) return data;
+    } catch (_) {}
+    return [];
+  }
+
+  private static async countInheritedMaterials(sourceProposalId?: string | null): Promise<number> {
+    const parentId = await this.getSourceParentCourseId(sourceProposalId);
+    if (!parentId) return 0;
+    try {
+      const { count } = await supabase
+        .from('course_materials')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_id', parentId);
+      return count ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /**
    * Fetch courses owned by a mentor with section assignments & material counts
    */
   static async getCourses(mentorId: string): Promise<CourseRecord[]> {
@@ -1497,13 +1543,39 @@ export class MentorService {
             ? sectionIds 
             : (c.assigned_section_ids || testCourse?.assigned_section_ids || []);
 
+          // Child modules also reference the parent course's materials (no rows are duplicated).
+          const inheritedCount = await this.countInheritedMaterials(c.source_proposal_id);
+
           enrichedCourses.push({
             ...c,
             assigned_sections: assignedSections,
             assigned_section_ids: finalSectionIds,
-            materials_count: matCount ?? 0,
+            materials_count: (matCount ?? 0) + inheritedCount,
           });
         }
+
+        // Mark parents whose proposal was published as separate modules (derived, not stored):
+        // they are publishing containers, not drafts and not student-facing modules.
+        try {
+          const proposalIds = Array.from(new Set(
+            enrichedCourses.map((c: any) => c.source_proposal_id).filter((id: any) => Boolean(id))
+          ));
+          if (proposalIds.length > 0) {
+            const { data: owners } = await supabase
+              .from('curriculum_proposals')
+              .select('id, course_id')
+              .in('id', proposalIds);
+            const ownerByProposal = new Map((owners || []).map((o: any) => [o.id, o.course_id]));
+            const containerIds = new Set<string>();
+            enrichedCourses.forEach((c: any) => {
+              const owner = ownerByProposal.get(c.source_proposal_id);
+              if (owner) containerIds.add(owner as string);
+            });
+            enrichedCourses.forEach((c: any) => {
+              if (containerIds.has(c.id)) c.is_publishing_container = true;
+            });
+          }
+        } catch (_) {}
 
         // Merge with any locally created courses for this mentor
         const dbCourseIds = new Set(enrichedCourses.map(c => c.id));
@@ -1565,11 +1637,13 @@ export class MentorService {
         const localCourse = testState.courses.get(courseId);
         const resolvedSectionIds = (sectionIds.length > 0) ? sectionIds : (localCourse?.assigned_section_ids || []);
 
+        const inheritedCount = await this.countInheritedMaterials((data as any).source_proposal_id);
+
         const fullCourse: CourseRecord = {
           ...data,
           assigned_sections: assignedSections,
           assigned_section_ids: resolvedSectionIds,
-          materials_count: matCount ?? 0,
+          materials_count: (matCount ?? 0) + inheritedCount,
         };
         testState.courses.set(courseId, fullCourse);
         return fullCourse;
@@ -2598,11 +2672,19 @@ export class MentorService {
 
     if (isValidUuid(proposalId)) {
       try {
+        // Editing an already-published module must keep it published (no silent demotion to review).
+        const { data: current } = await supabase
+          .from('curriculum_proposals')
+          .select('status')
+          .eq('id', proposalId)
+          .maybeSingle();
+        const nextStatus = current?.status === 'published' ? 'published' : 'under_review';
+
         const { error } = await supabase
           .from('curriculum_proposals')
           .update({
             proposal_data: proposalData,
-            status: 'under_review',
+            status: nextStatus,
             updated_at: new Date().toISOString(),
           })
           .eq('id', proposalId);
@@ -2611,7 +2693,7 @@ export class MentorService {
           const prop = testState.curriculumProposals.get(proposalId);
           if (prop) {
             prop.proposal_data = proposalData;
-            prop.status = 'under_review';
+            prop.status = nextStatus;
             prop.updated_at = new Date().toISOString();
           }
           setLocalItem('curriculum_proposals', Array.from(testState.curriculumProposals.values()));

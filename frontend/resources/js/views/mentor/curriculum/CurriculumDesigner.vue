@@ -323,7 +323,8 @@
                   type="button" 
                   id="btn-generate-curriculum"
                   class="btn-trigger-ai-curriculum" 
-                  :disabled="isGenerating"
+                  :disabled="isGenerating || isPublished"
+                  :title="isPublished ? 'Revert this module to review before regenerating its content.' : ''"
                   @click="handleGenerateProposal"
                 >
                   <span v-if="isGenerating" class="btn-spinner-row">
@@ -2094,7 +2095,11 @@ const isIntakeBusy = ref(false);
 const intakeDraftCourseId = ref(null);
 
 // Unpublished courses = drafts the teacher can return to. Published modules are managed in My Modules.
-const draftCourses = computed(() => (props.courses || []).filter(c => c && c.status !== 'published'));
+// A parent whose proposal was published as separate modules is a publishing container (is_publishing_container,
+// derived in MentorService.getCourses), not a draft: its child modules are the real items.
+const draftCourses = computed(() =>
+  (props.courses || []).filter(c => c && c.status !== 'published' && !c.is_publishing_container)
+);
 
 // ── Three-Level Navigation State ───────────────────────────────────────────
 const currentLevel = ref('overview'); // 'overview' | 'module' | 'lesson'

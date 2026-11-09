@@ -316,7 +316,14 @@ async function loadMaterials(courseId) {
 
   try {
     const list = await MentorService.getCourseMaterials(courseId);
-    courseMaterials.value = list;
+    // Published child modules reference the materials of the course their proposal came from (read-only here).
+    const course = courses.value.find(c => c.id === courseId);
+    let inherited = [];
+    if (course?.source_proposal_id) {
+      const refs = await MentorService.getInheritedCourseMaterials(course.source_proposal_id);
+      inherited = refs.filter(m => !list.some(o => o.id === m.id)).map(m => ({ ...m, inherited: true }));
+    }
+    courseMaterials.value = [...list, ...inherited];
   } catch (err) {
     materialsError.value = err.message || 'Failed to load course materials.';
   } finally {
@@ -407,6 +414,9 @@ async function retryProcessMaterial(materialId, uploaderId) {
  * Delete material from active course
  */
 async function deleteMaterial(materialId, uploaderId) {
+  // Shared source materials belong to the parent course; never delete them from a child module.
+  const target = courseMaterials.value.find(m => m.id === materialId);
+  if (target && (target.inherited || (activeCourseId.value && target.course_id !== activeCourseId.value))) return false;
   const targetUploaderId = uploaderId 
     || currentMentorId.value 
     || (typeof activeMentorProfile !== 'undefined' && activeMentorProfile?.value ? activeMentorProfile.value.id : null) 
@@ -514,7 +524,7 @@ async function saveProposalEdits(proposalId, proposalData) {
   const ok = await MentorService.updateCurriculumProposal(proposalId, proposalData);
   if (ok && activeProposal.value && activeProposal.value.id === proposalId) {
     activeProposal.value.proposal_data = proposalData;
-    activeProposal.value.status = 'under_review';
+    if (activeProposal.value.status !== 'published') activeProposal.value.status = 'under_review';
   }
   return ok;
 }

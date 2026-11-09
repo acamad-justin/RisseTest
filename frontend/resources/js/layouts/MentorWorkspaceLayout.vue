@@ -151,6 +151,7 @@
           :is-generating="mentorStore.isGeneratingProposal"
           :foundation-modules="mentorStore.foundationModules"
           :mentor-id="mentorId"
+          :skip-intake="studioEntry === 'edit'"
           @navigate="handleViewChange"
           @select-course="handleCourseSelect"
           @generate-proposal="handleGenerateProposal"
@@ -271,6 +272,8 @@ const emit = defineEmits(['switch-to-student', 'logout', 'notify']);
 
 const mentorStore = useMentorStore();
 const currentView = ref(props.initialView || 'dashboard');
+// How Module Studio was entered: 'intake' = upload-first screen (new modules), 'edit' = open the selected module directly.
+const studioEntry = ref('intake');
 
 // Notifications state
 const isNotificationsOpen = ref(false);
@@ -374,6 +377,7 @@ watch(
 
 function handleViewChange(viewName) {
   mentorStore.resetModals();
+  if (viewName === 'curriculum-designer') studioEntry.value = 'intake';
   currentView.value = viewName;
   if (viewName === 'curriculum-designer' || viewName === 'materials') {
     if (!mentorStore.activeCourseId && mentorStore.courses.length > 0) {
@@ -397,6 +401,7 @@ function handleSelectMaterialsForCourse(course) {
 }
 
 function handleSelectCurriculumForCourse(course) {
+  studioEntry.value = 'edit'; // open this module's existing content; never the upload/generate screen
   mentorStore.activeCourseId = course.id;
   mentorStore.loadMaterials(course.id);
   mentorStore.loadProposals(course.id);
@@ -417,6 +422,7 @@ async function handleCourseCreated(newCourse) {
     await mentorStore.loadMaterials(newCourse.id);
     await mentorStore.loadProposals(newCourse.id);
   }
+  studioEntry.value = 'edit';
   currentView.value = 'curriculum-designer';
 }
 
