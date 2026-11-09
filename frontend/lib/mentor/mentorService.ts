@@ -170,7 +170,7 @@ export interface CurriculumProposalCheckpoint {
   id: string;
   step_number?: number;
   title: string;
-  type: 'concept' | 'lab' | 'challenge' | 'assessment' | 'project';
+  type: 'concept' | 'lab' | 'challenge' | 'assessment' | 'project' | 'demonstration' | 'guided_practice';
   description: string;
   estimated_minutes: number;
   skills_acquired?: string[];
@@ -191,20 +191,15 @@ export interface CurriculumProposalModule {
   module_number?: number;
   title: string;
   description: string;
-  source_materials?: string[];
+  source_materials: string[];
   provenance_type?: 'grounded_in_materials' | 'ai_suggestion';
-  learning_objectives?: string[];
+  learning_objectives: string[];
   badge_name?: string;
   level?: string;
   level_color?: string;
   concepts?: string[];
   prerequisites?: string[];
-  checkpoints: any[];
-  learning_nodes?: LearningNode[];
-  source_section?: string;
-  section_number?: string;
-  page_range?: string;
-  status?: 'draft' | 'under_review' | 'published';
+  checkpoints: CurriculumProposalCheckpoint[];
 }
 
 export interface CurriculumProposalRecord {
@@ -215,13 +210,21 @@ export interface CurriculumProposalRecord {
     title: string;
     summary: string;
     modules: CurriculumProposalModule[];
-    publishing_format?: 'separate_modules' | 'one_module';
     [key: string]: any;
   };
   status: 'draft' | 'under_review' | 'approved' | 'published';
   created_by: string;
   created_at: string;
   updated_at: string;
+  // Legacy / compatibility fields
+  title?: string;
+  overview?: string;
+  modules?: CurriculumProposalModule[];
+  mentor_id?: string;
+  target_audience?: string;
+  estimated_duration?: string;
+  source_materials?: string[];
+  grounding_type?: string;
 }
 
 export interface StarAwardRecord {
@@ -2086,7 +2089,7 @@ export class MentorService {
         if (params.file.content || (typeof File !== 'undefined' && params.file instanceof File) || (typeof Blob !== 'undefined' && params.file instanceof Blob)) {
           const { error: uploadErr } = await supabase.storage
             .from('course-materials')
-            .upload(storagePath, params.file, {
+            .upload(storagePath, params.file as unknown as File, {
               cacheControl: '3600',
               upsert: false,
             });
@@ -2436,6 +2439,8 @@ export class MentorService {
         mentor_id: effectiveMentorId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        semester: null,
+        school_year: null,
         assigned_section_ids: [],
         materials_count: 0,
       };
@@ -2457,7 +2462,9 @@ export class MentorService {
           module_number: 1,
           title: draft.title,
           description: draft.description,
-          checkpoints: draft.learning_nodes,
+          source_materials: [],
+          learning_objectives: [],
+          checkpoints: (draft.learning_nodes || []).map(n => ({ ...n, type: n.type || 'concept' })) as CurriculumProposalCheckpoint[],
         }
       ];
 
@@ -2499,7 +2506,7 @@ export class MentorService {
       options,
     });
 
-    const generatedModules = rawProposal.modules;
+    const generatedModules: CurriculumProposalModule[] = rawProposal.modules ?? [];
 
     // Preserve existing teacher-custom modules
     const existing = await this.getCurriculumProposals(courseId);
@@ -2518,7 +2525,7 @@ export class MentorService {
 
     const proposalData = {
       title: `${course.title} — AI Curriculum Architecture Proposal`,
-      summary: rawProposal.overview,
+      summary: rawProposal.overview ?? '',
       modules: allModules,
     };
 
@@ -2943,7 +2950,8 @@ export class MentorService {
     // Merge any extracted citations from materials
     if (sourceCitations.length > 0 && (!educationalContent.source_citations || educationalContent.source_citations.length === 0)) {
       educationalContent.source_citations = sourceCitations;
-      educationalContent.grounding_disclosure = groundingDisclosure;
+      educationalContent.grounding_disclosure =
+        `Grounded in uploaded materials: ${citedFiles.join(', ')}.`;
     }
 
     return { success: true, content: educationalContent };
@@ -3240,8 +3248,12 @@ export class MentorService {
       file_size: newRecord.file_size,
       mime_type: newRecord.mime_type,
       storage_path: storagePath,
-      raw_content: (file as any).content || null,
+      description: newRecord.description,
+      uploaded_by: uploaderId,
+      status: 'ready',
+      extracted_content: (file as any).content || null,
       created_at: newRecord.created_at,
+      updated_at: newRecord.created_at,
     });
     testState.legacyUploads.set(newRecord.id, newRecord);
 
@@ -3710,7 +3722,8 @@ export class MentorService {
    * Delete uploaded material from a module
    */
   static async deleteModuleMaterial(materialId: string): Promise<{ success: boolean; error?: string }> {
-    return this.deleteCourseMaterial(materialId);
+    const ok = await this.deleteCourseMaterial(materialId);
+    return { success: ok, error: ok ? undefined : 'Failed to delete material.' };
   }
 
   /**
@@ -3725,7 +3738,7 @@ export class MentorService {
     }
 
     const prop = proposals[0];
-    const pData = prop.proposal_data || {};
+    const pData: any = prop.proposal_data || {};
 
     // Synthesize learning_nodes if not already present
     let nodes: LearningNode[] = pData.learning_nodes || [];
@@ -3770,7 +3783,7 @@ export class MentorService {
       learning_path_summary: pData.learning_path_summary,
       overview: prop.overview,
       version: prop.version,
-      status: prop.status,
+      status: prop.status === 'published' ? 'published' : prop.status === 'draft' ? 'draft' : 'review',
     };
 
     return { success: true, draft: draftRecord, proposal: prop };
@@ -3891,6 +3904,7 @@ export class MentorService {
         const proposalRecord: CurriculumProposalRecord = {
           id: savedData.id,
           course_id: moduleId,
+          created_by: effectiveMentorId,
           mentor_id: effectiveMentorId,
           title: payloadToStore.title || 'Learning Module',
           overview: payloadToStore.description || '',
@@ -3981,6 +3995,8 @@ export class MentorService {
         mentor_id: effectiveMentorId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        semester: null,
+        school_year: null,
         assigned_section_ids: [],
         materials_count: 0,
       };
@@ -4104,7 +4120,9 @@ export class MentorService {
             module_number: 1,
             title: generatedDraft.title,
             description: generatedDraft.description,
-            checkpoints: generatedDraft.learning_nodes,
+            source_materials: [],
+            learning_objectives: [],
+            checkpoints: (generatedDraft.learning_nodes || []).map(n => ({ ...n, type: n.type || 'concept' })) as CurriculumProposalCheckpoint[],
           }
         ],
         learning_path_summary: {
@@ -4235,7 +4253,7 @@ export class MentorService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(options.teacherId ? { 'x-mentor-id': options.teacherId } : {}),
+          ...(params.teacherId ? { 'x-mentor-id': params.teacherId } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(params),
@@ -4571,9 +4589,11 @@ export class MentorService {
     testState.courses.clear();
     testState.courseMaterials.clear();
     testState.curriculumProposals.clear();
-    testState.starActions.clear();
+    testState.legacyUploads.clear();
+    testState.starAwards.clear();
+    testState.starAudits.clear();
     testState.unenrollmentRequests.clear();
-    testState.moduleDrafts.clear();
-    testState.moduleUploads.clear();
+    testState.notifications.clear();
+    testState.courseEnrollments.clear();
   }
 }
