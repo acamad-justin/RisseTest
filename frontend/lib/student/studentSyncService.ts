@@ -553,6 +553,13 @@ export class StudentSyncService {
                 source_materials: cp.source_materials || [],
                 teacher_instructions: cp.teacher_instructions || null,
                 node_content: cp.node_content || null,
+                // Rich blocks / assessment / provenance must survive the legacy
+                // pData.modules path exactly as they do on the learning_nodes path,
+                // otherwise teacher-formatted lesson content never reaches students.
+                blocks: Array.isArray(cp.blocks) ? cp.blocks : null,
+                assessment: cp.assessment || null,
+                source_reference: cp.source_reference || null,
+                topic_group: cp.topic_group || null,
               }));
 
               const totalSteps = checkpoints.length || 3;
