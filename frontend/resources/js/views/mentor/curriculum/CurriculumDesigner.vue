@@ -6428,10 +6428,13 @@ function saveCourseDetails() {
 }
 
 .float-cluster--bottom-right {
+  /* Sits directly under the Exit Preview / Edit pair, in the empty chrome band
+     level with the lesson's "Complete Checkpoint" row. It used to hang at the
+     bottom of the tutor column, far from the controls a teacher looks for first;
+     both clusters now read as one toolbar beside the checkpoint action. */
+  top: 58px;
   right: 18px;
-  /* Clears the tutor's input row so the editing toggles sit over empty chat
-     space rather than on top of a control. */
-  bottom: 88px;
+  bottom: auto;
 }
 
 .float-cluster--bottom-center {
@@ -6593,8 +6596,9 @@ function saveCourseDetails() {
     right: 10px;
   }
   .float-cluster--bottom-right {
+    top: 52px;
     right: 10px;
-    bottom: 80px;
+    bottom: auto;
   }
   /* Pending-changes bar moves off centre so it cannot meet the bottom-right one. */
   .float-cluster--bottom-center {

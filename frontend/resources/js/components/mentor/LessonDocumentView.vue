@@ -1,40 +1,124 @@
 <template>
   <div
     class="lesson-document"
-    :class="{
-      'lesson-document--editable': editable,
-      'lesson-document--student': !editable,
-    }"
+    :class="{ 'lesson-document--editable': editable, 'lesson-document--student': !editable }"
     :style="documentStyle"
   >
+    <!--
+      Word-style formatting bar for the DOCUMENT itself.
+
+      It used to live only inside a block's inline editor, so editing a
+      continuous lesson had no formatting controls at all. It is bound to the
+      document's contenteditable and appears whenever editing is on.
+    -->
+    <div v-if="editable" class="doc-format-bar" role="toolbar" aria-label="Document formatting">
+      <div class="doc-format-bar__group">
+        <select class="doc-format-bar__select" :value="blockStyle" aria-label="Paragraph style" @change="applyBlockStyle($event.target.value)">
+          <option value="p">Normal text</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+          <option value="blockquote">Quote</option>
+        </select>
+
+        <select class="doc-format-bar__select doc-format-bar__select--size" :value="fontSize" aria-label="Font size" @change="applyFontSize($event.target.value)">
+          <option value="">Size</option>
+          <option value="12px">12 pt</option>
+          <option value="14px">14 pt</option>
+          <option value="16px">16 pt</option>
+          <option value="18px">18 pt</option>
+          <option value="22px">22 pt</option>
+          <option value="28px">28 pt</option>
+        </select>
+      </div>
+
+      <span class="doc-format-bar__divider" aria-hidden="true"></span>
+
+      <div class="doc-format-bar__group">
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--icon" title="Bold (Ctrl+B)" @mousedown.prevent="exec('bold')"><strong>B</strong></button>
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--icon" title="Italic (Ctrl+I)" @mousedown.prevent="exec('italic')"><em>I</em></button>
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--icon" title="Underline (Ctrl+U)" @mousedown.prevent="exec('underline')"><u>U</u></button>
+      </div>
+
+      <span class="doc-format-bar__divider" aria-hidden="true"></span>
+
+      <div class="doc-format-bar__group">
+        <button type="button" class="doc-format-bar__btn" title="Bulleted list" @mousedown.prevent="exec('insertUnorderedList')">• List</button>
+        <button type="button" class="doc-format-bar__btn" title="Numbered list" @mousedown.prevent="exec('insertOrderedList')">1. List</button>
+      </div>
+
+      <span class="doc-format-bar__divider" aria-hidden="true"></span>
+
+      <div class="doc-format-bar__group">
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--icon" title="Align left" @mousedown.prevent="exec('justifyLeft')">⯐</button>
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--icon" title="Align centre" @mousedown.prevent="exec('justifyCenter')">⯑</button>
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--icon" title="Align right" @mousedown.prevent="exec('justifyRight')">⯒</button>
+      </div>
+
+      <span class="doc-format-bar__divider" aria-hidden="true"></span>
+
+      <div class="doc-format-bar__group doc-format-bar__group--swatches" aria-label="Text colour">
+        <span class="doc-format-bar__swatch-label">A</span>
+        <button
+          v-for="colour in TEXT_COLOURS"
+          :key="'c-' + colour.value"
+          type="button"
+          class="doc-format-bar__swatch"
+          :style="{ background: colour.value }"
+          :title="`Text colour: ${colour.label}`"
+          :aria-label="`Text colour: ${colour.label}`"
+          @mousedown.prevent="exec('foreColor', colour.value)"
+        ></button>
+      </div>
+
+      <div class="doc-format-bar__group doc-format-bar__group--swatches" aria-label="Highlight">
+        <span class="doc-format-bar__swatch-label">▨</span>
+        <button
+          v-for="colour in HIGHLIGHT_COLOURS"
+          :key="'h-' + colour.value"
+          type="button"
+          class="doc-format-bar__swatch doc-format-bar__swatch--highlight"
+          :style="{ background: colour.value }"
+          :title="`Highlight: ${colour.label}`"
+          :aria-label="`Highlight: ${colour.label}`"
+          @mousedown.prevent="exec('hiliteColor', colour.value)"
+        ></button>
+      </div>
+
+      <span class="doc-format-bar__divider" aria-hidden="true"></span>
+
+      <div class="doc-format-bar__group">
+        <button type="button" class="doc-format-bar__btn" title="Clear formatting" @mousedown.prevent="exec('removeFormat')">Clear</button>
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--insert" title="Insert a text box" @mousedown.prevent="insertElement('text')">+ Text box</button>
+        <button type="button" class="doc-format-bar__btn doc-format-bar__btn--insert" title="Insert a content box" @mousedown.prevent="insertElement('callout')">+ Content box</button>
+      </div>
+    </div>
+
     <div
+      :key="'canvas-' + canvasRevision"
       ref="canvasRef"
       class="lesson-document__canvas"
-      :contenteditable="editable && !selectedId ? 'true' : 'false'"
+      :contenteditable="editable ? 'true' : 'false'"
       :spellcheck="editable ? 'true' : 'false'"
       @input="onFlowInput"
       @blur="onFlowBlur"
+      @focus="onFlowFocus"
       @click="onCanvasClick"
     >
       <template v-for="(segment, index) in segments" :key="segment.type === 'float' ? segment.float.id : 'flow-' + segment.index">
-        <!-- Continuous document text: rendered as document prose, never as a card. -->
-        <div
-          v-if="segment.type === 'flow'"
-          class="lesson-document__node"
-          :data-flow-index="segment.index"
-          v-html="segment.html"
-        ></div>
+        <div v-if="segment.type === 'flow'" class="lesson-document__node" :data-flow-index="segment.index" v-html="segment.html"></div>
 
-        <!-- Independent element, participating in the document's layout. -->
         <div
           v-else
           class="lesson-float"
-          :class="floatClasses(segment.float)"
+          :class="[floatClasses(segment.float), { 'is-dragging': draggingId === segment.float.id }]"
           :style="floatStyle(segment.float)"
           :data-float-id="segment.float.id"
-          :contenteditable="'false'"
-          @click.stop="selectFloat(segment.float, $event)"
+          contenteditable="false"
+          @pointerdown="startFloatDrag($event, segment.float)"
+          @click.stop="selectFloat(segment.float)"
         >
+          <span v-if="editable" class="lesson-float__handle" aria-hidden="true">⠿</span>
           <component :is="renderFloat(segment.float)" />
         </div>
       </template>
@@ -44,12 +128,14 @@
         v-for="float in overlays"
         :key="'overlay-' + float.id"
         class="lesson-float lesson-float--overlay"
-        :class="[floatClasses(float), { 'is-selected': float.id === selectedId }]"
+        :class="[floatClasses(float), { 'is-dragging': draggingId === float.id }]"
         :style="overlayStyle(float)"
         :data-float-id="float.id"
-        :contenteditable="'false'"
-        @click.stop="selectFloat(float, $event)"
+        contenteditable="false"
+        @pointerdown="startFloatDrag($event, float)"
+        @click.stop="selectFloat(float)"
       >
+        <span v-if="editable" class="lesson-float__handle" aria-hidden="true">⠿</span>
         <component :is="renderFloat(float)" />
       </div>
 
@@ -121,8 +207,9 @@
 </template>
 
 <script setup>
-import { computed, h, nextTick, ref, watch } from 'vue';
+import { computed, h, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
+  addFloat,
   documentSegments,
   isOverlay,
   normalizeLessonDocument,
@@ -133,36 +220,92 @@ import {
 import { sanitizeLessonHtml } from '../../../../lib/mentor/richLessonContent.ts';
 
 const props = defineProps({
-  /** The shared lesson document (already normalized, or normalizable). */
-  document: {
-    type: Object,
-    default: () => null,
-  },
-  /** Teacher editing session. Students never set this. */
+  document: { type: Object, default: () => null },
   editable: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:document', 'update:flow', 'update-float', 'select-float']);
 
+const TEXT_COLOURS = [
+  { label: 'Default', value: '#1f2937' },
+  { label: 'Amber', value: '#b45309' },
+  { label: 'Green', value: '#15803d' },
+  { label: 'Blue', value: '#1d4ed8' },
+  { label: 'Red', value: '#b91c1c' },
+];
+const HIGHLIGHT_COLOURS = [
+  { label: 'Yellow', value: '#fef08a' },
+  { label: 'Green', value: '#bbf7d0' },
+  { label: 'Blue', value: '#bfdbfe' },
+  { label: 'None', value: 'transparent' },
+];
+
 const canvasRef = ref(null);
 const selectedId = ref(null);
-/** Last HTML we emitted, so our own update cannot re-render and steal the caret. */
+const draggingId = ref(null);
+const flowFocused = ref(false);
+const canvasRevision = ref(0);
+
+/**
+ * LOCAL SNAPSHOT — the reason the caret no longer jumps.
+ *
+ * The document used to be re-derived from props on every keystroke: we emitted,
+ * the parent echoed back, `segments` recomputed, and Vue re-wrote the innerHTML
+ * of the paragraph being typed in — which snaps the caret to the start of that
+ * node. Rendering three characters could move it anywhere.
+ *
+ * The snapshot is now replaced only by an external change, never by our own
+ * echo, and never while the flow has focus.
+ */
+const localDoc = ref(normalizeLessonDocument(props.document || {}));
 let lastEmittedFlow = '';
 
-const doc = computed(() => normalizeLessonDocument(props.document || {}));
-const segments = computed(() => documentSegments(doc.value));
-const overlays = computed(() => doc.value.floats.filter(isOverlay));
-const selected = computed(() => doc.value.floats.find(f => f.id === selectedId.value) || null);
+const segments = computed(() => documentSegments(localDoc.value));
+const overlays = computed(() => localDoc.value.floats.filter(isOverlay));
+const selected = computed(() => localDoc.value.floats.find(f => f.id === selectedId.value) || null);
 
 const documentStyle = computed(() => {
-  const meta = doc.value.meta;
+  const meta = localDoc.value.meta;
   if (!meta) return {};
   const style = {};
   if (meta.width) style.maxWidth = `${meta.width}px`;
-  if (meta.align === 'center') style.marginLeft = 'auto', style.marginRight = 'auto';
+  if (meta.align === 'center') { style.marginLeft = 'auto'; style.marginRight = 'auto'; }
   else if (meta.align === 'right') style.marginLeft = 'auto';
   return style;
 });
+
+// ── Formatting ───────────────────────────────────────────────────────────
+
+const blockStyle = ref('p');
+const fontSize = ref('');
+
+/** Runs a formatting command against the document's contenteditable. */
+function exec(command, value = null) {
+  if (!props.editable) return;
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  canvas.focus();
+  try {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand(command, false, value);
+  } catch {
+    /* unsupported command — never break the document over it */
+  }
+  commitFlowFromDom();
+}
+
+function applyBlockStyle(tag) {
+  blockStyle.value = tag;
+  exec('formatBlock', `<${tag}>`);
+}
+
+/** execCommand only speaks 1–7; map the point sizes we offer onto those steps. */
+function applyFontSize(size) {
+  fontSize.value = size;
+  const map = { '12px': '2', '14px': '3', '16px': '4', '18px': '5', '22px': '6', '28px': '7' };
+  if (!size) return exec('removeFormat');
+  exec('fontSize', map[size] || '4');
+}
 
 // ── Rendering ────────────────────────────────────────────────────────────
 
@@ -181,11 +324,7 @@ function floatClasses(float) {
   ];
 }
 
-/**
- * Geometry for an element inside the flow. Wrapping is expressed with CSS
- * containment (float / block / inline), NOT absolute positioning — that is what
- * guarantees text is laid out around the element instead of underneath it.
- */
+/** In-flow geometry: containment, never absolute coordinates. */
 function floatStyle(float) {
   const width = float.width ? `${float.width}px` : '';
   const style = {};
@@ -205,11 +344,9 @@ function floatStyle(float) {
     style.maxWidth = '100%';
   }
   if (float.height) style.minHeight = `${float.height}px`;
-  if (float.z != null && !float.overlap) style.zIndex = String(float.z);
   return style;
 }
 
-/** Only explicitly overlapped elements are positioned absolutely. */
 function overlayStyle(float) {
   return {
     position: 'absolute',
@@ -222,59 +359,41 @@ function overlayStyle(float) {
   };
 }
 
-/** Builds the element body for a float, reusing existing components via slots. */
 function renderFloat(float) {
   if (float.kind === 'code') {
     return {
-      render: () =>
-        h('div', { class: 'lesson-float__body lesson-float__body--code' }, [
-          float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
-          h('div', { innerHTML: float.html || '' }),
-        ]),
+      render: () => h('div', { class: 'lesson-float__body lesson-float__body--code' }, [
+        float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
+        h('div', { innerHTML: float.html || '' }),
+      ]),
     };
   }
   if (float.kind === 'image' || float.kind === 'diagram') {
     return {
-      render: () =>
-        h('figure', { class: 'lesson-float__figure' }, [
-          float.src ? h('img', { src: float.src, alt: float.alt || '', loading: 'lazy' }) : null,
-          float.caption ? h('figcaption', null, float.caption) : null,
-        ]),
+      render: () => h('figure', { class: 'lesson-float__figure' }, [
+        float.src ? h('img', { src: float.src, alt: float.alt || '', loading: 'lazy' }) : null,
+        float.caption ? h('figcaption', null, float.caption) : null,
+      ]),
     };
   }
-  // Activities and assessments keep their interactive identity: the host decides
-  // how they render, so an assessment never degrades into decorative prose.
   if (float.kind === 'activity' || float.kind === 'assessment') {
     return {
-      render: () =>
-        h('div', { class: `lesson-float__${float.kind}` }, [
-          float.caption ? h('h4', null, float.caption) : null,
-          h('div', { innerHTML: float.html || '' }),
-        ]),
+      render: () => h('div', { class: `lesson-float__${float.kind}` }, [
+        float.caption ? h('h4', null, float.caption) : null,
+        h('div', { innerHTML: float.html || '' }),
+      ]),
     };
   }
   return {
-    render: () =>
-      h('div', { class: 'lesson-float__body' }, [
-        float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
-        h('div', { innerHTML: float.html || '' }),
-      ]),
+    render: () => h('div', { class: 'lesson-float__body' }, [
+      float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
+      h('div', { innerHTML: float.html || '' }),
+    ]),
   };
 }
 
-// ── Editing ──────────────────────────────────────────────────────────────
+// ── Flow editing ─────────────────────────────────────────────────────────
 
-function emitDocument(next) {
-  emit('update:document', next);
-}
-
-function selectFloat(float) {
-  if (!props.editable) return;
-  selectedId.value = float.id;
-  emit('select-float', float);
-}
-
-/** Rebuilds flow HTML from the live DOM, skipping the element islands. */
 function readFlowFromDom() {
   const canvas = canvasRef.value;
   if (!canvas) return '';
@@ -285,19 +404,49 @@ function readFlowFromDom() {
     .join('\n');
 }
 
+function emitFlow(html) {
+  lastEmittedFlow = html;
+  emit('update:flow', html);
+  emit('update:document', { ...localDoc.value, flow: html });
+}
+
+/** Typing: emit and stop. Never re-render the node under the caret. */
 function onFlowInput() {
   if (!props.editable) return;
   const html = sanitizeLessonHtml(readFlowFromDom());
-  if (html === doc.value.flow) return;
-  lastEmittedFlow = html;
-  // Emit without re-rendering: the caret stays exactly where the teacher left it.
-  emit('update:flow', html);
-  emitDocument({ ...doc.value, flow: html });
+  if (html === lastEmittedFlow) return;
+  emitFlow(html);
 }
 
-function onFlowBlur() {
+function commitFlowFromDom() {
   if (!props.editable) return;
-  onFlowInput();
+  const html = sanitizeLessonHtml(readFlowFromDom());
+  if (html !== lastEmittedFlow) emitFlow(html);
+}
+
+function onFlowFocus() {
+  flowFocused.value = true;
+}
+
+/**
+ * Blur: fold the edited HTML into the snapshot so the model matches the DOM.
+ * If the teacher added or removed paragraphs, the node count no longer matches
+ * what Vue rendered, so the canvas is rebuilt once from the snapshot — that is
+ * what prevents duplicated paragraphs appearing after pressing Enter.
+ */
+function onFlowBlur() {
+  flowFocused.value = false;
+  if (!props.editable) return;
+  const html = sanitizeLessonHtml(readFlowFromDom());
+  const canvas = canvasRef.value;
+  const domNodes = canvas ? canvas.querySelectorAll('.lesson-document__node').length : 0;
+  const renderedNodes = segments.value.filter(s => s.type === 'flow').length;
+
+  if (html !== localDoc.value.flow) {
+    localDoc.value = { ...localDoc.value, flow: html };
+    if (domNodes !== renderedNodes) nextTick(() => { canvasRevision.value += 1; });
+  }
+  commitFlowFromDom();
 }
 
 function onCanvasClick(event) {
@@ -305,70 +454,146 @@ function onCanvasClick(event) {
   if (event.target === canvasRef.value) selectedId.value = null;
 }
 
+// ── Floats: selection, drag, controls ────────────────────────────────────
+
+function selectFloat(float) {
+  if (!props.editable) return;
+  selectedId.value = float.id;
+  emit('select-float', float);
+}
+
+function applyDoc(next) {
+  localDoc.value = next;
+  emit('update:document', next);
+}
+
 function patch(patchValue) {
   if (!selected.value) return;
-  const next = updateFloat(doc.value, selected.value.id, patchValue);
+  applyDoc(updateFloat(localDoc.value, selected.value.id, patchValue));
   emit('update-float', { id: selected.value.id, patch: patchValue });
-  emitDocument(next);
 }
 
 function toggleOverlap() {
   const float = selected.value;
   if (!float) return;
-  if (float.overlap) {
-    // Returning to the flow must restore a real wrapping mode.
-    patch({ overlap: false, wrap: float.wrap === 'none' ? 'square' : float.wrap });
-  } else {
-    patch({ overlap: true, x: float.x ?? 0, y: float.y ?? 0, z: float.z ?? 1 });
-  }
+  if (float.overlap) patch({ overlap: false, wrap: float.wrap === 'none' ? 'square' : float.wrap });
+  else patch({ overlap: true, x: float.x ?? 0, y: float.y ?? 0, z: float.z ?? 1 });
 }
 
 function layer(action) {
   if (!selected.value) return;
-  emitDocument(reorderFloat(doc.value, selected.value.id, action));
+  applyDoc(reorderFloat(localDoc.value, selected.value.id, action));
 }
 
 function removeSelected() {
   if (!selected.value) return;
   const id = selected.value.id;
   selectedId.value = null;
-  emitDocument(removeFloat(doc.value, id));
+  applyDoc(removeFloat(localDoc.value, id));
+}
+
+function insertElement(kind) {
+  const next = addFloat(localDoc.value, {
+    kind,
+    wrap: 'top-bottom',
+    overlap: false,
+    html: kind === 'callout' ? '<p>New content box — click and edit this text.</p>' : '<p>New text box</p>',
+    width: kind === 'callout' ? 420 : 300,
+    anchor: segments.value.filter(s => s.type === 'flow').length,
+  });
+  applyDoc(next);
+  const added = next.floats[next.floats.length - 1];
+  if (added) selectedId.value = added.id;
+}
+
+/**
+ * Drag a float to move it.
+ *
+ * A short press with no movement is still a *click* (selection), so the button
+ * never feels like it drags when the teacher only meant to select or edit. Once
+ * it moves, the element becomes explicitly positioned — which is the same
+ * contract as Word: dragging a text box out of the flow gives it a position,
+ * and the contextual bar can hand it back to the flow afterwards.
+ */
+function startFloatDrag(event, float) {
+  if (!props.editable || float.locked) return;
+  if (event.button != null && event.button !== 0) return;
+  const canvas = canvasRef.value;
+  const el = event.currentTarget;
+  if (!canvas || !el) return;
+
+  event.preventDefault();
+  selectFloat(float);
+
+  const canvasRect = canvas.getBoundingClientRect();
+  const startRect = el.getBoundingClientRect();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let moved = false;
+
+  const onMove = moveEvent => {
+    const dx = moveEvent.clientX - startX;
+    const dy = moveEvent.clientY - startY;
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    moved = true;
+    draggingId.value = float.id;
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    el.style.opacity = '0.92';
+  };
+
+  const onUp = upEvent => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    el.style.transform = '';
+    el.style.opacity = '';
+    draggingId.value = null;
+    if (!moved) return;
+
+    const dx = upEvent.clientX - startX;
+    const dy = upEvent.clientY - startY;
+    // Keep the block inside the document: it must never become unreachable.
+    const maxX = Math.max(0, canvasRect.width - Math.min(startRect.width, canvasRect.width));
+    const x = Math.min(Math.max(0, Math.round(startRect.left - canvasRect.left + dx)), maxX);
+    const y = Math.max(0, Math.round(startRect.top - canvasRect.top + dy));
+
+    applyDoc(updateFloat(localDoc.value, float.id, { overlap: true, x, y, z: float.z ?? 1 }));
+    emit('update-float', { id: float.id, patch: { overlap: true, x, y } });
+  };
+
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 
 // ── External updates ─────────────────────────────────────────────────────
 
-/**
- * Re-render only when the document really changed underneath us. Flow edits we
- * emitted ourselves are ignored, which is what keeps the caret stable while
- * typing in a continuous document.
- */
 watch(
   () => props.document,
-  async next => {
-    const incoming = normalizeLessonDocument(next || {}).flow;
-    if (incoming === lastEmittedFlow) return;
-    lastEmittedFlow = '';
-    await nextTick();
-    if (selectedId.value && !doc.value.floats.some(f => f.id === selectedId.value)) {
-      selectedId.value = null;
+  next => {
+    if (!next) return;
+    // Never re-render underneath the caret, and never treat our own echo as an
+    // external change: those two rules are what keep typing stable.
+    if (flowFocused.value) return;
+    const incoming = normalizeLessonDocument(next);
+    if (incoming.flow === lastEmittedFlow && incoming.floats.length === localDoc.value.floats.length) {
+      lastEmittedFlow = incoming.flow;
+      return;
     }
+    lastEmittedFlow = '';
+    localDoc.value = incoming;
+    if (selectedId.value && !incoming.floats.some(f => f.id === selectedId.value)) selectedId.value = null;
   },
   { deep: true }
 );
+
+onBeforeUnmount(() => {
+  draggingId.value = null;
+});
 
 defineExpose({ selectedId });
 </script>
 
 <style scoped>
-/*
- * The document itself. Deliberately plain: no card, no border, no per-paragraph
- * chrome. This is the same markup students read, so the teacher's page and the
- * student's page cannot drift apart.
- */
-.lesson-document {
-  width: 100%;
-  padding: 4px 0 8px;
-}
+.lesson-document { width: 100%; padding: 4px 0 8px; }
 
 .lesson-document__canvas {
   position: relative;
@@ -379,19 +604,9 @@ defineExpose({ selectedId });
   overflow-wrap: break-word;
 }
 
-.lesson-document--editable .lesson-document__canvas:focus-within {
-  outline: none;
-}
+.lesson-document__node { margin: 0 0 14px; }
+.lesson-document__clearfix { clear: both; }
 
-.lesson-document__node {
-  margin: 0 0 14px;
-}
-
-.lesson-document__clearfix {
-  clear: both;
-}
-
-/* Prose typography: document flow, not cards. */
 .lesson-document__canvas :deep(p) { margin: 0 0 14px; }
 .lesson-document__canvas :deep(h1) { font-size: 1.6em; font-weight: 700; margin: 22px 0 10px; }
 .lesson-document__canvas :deep(h2) { font-size: 1.32em; font-weight: 700; margin: 20px 0 10px; }
@@ -401,18 +616,94 @@ defineExpose({ selectedId });
 .lesson-document__canvas :deep(li) { margin: 4px 0; }
 .lesson-document__canvas :deep(a) { color: #b45309; text-decoration: underline; }
 .lesson-document__canvas :deep(blockquote) {
-  margin: 16px 0;
-  padding-left: 14px;
-  border-left: 3px solid #f3d9b1;
-  color: #4b5563;
+  margin: 16px 0; padding-left: 14px; border-left: 3px solid #f3d9b1; color: #4b5563;
 }
 .lesson-document__canvas :deep(img) { max-width: 100%; height: auto; }
 
-/* ── Floats ─────────────────────────────────────────────────────────────── */
-.lesson-float {
-  box-sizing: border-box;
-  overflow-wrap: break-word;
+/* ── Word-style formatting bar ──────────────────────────────────────────── */
+.doc-format-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  position: sticky;
+  top: 6px;
+  z-index: 40;
 }
+
+.doc-format-bar__group { display: flex; align-items: center; gap: 4px; }
+.doc-format-bar__group--swatches { gap: 3px; }
+
+.doc-format-bar__select {
+  height: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12px;
+  color: #374151;
+  padding: 0 6px;
+}
+.doc-format-bar__select--size { width: 74px; }
+
+.doc-format-bar__btn {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.doc-format-bar__btn:hover { background: #fff7ed; border-color: #fdba74; }
+.doc-format-bar__btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 1px; }
+.doc-format-bar__btn--icon { font-size: 13px; }
+.doc-format-bar__btn--insert { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+
+.doc-format-bar__divider { width: 1px; height: 18px; background: #e5e7eb; }
+
+.doc-format-bar__swatch-label { font-size: 11px; color: #9ca3af; margin-right: 2px; }
+.doc-format-bar__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  cursor: pointer;
+  padding: 0;
+}
+.doc-format-bar__swatch--highlight { border-style: dashed; }
+
+/* ── Floats ─────────────────────────────────────────────────────────────── */
+.lesson-float { box-sizing: border-box; overflow-wrap: break-word; position: relative; }
+
+.lesson-float__handle {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #b45309;
+  background: #fff;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  cursor: grab;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.lesson-document--editable .lesson-float:hover .lesson-float__handle { opacity: 1; }
 
 .lesson-float--wrap-square { margin: 4px 18px 14px 0; }
 .lesson-float--wrap-square.lesson-float--side-right { margin: 4px 0 14px 18px; }
@@ -435,47 +726,34 @@ defineExpose({ selectedId });
   border-left: 3px solid #f59e0b;
 }
 
-.lesson-float__caption {
-  margin: 0 0 6px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #92400e;
-  text-transform: none;
-}
+.lesson-float__caption { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #92400e; }
 
 .lesson-float--code .lesson-float__body {
-  background: #0f172a;
-  border-color: #1e293b;
-  color: #e2e8f0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13.5px;
-  overflow-x: auto;
+  background: #0f172a; border-color: #1e293b; color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; overflow-x: auto;
 }
 .lesson-float--code .lesson-float__caption { color: #fbbf24; }
 
 .lesson-float__figure { margin: 0; }
 .lesson-float__figure img { display: block; width: 100%; height: auto; border-radius: 10px; }
-.lesson-float__figure figcaption {
-  margin-top: 6px;
-  font-size: 12.5px;
-  color: #6b7280;
-}
+.lesson-float__figure figcaption { margin-top: 6px; font-size: 12.5px; color: #6b7280; }
 
-/* Overlap is opt-in and always visibly a deliberate layer. */
 .lesson-float--overlay { margin: 0; }
 
 .lesson-document--editable .lesson-float {
   cursor: grab;
-  transition: box-shadow 0.15s ease, outline-color 0.15s ease;
   outline: 1px dashed transparent;
   outline-offset: 3px;
+  transition: box-shadow 0.15s ease, outline-color 0.15s ease;
 }
 .lesson-document--editable .lesson-float:hover { outline-color: rgba(245, 158, 11, 0.55); }
 .lesson-document--editable .lesson-float.is-selected { outline-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
 .lesson-document--editable .lesson-float.is-locked { cursor: default; }
+.lesson-float.is-dragging { cursor: grabbing; z-index: 55 !important; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18); }
+.lesson-document--editable .lesson-float.is-dragging,
+.lesson-document--editable .lesson-float.is-dragging * { user-select: none; }
 
-/* ── Contextual controls (only the selected element) ────────────────────── */
+/* ── Contextual controls ────────────────────────────────────────────────── */
 .float-controls {
   position: fixed;
   left: 50%;
@@ -495,55 +773,27 @@ defineExpose({ selectedId });
   color: #374151;
 }
 
-.float-controls__label {
-  font-weight: 600;
-  padding: 0 4px;
-  color: #6b7280;
-  white-space: nowrap;
-}
+.float-controls__label { font-weight: 600; padding: 0 4px; color: #6b7280; white-space: nowrap; }
 
 .float-controls__select {
-  height: 28px;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  background: #fff;
-  font-size: 12px;
-  padding: 0 6px;
-  color: #374151;
+  height: 28px; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff;
+  font-size: 12px; padding: 0 6px; color: #374151;
 }
 
 .float-controls__btn {
-  height: 28px;
-  min-width: 28px;
-  padding: 0 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  background: #fff;
-  font-size: 12px;
-  color: #374151;
-  cursor: pointer;
+  height: 28px; min-width: 28px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 7px;
+  background: #fff; font-size: 12px; color: #374151; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-
 .float-controls__btn:hover { background: #fff7ed; border-color: #fdba74; }
 .float-controls__btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 1px; }
 .float-controls__btn.is-active { background: #fff7ed; border-color: #f59e0b; color: #b45309; }
 .float-controls__btn--danger:hover { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
 
-.float-controls__divider {
-  width: 1px;
-  height: 18px;
-  background: #e5e7eb;
-}
+.float-controls__divider { width: 1px; height: 18px; background: #e5e7eb; }
 
 @media (max-width: 720px) {
-  .float-controls {
-    left: 8px;
-    right: 8px;
-    bottom: 88px;
-    transform: none;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+  .doc-format-bar { position: static; }
+  .float-controls { left: 8px; right: 8px; bottom: 88px; transform: none; flex-wrap: wrap; justify-content: center; }
 }
 </style>
