@@ -10,10 +10,20 @@
       @select-view="handleViewChange" 
       @switch-workspace="$emit('switch-to-student')" 
       @logout="$emit('logout')" 
+      @collapse-change="onSidebarCollapseChange"
     />
 
     <!-- Main Workspace Cockpit Container -->
-    <main class="risse-main mentor-main-container" role="main">
+    <!-- While the lesson editor is open it docks beside the sidebar instead of
+         covering it, so the editor gets the real remaining width. -->
+    <main
+      class="risse-main mentor-main-container"
+      :class="{
+        'is-lesson-editor-open': isLessonEditorOpen,
+        'is-sidebar-collapsed': isSidebarCollapsed,
+      }"
+      role="main"
+    >
       <!-- Top Global Header -->
       <header class="mentor-workspace-header">
         <div class="header-breadcrumbs">
@@ -152,6 +162,7 @@
           :foundation-modules="mentorStore.foundationModules"
           :mentor-id="mentorId"
           :skip-intake="studioEntry === 'edit'"
+          @editor-open-change="isLessonEditorOpen = $event"
           @navigate="handleViewChange"
           @select-course="handleCourseSelect"
           @generate-proposal="handleGenerateProposal"
@@ -272,6 +283,19 @@ const emit = defineEmits(['switch-to-student', 'logout', 'notify']);
 
 const mentorStore = useMentorStore();
 const currentView = ref(props.initialView || 'dashboard');
+
+// ── Lesson editor ⇄ sidebar interplay ──────────────────────────────────────
+// The full-screen lesson editor used to cover the whole application. It now
+// docks into the main column so the one real MentorSidebar stays visible and
+// usable. These two flags let the layout reserve the right amount of space.
+const isLessonEditorOpen = ref(false);
+const isSidebarCollapsed = ref(
+  localStorage.getItem('risse_mentor_sidebar_collapsed') === 'true'
+);
+
+function onSidebarCollapseChange(collapsed) {
+  isSidebarCollapsed.value = Boolean(collapsed);
+}
 // How Module Studio was entered: 'intake' = upload-first screen (new modules), 'edit' = open the selected module directly.
 const studioEntry = ref('intake');
 
@@ -614,7 +638,39 @@ async function handleStarSubmit(payload = null) {
 }
 
 .mentor-main-container {
-  /* Inherits .risse-main from app.css */
+  /* Inherits .risse-main from app.css. The sidebar animates its own width, so
+     this transition only smooths the main column catching up. */
+  transition: width 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Collapsed sidebar = more room for the workspace; give the editor back the
+   padding the expanded sidebar used to justify. */
+.mentor-main-container.is-lesson-editor-open.is-sidebar-collapsed {
+  padding-left: 0;
+}
+
+/*
+ * While the lesson editor is open the editor shell is positioned INSIDE this
+ * container (see .lesson-editor-shell in CurriculumDesigner). The sidebar is a
+ * flex sibling with a higher z-index than .risse-main, so it stays visible and
+ * clickable above the editor. These rules only lift the container above the
+ * app's own chrome so the editor paints over the Studio header/breadcrumbs
+ * while still leaving the sidebar untouched.
+ */
+.mentor-main-container.is-lesson-editor-open {
+  z-index: 30;
+  padding: 0;
+  /* Height is inherited: the layout root already reserves vertical padding, so
+     forcing 100vh here would overflow it and clip the editor's bottom bar. */
+  height: calc(100vh - 36px);
+  min-height: 0;
+}
+
+/* The editor owns the scroll region; the Studio's scroller must not fight it. */
+.mentor-main-container.is-lesson-editor-open .workspace-view-scroll {
+  overflow: visible;
+  max-width: none;
+  padding-right: 0;
 }
 
 .mentor-workspace-header {

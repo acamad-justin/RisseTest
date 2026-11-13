@@ -4,6 +4,7 @@
     :class="{
       'is-chat-maximized': isChatMaximized,
       'checkpoint-page-container--tutor-hidden': previewMode,
+      'is-resizing': Boolean(activeResize),
     }"
   >
     <!-- Left Column: Header (Back, Module Tag, Title, Meta) + Star/Kebab (outside chatbox) + Lesson Lecture -->
@@ -113,7 +114,20 @@
         <div v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0" class="lesson-blocks-stream">
           <template v-for="(block, bIdx) in activeLessonData.blocks" :key="block.id || bIdx">
             <!-- Text Block -->
-            <div v-if="block.type === 'text'" class="lesson-section-box block-text-box" :class="{ 'is-inline-editable': isEditable }">
+            <div
+              v-if="block.type === 'text'"
+              class="lesson-section-box block-text-box"
+              :class="{
+                'is-inline-editable': isEditable,
+                'is-block-resizable': isBlockResizable(block),
+                'is-block-selected': isBlockSelected(bIdx),
+                'has-custom-size': blockHasCustomLayout(block),
+              }"
+              :style="blockResizeStyle(block)"
+              :data-lesson-block="isBlockResizable(block) ? bIdx : null"
+              :data-lesson-block-index="isBlockResizable(block) ? bIdx : null"
+              @click="selectBlock(bIdx, $event)"
+            >
               <h3 v-if="block.title" class="block-title">{{ block.title }}</h3>
 
               <!-- Inline WYSIWYG editor (Mentor Module Studio preview only) -->
@@ -141,10 +155,59 @@
                   @click="isEditable && startInlineEdit('block', bIdx)"
                 ></div>
               </template>
+
+              <!-- Phase 1 resize handles (dimensions only; no content change) -->
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--e"
+                role="separator"
+                aria-label="Resize block width"
+                title="Drag to resize width"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 'e')"
+              ></span>
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--s"
+                role="separator"
+                aria-label="Resize block height"
+                title="Drag to resize height"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 's')"
+              ></span>
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--se"
+                role="separator"
+                aria-label="Resize block width and height"
+                title="Drag to resize"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 'se')"
+              ></span>
+              <button
+                v-if="isBlockResizable(block) && blockHasCustomLayout(block)"
+                type="button"
+                class="block-reset-size"
+                title="Reset to natural size"
+                @click.stop="resetBlockLayout(bIdx)"
+              >
+                Reset size
+              </button>
             </div>
 
             <!-- Callout / Analogy Block -->
-            <div v-else-if="block.type === 'callout'" class="lesson-section-box block-callout-card" :class="{ 'is-analogy': block.analogy, 'is-inline-editable': isEditable }">
+            <div
+              v-else-if="block.type === 'callout'"
+              class="lesson-section-box block-callout-card"
+              :class="{
+                'is-analogy': block.analogy,
+                'is-inline-editable': isEditable,
+                'is-block-resizable': isBlockResizable(block),
+                'is-block-selected': isBlockSelected(bIdx),
+                'has-custom-size': blockHasCustomLayout(block),
+              }"
+              :style="blockResizeStyle(block)"
+              :data-lesson-block="isBlockResizable(block) ? bIdx : null"
+              :data-lesson-block-index="isBlockResizable(block) ? bIdx : null"
+              @click="selectBlock(bIdx, $event)"
+            >
               <div class="callout-header">
                 <span class="callout-icon">💡</span>
                 <h3 class="callout-title">{{ block.title || 'Key Principle / Analogy' }}</h3>
@@ -179,6 +242,41 @@
                 <span class="takeaway-label">Key Takeaway:</span>
                 <span class="takeaway-text">{{ block.analogy }}</span>
               </div>
+
+              <!-- Phase 1 resize handles (dimensions only; no content change) -->
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--e"
+                role="separator"
+                aria-label="Resize block width"
+                title="Drag to resize width"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 'e')"
+              ></span>
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--s"
+                role="separator"
+                aria-label="Resize block height"
+                title="Drag to resize height"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 's')"
+              ></span>
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--se"
+                role="separator"
+                aria-label="Resize block width and height"
+                title="Drag to resize"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 'se')"
+              ></span>
+              <button
+                v-if="isBlockResizable(block) && blockHasCustomLayout(block)"
+                type="button"
+                class="block-reset-size"
+                title="Reset to natural size"
+                @click.stop="resetBlockLayout(bIdx)"
+              >
+                Reset size
+              </button>
             </div>
 
             <!-- Code Block with Copy Action -->
@@ -204,7 +302,20 @@
             </div>
 
             <!-- Activity Block -->
-            <div v-else-if="block.type === 'activity'" class="lesson-section-box block-activity-card" :class="{ 'is-inline-editable': isEditable }">
+            <div
+              v-else-if="block.type === 'activity'"
+              class="lesson-section-box block-activity-card"
+              :class="{
+                'is-inline-editable': isEditable,
+                'is-block-resizable': isBlockResizable(block),
+                'is-block-selected': isBlockSelected(bIdx),
+                'has-custom-size': blockHasCustomLayout(block),
+              }"
+              :style="blockResizeStyle(block)"
+              :data-lesson-block="isBlockResizable(block) ? bIdx : null"
+              :data-lesson-block-index="isBlockResizable(block) ? bIdx : null"
+              @click="selectBlock(bIdx, $event)"
+            >
               <div class="activity-header">
                 <span class="activity-icon">🛠️</span>
                 <h3 class="activity-title">{{ block.title || 'Hands-on Activity' }}</h3>
@@ -234,6 +345,41 @@
                   @click="isEditable && startInlineEdit('block', bIdx)"
                 ></div>
               </template>
+
+              <!-- Phase 1 resize handles (dimensions only; no content change) -->
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--e"
+                role="separator"
+                aria-label="Resize block width"
+                title="Drag to resize width"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 'e')"
+              ></span>
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--s"
+                role="separator"
+                aria-label="Resize block height"
+                title="Drag to resize height"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 's')"
+              ></span>
+              <span
+                v-if="isBlockResizable(block)"
+                class="block-resize-handle block-resize-handle--se"
+                role="separator"
+                aria-label="Resize block width and height"
+                title="Drag to resize"
+                @mousedown.stop.prevent="startBlockResize($event, bIdx, 'se')"
+              ></span>
+              <button
+                v-if="isBlockResizable(block) && blockHasCustomLayout(block)"
+                type="button"
+                class="block-reset-size"
+                title="Reset to natural size"
+                @click.stop="resetBlockLayout(bIdx)"
+              >
+                Reset size
+              </button>
             </div>
           </template>
         </div>
@@ -594,12 +740,20 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore.js';
 import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
 import { ROBOTICS_AUTHENTIC_TOPICS, evaluateAssessmentAnswer } from '../../../lib/mentor/sourceFaithfulCurriculum.ts';
 import { renderLessonRichHtml, sanitizeLessonHtml } from '../../../lib/mentor/richLessonContent.ts';
+import {
+  isResizableBlockType,
+  readBlockLayout,
+  blockLayoutStyle,
+  applyBlockLayout,
+  MIN_BLOCK_WIDTH,
+  MIN_BLOCK_HEIGHT,
+} from '../../../lib/mentor/lessonBlockLayout.ts';
 import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
 
 const authStore = useAuthStore();
@@ -640,7 +794,14 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['back', 'notify', 'complete-checkpoint', 'update-lesson-content']);
+const emit = defineEmits([
+  'back',
+  'notify',
+  'complete-checkpoint',
+  'update-lesson-content',
+  // Phase 1: resizable lesson containers (dimensions only, never content).
+  'update-block-layout',
+]);
 
 const userQuery = ref('');
 const chatInputTextarea = ref(null);
@@ -668,6 +829,158 @@ function isEditingTarget(kind, field, index = null) {
   if (target.kind !== kind) return false;
   if (kind === 'block') return target.index === index;
   return target.field === field;
+}
+
+// ── Phase 1: resizable lesson containers ───────────────────────────────────
+// Layout (size) is handled here; content stays with the rich-text editor. A
+// resize emits dimensions only, so it can never touch prose or formatting.
+
+/** Index of the currently selected block (or null). Preview/edit mode only. */
+const selectedBlockIndex = ref(null);
+/** The exact array the template renders, so index lookups always resolve. */
+const currentBlocks = computed(() => activeLessonData.value?.blocks || []);
+/** Live drag state: { index, edge, startX, startY, startW, startH }. */
+const activeResize = ref(null);
+
+const canResizeBlocks = computed(() => Boolean(props.editable && props.previewMode));
+
+function isBlockSelected(index) {
+  return selectedBlockIndex.value === index;
+}
+
+function isBlockResizable(block) {
+  return canResizeBlocks.value && isResizableBlockType(block?.type);
+}
+
+/** Inline style for a resizable block; empty when it has no stored layout. */
+function blockResizeStyle(block) {
+  if (!canResizeBlocks.value || !isResizableBlockType(block?.type)) return {};
+  return blockLayoutStyle(block);
+}
+
+function blockHasCustomLayout(block) {
+  const { width, height } = readBlockLayout(block);
+  return width != null || height != null;
+}
+
+function selectBlock(index, event) {
+  if (!canResizeBlocks.value) return;
+  if (event?.target?.closest?.('.btn-inline-edit-hint')) return;
+  selectedBlockIndex.value = index;
+}
+
+/**
+ * Starts a resize gesture. `edge` is 'e' (width), 's' (height) or 'se' (both).
+ * The workspace is the measuring context, so a block can never be dragged wider
+ * than the space actually available to it.
+ */
+function startBlockResize(event, index, edge) {
+  if (!canResizeBlocks.value) return;
+  if (event.button != null && event.button !== 0) return;
+  const el = event.currentTarget?.closest?.('[data-lesson-block]');
+  if (!el) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const rect = el.getBoundingClientRect();
+  activeResize.value = {
+    index,
+    edge,
+    startX: event.clientX,
+    startY: event.clientY,
+    startW: rect.width,
+    startH: rect.height,
+  };
+  selectedBlockIndex.value = index;
+
+  window.addEventListener('mousemove', onBlockResizeMove);
+  window.addEventListener('mouseup', endBlockResize);
+}
+
+function onBlockResizeMove(event) {
+  const drag = activeResize.value;
+  if (!drag) return;
+
+  const el = document.querySelector(`[data-lesson-block-index="${drag.index}"]`);
+  const container = el?.closest('.lesson-blocks-stream');
+  const available = container ? container.getBoundingClientRect().width : Infinity;
+
+  const wantsWidth = drag.edge === 'e' || drag.edge === 'se';
+  const wantsHeight = drag.edge === 's' || drag.edge === 'se';
+
+  const next = {};
+  if (wantsWidth) {
+    const proposed = drag.startW + (event.clientX - drag.startX);
+    // Never exceed the workspace: the document must not scroll sideways.
+    next.width = Math.max(MIN_BLOCK_WIDTH, Math.min(proposed, available));
+  }
+  if (wantsHeight) {
+    const proposed = drag.startH + (event.clientY - drag.startY);
+    next.height = Math.max(MIN_BLOCK_HEIGHT, proposed);
+  }
+
+  drag.pending = next;
+  // Apply live for immediate feedback (no persistence happens here).
+  if (el) {
+    if (next.width != null) el.style.maxWidth = `${Math.round(next.width)}px`;
+    if (next.height != null) el.style.height = `${Math.round(next.height)}px`;
+  }
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onBlockResizeMove);
+  window.removeEventListener('mouseup', endBlockResize);
+});
+
+function endBlockResize() {
+  const drag = activeResize.value;
+  window.removeEventListener('mousemove', onBlockResizeMove);
+  window.removeEventListener('mouseup', endBlockResize);
+  activeResize.value = null;
+  if (!drag?.pending) return;
+
+  const block = currentBlocks.value[drag.index];
+  if (!isResizableBlockType(block?.type)) return;
+
+  // Dimensions not touched by this gesture keep whatever the block already had.
+  const current = readBlockLayout(block);
+  const dims = {
+    width: drag.pending.width != null ? Math.round(drag.pending.width) : current.width,
+    height: drag.pending.height != null ? Math.round(drag.pending.height) : current.height,
+  };
+
+  const nextBlock = applyBlockLayout(block, dims);
+
+  // Re-align the live drag styles with what was actually committed, so the DOM
+  // and the stored metadata can never disagree if Vue has nothing to patch.
+  const el = document.querySelector(`[data-lesson-block-index="${drag.index}"]`);
+  if (el) {
+    const finalStyle = blockLayoutStyle(nextBlock);
+    el.style.maxWidth = finalStyle.maxWidth || '';
+    el.style.height = finalStyle.height || '';
+  }
+
+  // Dimensions only — the parent merges this onto the block in the draft.
+  emit('update-block-layout', {
+    kind: 'block',
+    index: drag.index,
+    checkpointId: props.checkpointData?.id ?? null,
+    layout: readBlockLayout(nextBlock),
+  });
+}
+
+/** Clears a custom size, returning the block to natural flow dimensions. */
+function resetBlockLayout(index) {
+  const block = currentBlocks.value[index];
+  if (!block || !isResizableBlockType(block.type)) return;
+  const cleared = applyBlockLayout(block, { width: null, height: null });
+  emit('update-block-layout', {
+    kind: 'block',
+    index,
+    checkpointId: props.checkpointData?.id ?? null,
+    layout: readBlockLayout(cleared),
+  });
 }
 
 function startInlineEdit(kind, index = null, field = null) {
@@ -1822,6 +2135,118 @@ function formatMessageText(text) {
   line-height: 1.7;
   padding: 12px 16px;
   border-radius: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* PHASE 1 — RESIZABLE LESSON CONTAINERS                                      */
+/* Dimensions are layout only: text wraps and reflows, nothing is scaled.      */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+.checkpoint-page-container--tutor-hidden .is-block-resizable {
+  position: relative;
+  box-sizing: border-box;
+  /* Never wider than the workspace: the document must not scroll sideways. */
+  max-width: 100%;
+  transition: box-shadow 0.15s ease, outline-color 0.15s ease;
+}
+
+/* A resized block with a fixed height scrolls its own content if needed. */
+.checkpoint-page-container--tutor-hidden .is-block-resizable.has-custom-size {
+  overflow: auto;
+}
+
+/*
+ * Preview mode normally strips every block's surface (it is a reading document).
+ * A container the teacher has sized must remain visible AS a container, so the
+ * resize is legible and the text does not appear to float. Padding is small and
+ * symmetric so turning it on cannot reflow the prose in a surprising way.
+ */
+.checkpoint-page-container--tutor-hidden .is-block-resizable.has-custom-size,
+.checkpoint-page-container--tutor-hidden .is-block-resizable.is-block-selected {
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fcfdff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+/* Selected: a clear, RISSE-orange boundary that reads as "this box is active". */
+.checkpoint-page-container--tutor-hidden .is-block-selected {
+  outline: 2px solid rgba(255, 122, 0, 0.55);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+/* Handles: hidden until hover/selection so the document stays clean. */
+.checkpoint-page-container--tutor-hidden .block-resize-handle {
+  position: absolute;
+  z-index: 6;
+  display: none;
+  border-radius: 3px;
+  background: #ff7a00;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.checkpoint-page-container--tutor-hidden .is-block-resizable:hover > .block-resize-handle,
+.checkpoint-page-container--tutor-hidden .is-block-selected > .block-resize-handle {
+  display: block;
+}
+
+/* Right edge — horizontal resize */
+.checkpoint-page-container--tutor-hidden .block-resize-handle--e {
+  top: 50%;
+  right: -7px;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 46px;
+  cursor: ew-resize;
+}
+
+/* Bottom edge — vertical resize */
+.checkpoint-page-container--tutor-hidden .block-resize-handle--s {
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+  height: 6px;
+  width: 46px;
+  cursor: ns-resize;
+}
+
+/* Bottom-right corner — both axes */
+.checkpoint-page-container--tutor-hidden .block-resize-handle--se {
+  right: -7px;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  border: 2px solid #ffffff;
+}
+
+.checkpoint-page-container--tutor-hidden .block-reset-size {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+  z-index: 7;
+  display: none;
+  padding: 2px 8px;
+  border: 1px solid #fed7aa;
+  border-radius: 9999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.checkpoint-page-container--tutor-hidden .is-block-selected .block-reset-size {
+  display: block;
+}
+
+/* A block being dragged must not fight the pointer with text selection. */
+.checkpoint-page-container--tutor-hidden.is-resizing,
+.checkpoint-page-container--tutor-hidden.is-resizing * {
+  cursor: inherit;
+  user-select: none;
 }
 
 /* The empty state's "return" belongs to the roadmap; in the editor it means

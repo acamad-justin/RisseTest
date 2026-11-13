@@ -252,7 +252,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 
 const props = defineProps({
   activeView: {
@@ -273,14 +273,42 @@ const props = defineProps({
   },
 });
 
-defineEmits(['select-view', 'switch-workspace', 'logout']);
+const emit = defineEmits(['select-view', 'switch-workspace', 'logout', 'collapse-change']);
 
-const isCollapsed = ref(localStorage.getItem('risse_mentor_sidebar_collapsed') === 'true');
+const COLLAPSE_STORAGE_KEY = 'risse_mentor_sidebar_collapsed';
+
+const isCollapsed = ref(localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
+
+// Parents that size a workspace against the sidebar need to know about changes.
+// The sidebar keeps ownership of the state (it is the only sidebar); this only
+// broadcasts it, and is replayed on mount so a restored collapsed state is seen.
+watch(isCollapsed, value => {
+  emit('collapse-change', value);
+  // Broadcast to non-parent listeners (e.g. the lesson editor's own toolbar),
+  // so anything reflecting this state stays accurate whichever control is used.
+  window.dispatchEvent(
+    new CustomEvent('risse:mentor-sidebar-state', { detail: { collapsed: value } })
+  );
+}, { immediate: true });
 
 function toggleCollapse() {
   isCollapsed.value = !isCollapsed.value;
-  localStorage.setItem('risse_mentor_sidebar_collapsed', String(isCollapsed.value));
+  localStorage.setItem(COLLAPSE_STORAGE_KEY, String(isCollapsed.value));
 }
+
+// The lesson editor offers a "Show/Hide Sidebar" control in its own top bar.
+// Rather than mounting a second sidebar it asks this one to toggle, keeping a
+// single source of truth for the collapsed state.
+function onExternalToggle(event) {
+  const next = Boolean(event?.detail?.collapsed);
+  if (next === isCollapsed.value) return;
+  // The sidebar remains the single owner (and sole writer) of the stored flag.
+  isCollapsed.value = next;
+  localStorage.setItem(COLLAPSE_STORAGE_KEY, String(next));
+}
+
+onMounted(() => window.addEventListener('risse:mentor-sidebar-toggle', onExternalToggle));
+onBeforeUnmount(() => window.removeEventListener('risse:mentor-sidebar-toggle', onExternalToggle));
 
 const mentorName = computed(() => props.mentor?.name || 'Instructor');
 const mentorInitial = computed(() => {
