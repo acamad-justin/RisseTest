@@ -779,10 +779,11 @@
             type="button" 
             id="btn-approve-publish"
             class="btn-footer-action btn-publish"
-            :disabled="isPublishing || isPublished"
+            :disabled="isPublishing || (isPublished && !hasStagedDraft)"
             @click="openPublishModal"
           >
             <span v-if="isPublishing">Publishing...</span>
+            <span v-else-if="isPublished && hasStagedDraft">Publish Staged Draft</span>
             <span v-else-if="isPublished">✓ Published to Students</span>
             <span v-else>Publish Module</span>
           </button>
@@ -1816,28 +1817,29 @@
     <!-- MODALS: PREVIEW, PUBLISH & EDIT COURSE                                -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-    <!-- Student Experience Preview Modal -->
-    <div v-if="isPreviewOpen" class="modal-overlay" @click.self="isPreviewOpen = false">
-      <div class="preview-modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-preview-title">
+    <!-- Student Experience Preview Modal (real student renderer + inline editing) -->
+    <div v-if="isPreviewOpen" class="modal-overlay" @click.self="closeStudentPreview">
+      <div class="preview-modal-card preview-modal-card--studio" role="dialog" aria-modal="true" aria-labelledby="modal-preview-title">
         <div class="preview-modal-header">
           <div>
-            <span class="badge-preview-pill">STUDENT SIMULATOR</span>
+            <span class="badge-preview-pill">STUDENT PREVIEW · CLICK ANY LESSON TEXT TO EDIT</span>
             <h3 id="modal-preview-title" class="preview-course-title">
               {{ previewingLesson ? previewingLesson.title : editableProposal.proposal_data.title }}
             </h3>
           </div>
-          <button type="button" class="btn-close-modal" @click="isPreviewOpen = false">&times;</button>
+          <button type="button" class="btn-close-modal" @click="closeStudentPreview">&times;</button>
         </div>
 
-        <div class="preview-modal-body">
+        <div class="preview-modal-body preview-modal-body--studio">
           <!-- Full Course Roadmap Preview -->
           <div v-if="!previewingLesson" class="sim-modules-catalog">
             <p class="preview-explanation">
-              This preview shows how enrolled students in your assigned classes will navigate the learning roadmap:
+              This preview shows how enrolled students in your assigned classes will navigate the learning roadmap.
+              Open a lesson to edit its text in place.
             </p>
             <div class="sim-modules-grid">
               <div 
-                v-for="(mod, mIdx) in editableProposal.proposal_data.modules" 
+                v-for="(mod, mIdx) in previewModules" 
                 :key="mod.id || mIdx"
                 class="sim-module-card"
               >
@@ -1848,39 +1850,68 @@
                 <h4 class="sim-card-title">{{ mod.title }}</h4>
                 <p class="sim-card-desc">{{ mod.description }}</p>
                 <div class="sim-checkpoints-summary">
-                  <div v-for="cp in (mod.checkpoints || [])" :key="cp.id" class="sim-cp-item">
+                  <button
+                    v-for="cp in (mod.checkpoints || [])"
+                    :key="cp.id"
+                    type="button"
+                    class="sim-cp-item sim-cp-button"
+                    @click="openStudentPreview(cp)"
+                    :title="'Preview and edit: ' + cp.title"
+                  >
                     <span>{{ cp.type === 'lab' ? '🧪' : cp.type === 'challenge' ? '🏆' : '📖' }} {{ cp.title }}</span>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Single Lesson Content Preview -->
+          <!-- Single Lesson: the SAME renderer students use -->
           <div v-else class="sim-lesson-preview">
-            <div class="sim-lesson-meta">
-              <span class="badge-lesson-type" :class="`type-${previewingLesson.type}`">
-                {{ formatLessonType(previewingLesson.type) }}
+            <div class="sim-lesson-toolbar">
+              <button type="button" class="btn-outline-action btn-preview-back" @click="backToPreviewRoadmap">
+                ← Back to roadmap
+              </button>
+              <span class="sim-lesson-toolbar-note" v-if="previewHasUnsavedEdits">
+                ● Unsaved preview edits
               </span>
-              <span>Estimated Duration: {{ previewingLesson.duration_minutes || 30 }} mins</span>
             </div>
-            <div class="sim-lesson-content-view">
-              <div v-if="previewingLesson.node_content" class="sim-content-rendered">
-                <h3>Introduction</h3>
-                <p>{{ previewingLesson.node_content.overview }}</p>
-                <h3>Core Guide</h3>
-                <p>{{ previewingLesson.node_content.step_by_step_guide }}</p>
-              </div>
-              <div v-else class="text-muted-inline">
-                No educational content has been generated for this lesson yet.
-              </div>
+
+            <div class="sim-lesson-content-view sim-lesson-content-view--student">
+              <CheckpointContentView
+                ref="previewRendererRef"
+                :key="'studio-preview-' + (previewingLesson.id || previewingLesson.title)"
+                :checkpoint-title="previewingLesson.title || previewingLesson.name"
+                :parent-module-name="previewParentModuleTitle"
+                :module-data="previewModuleData"
+                :checkpoint-data="previewCheckpointData"
+                :editable="true"
+                :preview-mode="true"
+                @notify="previewNotice"
+                @update-lesson-content="handlePreviewLessonUpdate"
+              />
             </div>
+
           </div>
         </div>
 
-        <div class="preview-modal-footer">
-          <button type="button" class="btn-outline-action" @click="isPreviewOpen = false">
-            Close Preview
+        <div class="preview-modal-footer preview-modal-footer--studio">
+          <span v-if="previewInlineNotice" class="preview-inline-notice" role="status">
+            {{ previewInlineNotice }}
+          </span>
+          <span v-if="previewSaveError" class="preview-save-error">{{ previewSaveError }}</span>
+          <span v-if="hasStagedDraft" class="preview-draft-note">
+            Staged draft — students still see the currently published version.
+          </span>
+          <button type="button" class="btn-outline-action" @click="closeStudentPreview">
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="btn-primary-action btn-save-preview-edits" 
+            :disabled="isSavingPreviewEdits || !previewHasUnsavedEdits"
+            @click="saveStudentPreviewEdits"
+          >
+            {{ isSavingPreviewEdits ? 'Saving...' : 'Save Draft' }}
           </button>
         </div>
       </div>
@@ -2028,6 +2059,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
+import CheckpointContentView from '../../../components/CheckpointContentView.vue';
 
 const mentorStore = useMentorStore();
 
@@ -2527,6 +2559,20 @@ watch(
   newProp => {
     if (newProp && newProp.proposal_data) {
       editableProposal.value = JSON.parse(JSON.stringify(newProp));
+      // A published proposal keeps live student content at the top level and parks
+      // teacher edits in proposal_data.unpublished_draft. The editor always works on
+      // the staged draft (falling back to the live snapshot when nothing is staged).
+      const stagedDraft = newProp.proposal_data.unpublished_draft;
+      if (stagedDraft && typeof stagedDraft === 'object') {
+        // Never carry the wrapper into the editor state (would nest on every save).
+        editableProposal.value.proposal_data = JSON.parse(JSON.stringify(stagedDraft));
+        if (!editableProposal.value.proposal_data.publishing_format && newProp.proposal_data.publishing_format) {
+          editableProposal.value.proposal_data.publishing_format = newProp.proposal_data.publishing_format;
+        }
+        if (!editableProposal.value.proposal_data.organization_mode && newProp.proposal_data.organization_mode) {
+          editableProposal.value.proposal_data.organization_mode = newProp.proposal_data.organization_mode;
+        }
+      }
       // Restore saved publishing format if available, falling back to organization_mode or default
       if (newProp.proposal_data.publishing_format) {
         selectedPublishingFormat.value = newProp.proposal_data.publishing_format;
@@ -2756,6 +2802,15 @@ const isApproved = computed(() => {
 
 const isPublished = computed(() => {
   return props.proposal?.status === 'published' || props.activeCourse?.status === 'published';
+});
+
+/**
+ * True when a published proposal has teacher edits parked in
+ * proposal_data.unpublished_draft (students still see the live published copy).
+ */
+const hasStagedDraft = computed(() => {
+  const pData = props.proposal?.proposal_data;
+  return Boolean(pData && pData.unpublished_draft && typeof pData.unpublished_draft === 'object');
 });
 
 function formatStatus(status) {
@@ -3160,9 +3215,270 @@ async function handleUnpublish() {
   }
 }
 
+// ── Student Preview: real renderer + inline rich-text editing ──────────────
+// Preview edits NEVER touch editableProposal until the teacher clicks Save Draft,
+// so Cancel (and closing the modal) always discards them.
+const previewEditBuffer = ref(null);      // deep clone of proposal_data + edits
+const previewHasUnsavedEdits = ref(false);
+const isSavingPreviewEdits = ref(false);
+const previewSaveError = ref('');
+const previewedCheckpointId = ref(null);
+const previewRendererRef = ref(null);
+
+const previewModules = computed(() => {
+  const data = previewProposalData.value;
+  if (Array.isArray(data?.modules) && data.modules.length > 0) return data.modules;
+  // Legacy proposals may only carry learning_nodes; surface them as one section.
+  if (Array.isArray(data?.learning_nodes) && data.learning_nodes.length > 0) {
+    return [{
+      id: 'preview-learning-nodes',
+      title: data.title || 'Learning Module',
+      description: data.summary || '',
+      checkpoints: data.learning_nodes,
+    }];
+  }
+  return [];
+});
+
+/** The buffered preview proposal, or the live proposal data when no edits exist. */
+const previewProposalData = computed(
+  () => previewEditBuffer.value || editableProposal.value?.proposal_data || {}
+);
+
+const previewParentModuleTitle = computed(() => {
+  const lesson = previewingLesson.value;
+  if (!lesson) return previewModules.value[0]?.title || previewProposalData.value?.title || 'Module';
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const mod = previewModules.value.find(m =>
+    (m.checkpoints || []).some(cp => (cp.id ?? cp.title) === (targetId ?? lesson.title))
+  );
+  return mod?.title || previewModules.value[0]?.title || previewProposalData.value?.title || 'Module';
+});
+
+/** Module data in the shape CheckpointContentView expects from StudentSyncService. */
+const previewModuleData = computed(() => {
+  const data = previewProposalData.value;
+  const lesson = previewingLesson.value;
+  const learningNodes = Array.isArray(data.learning_nodes) ? data.learning_nodes : [];
+  const targetId = previewedCheckpointId.value ?? lesson?.id;
+
+  // learning_nodes is the canonical list students are synced from; prefer the
+  // module that owns the previewed node, then fall back to the first module.
+  const ownerModule = previewModules.value.find(m =>
+    (m.checkpoints || []).some(cp => (cp.id ?? cp.title) === (targetId ?? lesson?.title))
+  );
+  const mod = ownerModule || previewModules.value[0] || {};
+  const checkpoints = (Array.isArray(mod.checkpoints) && mod.checkpoints.length > 0
+    ? mod.checkpoints
+    : learningNodes
+  ).map(cp => ({ ...cp, name: cp.name || cp.title }));
+
+  return {
+    ...mod,
+    title: mod.title || previewParentModuleTitle.value,
+    checkpoints,
+    currentStep: 0,
+    totalSteps: checkpoints.length || 3,
+  };
+});
+
+/**
+ * All checkpoints in the buffered proposal, from the canonical `learning_nodes`
+ * list and the legacy `modules[].checkpoints` mirror, de-duplicated by id/title.
+ * `learning_nodes` wins: the Designer's own lesson editor and
+ * StudentSyncService both read that list first.
+ */
+const previewAllCheckpoints = computed(() => {
+  const data = previewProposalData.value;
+  const seen = new Set();
+  const out = [];
+
+  const push = cp => {
+    if (!cp) return;
+    const key = String(cp.id ?? cp.title ?? cp.name ?? '');
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(cp);
+  };
+
+  if (Array.isArray(data.learning_nodes)) data.learning_nodes.forEach(push);
+  (Array.isArray(data.modules) ? data.modules : []).forEach(mod => {
+    (mod.checkpoints || []).forEach(push);
+  });
+  return out;
+});
+
+/** The checkpoint object handed to the shared renderer (blocks, node_content, …). */
+const previewCheckpointData = computed(() => {
+  const lesson = previewingLesson.value;
+  if (!lesson) return null;
+  const targetId = previewedCheckpointId.value ?? lesson.id ?? lesson.title;
+  const base =
+    previewAllCheckpoints.value.find(cp => (cp.id ?? cp.title) === targetId) ||
+    previewAllCheckpoints.value.find(cp => cp.title === lesson.title || cp.name === lesson.title) ||
+    lesson;
+  return {
+    ...base,
+    title: base.title || base.name || lesson.title,
+    node_content: base.node_content || null,
+    blocks: Array.isArray(base.blocks) ? base.blocks : null,
+    assessment: base.assessment || null,
+    source_reference: base.source_reference || null,
+    topic_group: base.topic_group || null,
+  };
+});
+
+// The renderer's toast channel belongs to the student workspace shell; in the
+// Studio preview we surface the same message inline instead.
+const previewInlineNotice = ref('');
+let previewInlineNoticeTimer = null;
+
+function previewNotice(message) {
+  previewInlineNotice.value = message;
+  if (previewInlineNoticeTimer) clearTimeout(previewInlineNoticeTimer);
+  previewInlineNoticeTimer = setTimeout(() => {
+    previewInlineNotice.value = '';
+    previewInlineNoticeTimer = null;
+  }, 4000);
+}
+
 function openStudentPreview(lesson = null) {
-  previewingLesson.value = lesson;
   isPreviewOpen.value = true;
+  previewSaveError.value = '';
+  previewInlineNotice.value = '';
+  previewedCheckpointId.value = lesson?.id ?? null;
+  previewingLesson.value = lesson;
+  // A fresh preview session always starts from the saved proposal (no stale edits).
+  previewEditBuffer.value = null;
+  previewHasUnsavedEdits.value = false;
+}
+
+function backToPreviewRoadmap() {
+  previewingLesson.value = null;
+  previewedCheckpointId.value = null;
+}
+
+/** Discards every buffered preview edit — nothing was persisted, so nothing to undo. */
+function closeStudentPreview() {
+  const hadEdits = previewHasUnsavedEdits.value;
+  isPreviewOpen.value = false;
+  previewingLesson.value = null;
+  previewedCheckpointId.value = null;
+  previewEditBuffer.value = null;
+  previewHasUnsavedEdits.value = false;
+  previewSaveError.value = '';
+  previewInlineNotice.value = '';
+  if (previewInlineNoticeTimer) {
+    clearTimeout(previewInlineNoticeTimer);
+    previewInlineNoticeTimer = null;
+  }
+  if (hadEdits) {
+    previewNotice('Preview edits discarded — nothing was saved.');
+  }
+}
+
+/**
+ * Applies an inline rich-text edit from CheckpointContentView to the buffered
+ * preview copy only. Accepts block content or the 8-section node_content fields.
+ *
+ * The same lesson can exist twice in proposal_data (learning_nodes[] and
+ * modules[].checkpoints[]), so every twin is updated or the save would
+ * resurrect the old text on whichever path students actually read.
+ */
+function handlePreviewLessonUpdate(payload) {
+  if (!payload) return;
+  const lesson = previewingLesson.value;
+  if (!lesson) return;
+
+  if (!previewEditBuffer.value) {
+    previewEditBuffer.value = JSON.parse(
+      JSON.stringify(editableProposal.value?.proposal_data || { modules: [], title: '', summary: '' })
+    );
+  }
+
+  const buffer = previewEditBuffer.value;
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const targetTitle = lesson.title || lesson.name;
+  const cleanContent = String(payload.content || '');
+
+  const matches = cp =>
+    cp && (
+      (targetId != null && (cp.id ?? '') === targetId) ||
+      (targetTitle && (cp.title === targetTitle || cp.name === targetTitle))
+    );
+
+  const twins = [];
+  if (Array.isArray(buffer.learning_nodes)) {
+    twins.push(...buffer.learning_nodes.filter(matches));
+  }
+  (Array.isArray(buffer.modules) ? buffer.modules : []).forEach(mod => {
+    twins.push(...(mod.checkpoints || []).filter(matches));
+  });
+
+  if (twins.length === 0) return;
+
+  for (const checkpoint of twins) {
+    if (payload.kind === 'block') {
+      const block = (checkpoint.blocks || [])[payload.index];
+      if (block) block.content = cleanContent;
+    } else if (payload.kind === 'node_content') {
+      if (!checkpoint.node_content) checkpoint.node_content = {};
+      const field = payload.field;
+      if (field === 'core_lesson') {
+        // Keep both aliases the Designer / renderer each read in sync.
+        checkpoint.node_content.core_lesson = cleanContent;
+        checkpoint.node_content.step_by_step_guide = cleanContent;
+      } else if (field === 'introduction') {
+        checkpoint.node_content.introduction = cleanContent;
+        checkpoint.node_content.overview = cleanContent;
+      } else if (field) {
+        checkpoint.node_content[field] = cleanContent;
+      }
+    } else {
+      return;
+    }
+  }
+
+  previewingLesson.value = twins[0];
+  previewHasUnsavedEdits.value = true;
+  previewSaveError.value = '';
+}
+
+/** Persists buffered preview edits through the existing save-proposal workflow. */
+async function saveStudentPreviewEdits() {
+  if (!props.proposal || !previewEditBuffer.value) return;
+  isSavingPreviewEdits.value = true;
+  previewSaveError.value = '';
+  try {
+    // Commit the buffer into the editable proposal, then reuse the standard
+    // persistence path (MentorService.updateCurriculumProposal). On a published
+    // proposal this stages the edits in proposal_data.unpublished_draft, so no
+    // student-visible content changes until the teacher republishes.
+    editableProposal.value.proposal_data = JSON.parse(JSON.stringify(previewEditBuffer.value));
+    const saved = await mentorStore.saveProposalEdits(
+      props.proposal.id,
+      editableProposal.value.proposal_data
+    );
+    if (!saved) {
+      previewSaveError.value = 'Could not save the lesson edits. Your preview changes are still here — try again.';
+      return;
+    }
+    // Preserve the lesson the teacher was looking at across the save.
+    const stillThere = previewModules.value
+      .flatMap(m => m.checkpoints || [])
+      .find(cp => (cp.id ?? cp.title) === (previewedCheckpointId.value ?? previewingLesson.value?.id));
+    if (stillThere) previewingLesson.value = stillThere;
+    previewHasUnsavedEdits.value = false;
+    previewEditBuffer.value = null;
+    isDirty.value = false;
+    previewInlineNotice.value = isPublished.value
+      ? 'Draft saved. Students still see the published version until you publish again.'
+      : 'Lesson edits saved.';
+  } catch (_) {
+    previewSaveError.value = 'Could not save the lesson edits. Your preview changes are still here — try again.';
+  } finally {
+    isSavingPreviewEdits.value = false;
+  }
 }
 
 function saveCourseDetails() {
@@ -4770,6 +5086,131 @@ function saveCourseDetails() {
   justify-content: flex-end;
   gap: 10px;
   background: #f8fafc;
+}
+
+/* ── Student Preview (embedded shared renderer + inline editing) ─────────── */
+.preview-modal-card--studio {
+  max-width: 1180px;
+  width: calc(100vw - 48px);
+  height: 90vh;
+  height: min(90vh, 900px);
+}
+
+.preview-modal-body--studio {
+  padding: 0;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: #f8fafc;
+}
+
+.preview-modal-body--studio .sim-modules-catalog {
+  padding: 24px;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.preview-modal-body--studio .sim-lesson-preview {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+.sim-lesson-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.btn-preview-back {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.sim-lesson-toolbar-note {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.sim-lesson-content-view--student {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px 20px 0;
+  background: #f8fafc;
+}
+
+/* The embedded student renderer owns the scroll region, exactly as in production. */
+.sim-lesson-content-view--student :deep(.checkpoint-page-container) {
+  height: 100%;
+}
+
+.preview-modal-footer--studio {
+  align-items: center;
+  gap: 12px;
+}
+
+/* One growing status slot, then the Cancel / Save Draft actions on the right. */
+.preview-modal-footer--studio > span {
+  flex: 0 1 auto;
+}
+
+.preview-modal-footer--studio > span:first-child {
+  margin-right: auto;
+}
+
+.preview-inline-notice {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #15803d;
+}
+
+.preview-save-error {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.preview-draft-note {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #b45309;
+}
+
+.btn-save-preview-edits {
+  background: #ff6b00;
+}
+
+.btn-save-preview-edits:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sim-cp-button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #334155;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sim-cp-button:hover {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
 }
 
 .btn-confirm-publish {

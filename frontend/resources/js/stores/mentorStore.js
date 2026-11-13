@@ -523,8 +523,19 @@ const generateCurriculumProposal = generateProposalDraft;
 async function saveProposalEdits(proposalId, proposalData) {
   const ok = await MentorService.updateCurriculumProposal(proposalId, proposalData);
   if (ok && activeProposal.value && activeProposal.value.id === proposalId) {
-    activeProposal.value.proposal_data = proposalData;
-    if (activeProposal.value.status !== 'published') activeProposal.value.status = 'under_review';
+    if (activeProposal.value.status === 'published') {
+      // Live student content was NOT changed: the service staged these edits in
+      // proposal_data.unpublished_draft. Mirror that shape locally so the Studio
+      // shows the staged draft while students keep reading the published copy.
+      const live = activeProposal.value.proposal_data || {};
+      activeProposal.value.proposal_data = {
+        ...live,
+        unpublished_draft: { ...proposalData },
+      };
+    } else {
+      activeProposal.value.proposal_data = proposalData;
+      activeProposal.value.status = 'under_review';
+    }
   }
   return ok;
 }
@@ -554,8 +565,12 @@ async function publishProposal(proposalId, mentorId, proposalData) {
   if (isOk) {
     if (activeProposal.value && activeProposal.value.id === proposalId) {
       activeProposal.value.status = 'published';
-      if (proposalData) {
-        activeProposal.value.proposal_data = proposalData;
+      // Publishing promotes the staged draft to live content and drops the wrapper.
+      const liveData = proposalData && proposalData.unpublished_draft
+        ? proposalData.unpublished_draft
+        : proposalData;
+      if (liveData) {
+        activeProposal.value.proposal_data = liveData;
       }
     }
     if (activeCourse.value) {

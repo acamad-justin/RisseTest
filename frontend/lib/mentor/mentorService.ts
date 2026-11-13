@@ -2662,6 +2662,41 @@ export class MentorService {
   }
 
   /**
+   * Stage teacher edits for an already-published proposal WITHOUT mutating the
+   * live student-facing curriculum.
+   *
+   * Published lesson content is read by StudentSyncService straight from the
+   * top-level proposal_data keys (learning_nodes / modules / topic_groups …).
+   * Writing teacher edits directly there would silently overwrite what students
+   * are reading. Instead the previous published snapshot is preserved verbatim
+   * and the edits are parked in proposal_data.unpublished_draft (existing JSONB
+   * column, no schema change). publishCurriculumProposal promotes the draft;
+   * nothing here changes student-visible content.
+   */
+  private static stageEditsForPublishedProposal(
+    liveProposalData: any,
+    incomingProposalData: any
+  ): any {
+    const live = liveProposalData && typeof liveProposalData === 'object' ? liveProposalData : {};
+    const incoming = incomingProposalData && typeof incomingProposalData === 'object' ? incomingProposalData : {};
+    const staged: any = { ...incoming };
+    // Never allow a nested draft to leak from client state into the live snapshot.
+    delete staged.unpublished_draft;
+    return {
+      ...live,
+      unpublished_draft: staged,
+    };
+  }
+
+  /** Strips the staged draft so it can be promoted to the live published shape. */
+  static unwrapStagedDraft(proposalData: any): any {
+    if (!proposalData || typeof proposalData !== 'object') return proposalData;
+    const draft = proposalData.unpublished_draft;
+    if (draft && typeof draft === 'object') return draft;
+    return proposalData;
+  }
+
+  /**
    * Save mentor revisions to curriculum proposal
    */
   static async updateCurriculumProposal(
@@ -2675,15 +2710,20 @@ export class MentorService {
         // Editing an already-published module must keep it published (no silent demotion to review).
         const { data: current } = await supabase
           .from('curriculum_proposals')
-          .select('status')
+          .select('status, proposal_data')
           .eq('id', proposalId)
           .maybeSingle();
-        const nextStatus = current?.status === 'published' ? 'published' : 'under_review';
+        const isPublished = current?.status === 'published';
+        const nextStatus = isPublished ? 'published' : 'under_review';
+        // Published rows keep live student content intact; edits are staged.
+        const nextProposalData = isPublished
+          ? this.stageEditsForPublishedProposal(current?.proposal_data, proposalData)
+          : proposalData;
 
         const { error } = await supabase
           .from('curriculum_proposals')
           .update({
-            proposal_data: proposalData,
+            proposal_data: nextProposalData,
             status: nextStatus,
             updated_at: new Date().toISOString(),
           })
@@ -2692,7 +2732,7 @@ export class MentorService {
         if (!error) {
           const prop = testState.curriculumProposals.get(proposalId);
           if (prop) {
-            prop.proposal_data = proposalData;
+            prop.proposal_data = nextProposalData;
             prop.status = nextStatus;
             prop.updated_at = new Date().toISOString();
           }
@@ -2704,8 +2744,11 @@ export class MentorService {
 
     const prop = testState.curriculumProposals.get(proposalId);
     if (prop) {
-      prop.proposal_data = proposalData;
-      prop.status = 'under_review';
+      const isPublished = prop.status === 'published';
+      prop.proposal_data = isPublished
+        ? this.stageEditsForPublishedProposal(prop.proposal_data, proposalData)
+        : proposalData;
+      prop.status = isPublished ? 'published' : 'under_review';
       prop.updated_at = new Date().toISOString();
       setLocalItem('curriculum_proposals', Array.from(testState.curriculumProposals.values()));
       return true;
@@ -2827,7 +2870,10 @@ export class MentorService {
       targetProposal = testState.curriculumProposals.get(proposalId) || null;
     }
 
-    const dataToPublish = proposalData || targetProposal?.proposal_data;
+    // The caller may hand us the published snapshot (which carries a staged
+    // unpublished_draft) — always publish the teacher's staged draft, never the
+    // stale live snapshot, and never persist the wrapper itself.
+    const dataToPublish = this.unwrapStagedDraft(proposalData || targetProposal?.proposal_data);
     if (!dataToPublish) {
       return false;
     }
@@ -2839,9 +2885,14 @@ export class MentorService {
       return false;
     }
 
+    // An independent child module (created by Option A, tracked through
+    // courses.source_proposal_id) already owns its own proposal + course row.
+    // Republishing it must update that row instead of re-running the Option A RPC.
+    const isChildModule = Boolean((dataToPublish as any)?.source_proposal_id);
+
     // Option A: one independent, student-facing module per top-level section (atomic RPC).
     const effectiveFormat = resolvePublishingFormat(dataToPublish) || 'separate_modules';
-    if (effectiveFormat === 'separate_modules' && isValidUuid(proposalId)) {
+    if (!isChildModule && effectiveFormat === 'separate_modules' && isValidUuid(proposalId)) {
       return await this.publishSeparateModules(proposalId, effectiveMentorId, dataToPublish, publishingPlan);
     }
 
@@ -2850,10 +2901,8 @@ export class MentorService {
         const updatePayload: any = {
           status: 'published',
           updated_at: new Date().toISOString(),
+          proposal_data: dataToPublish,
         };
-        if (proposalData) {
-          updatePayload.proposal_data = proposalData;
-        }
 
         let query = supabase
           .from('curriculum_proposals')
@@ -2872,11 +2921,14 @@ export class MentorService {
             .update({ status: 'published', updated_at: new Date().toISOString() })
             .eq('id', prop.course_id);
 
-          // If this proposal was previously published as separate modules, take those offline.
-          await supabase
-            .from('courses')
-            .update({ status: 'draft', updated_at: new Date().toISOString() })
-            .eq('source_proposal_id', proposalId);
+          // Standalone child modules keep their own live course row; only a parent
+          // container may take its separately-published children offline.
+          if (!isChildModule) {
+            await supabase
+              .from('courses')
+              .update({ status: 'draft', updated_at: new Date().toISOString() })
+              .eq('source_proposal_id', proposalId);
+          }
 
           testState.curriculumProposals.set(proposalId, prop);
           const localCourse = testState.courses.get(prop.course_id);
@@ -2886,6 +2938,8 @@ export class MentorService {
           }
           setLocalItem('curriculum_proposals', Array.from(testState.curriculumProposals.values()));
           setLocalItem('courses', Array.from(testState.courses.values()));
+          // Promotion changed live student content: never serve a stale cached module.
+          await this.purgeStudentModuleCaches();
           return true;
         }
       } catch (_) {}
@@ -2893,7 +2947,7 @@ export class MentorService {
 
     const prop = testState.curriculumProposals.get(proposalId) || targetProposal;
     if (prop) {
-      if (proposalData) prop.proposal_data = proposalData;
+      prop.proposal_data = dataToPublish;
       prop.status = 'published';
       prop.updated_at = new Date().toISOString();
       testState.curriculumProposals.set(proposalId, prop);
@@ -2904,9 +2958,18 @@ export class MentorService {
       }
       setLocalItem('curriculum_proposals', Array.from(testState.curriculumProposals.values()));
       setLocalItem('courses', Array.from(testState.courses.values()));
+      await this.purgeStudentModuleCaches();
       return true;
     }
     return false;
+  }
+
+  /** Drops cached student module payloads after live curriculum content changes. */
+  private static async purgeStudentModuleCaches(): Promise<void> {
+    try {
+      const { StudentSyncService } = await import('../student/studentSyncService.ts');
+      StudentSyncService.purgeAllCaches();
+    } catch (_) {}
   }
 
   /**
@@ -3929,7 +3992,10 @@ export class MentorService {
     }
 
     const prop = proposals[0];
-    const pData: any = prop.proposal_data || {};
+    // A published proposal keeps live student content at the top level and parks
+    // teacher edits in unpublished_draft. The draft editor must open the staged
+    // draft (or the live snapshot when nothing is staged).
+    const pData: any = this.unwrapStagedDraft(prop.proposal_data) || {};
 
     // Synthesize learning_nodes if not already present
     let nodes: LearningNode[] = pData.learning_nodes || [];
@@ -4022,6 +4088,12 @@ export class MentorService {
             suggested_resources: n.node_content?.suggested_references?.map(r => r.title) || [],
             source_materials: n.source_materials || [],
             teacher_instructions: null,
+            // Structured lesson content must survive this synthesized wrapper,
+            // otherwise rich blocks vanish the next time a student loads the node.
+            blocks: Array.isArray((n as any).blocks) ? (n as any).blocks : null,
+            assessment: (n as any).assessment || null,
+            source_reference: (n as any).source_reference || null,
+            topic_group: (n as any).topic_group || null,
           })),
         }];
 
@@ -4041,6 +4113,7 @@ export class MentorService {
       modules: compatibleModules,
       learning_path_summary: summary,
     };
+    delete (payloadToStore as any).unpublished_draft;
 
     // Save to Supabase curriculum_proposals
     try {
@@ -4051,15 +4124,40 @@ export class MentorService {
         .order('version', { ascending: false });
 
       let savedData: any = null;
-      if (dbExisting && dbExisting.length > 0) {
+      const isAlreadyPublished =
+        Array.isArray(dbExisting) && dbExisting.length > 0 && dbExisting[0].status === 'published';
+
+      if (isAlreadyPublished) {
+        // Never overwrite live student content: stage the teacher's edits only.
+        const liveProposalData = dbExisting![0].proposal_data;
+        const { data, error } = await supabase
+          .from('curriculum_proposals')
+          .update({
+            version: (dbExisting![0].version || 1) + 1,
+            proposal_data: this.stageEditsForPublishedProposal(liveProposalData, payloadToStore),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', dbExisting![0].id)
+          .select()
+          .single();
+
+        if (!error && data) {
+          savedData = data;
+        }
+      } else if (dbExisting && dbExisting.length > 0) {
         const existing = dbExisting[0];
+        // Defensive: a published row must never be overwritten even if the
+        // status snapshot changed between the read and this branch.
+        const dataForExisting = existing.status === 'published'
+          ? this.stageEditsForPublishedProposal(existing.proposal_data, payloadToStore)
+          : payloadToStore;
         const { data, error } = await supabase
           .from('curriculum_proposals')
           .update({
             created_by: effectiveMentorId,
             version: (existing.version || 1) + 1,
             status: draftData.status || existing.status || 'draft',
-            proposal_data: payloadToStore,
+            proposal_data: dataForExisting,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id)
@@ -4106,7 +4204,8 @@ export class MentorService {
           source_materials: [],
           grounding_type: 'grounded_in_materials',
           version: savedData.version,
-          proposal_data: payloadToStore,
+          // Mirror exactly what the database holds (staged draft for published rows).
+          proposal_data: savedData.proposal_data || payloadToStore,
           created_at: savedData.created_at,
           updated_at: savedData.updated_at,
         };
