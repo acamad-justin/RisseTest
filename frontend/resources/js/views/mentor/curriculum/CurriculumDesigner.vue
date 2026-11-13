@@ -5,7 +5,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- TOP NAVIGATION & BREADCRUMBS                                           -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <header class="studio-top-nav">
+    <header v-if="!isPreviewOpen" class="studio-top-nav">
       <div class="nav-left">
         <!-- Breadcrumb Hierarchy -->
         <nav class="studio-breadcrumbs" aria-label="Breadcrumb">
@@ -85,7 +85,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- STUDIO ENTRY: UPLOAD LEARNING MATERIALS (creates/updates a DRAFT only)  -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-if="studioStage === 'intake'" class="level-container studio-intake" aria-labelledby="intake-title">
+    <main v-if="studioStage === 'intake' && !isPreviewOpen" class="level-container studio-intake" aria-labelledby="intake-title">
       <section class="intake-card">
         <span class="badge-studio-ai">MODULE STUDIO • START WITH YOUR MATERIALS</span>
         <h1 id="intake-title" class="intake-title">Upload learning materials</h1>
@@ -188,7 +188,7 @@
       </section>
     </main>
 
-    <main v-if="studioStage === 'editor' && currentLevel === 'overview'" class="level-container level-course-overview">
+    <main v-if="studioStage === 'editor' && currentLevel === 'overview' && !isPreviewOpen" class="level-container level-course-overview">
       
       <!-- A. Course Header Banner -->
       <section class="course-studio-banner" aria-labelledby="banner-course-title">
@@ -805,7 +805,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- LEVEL 2: MODULE EDITOR                                                 -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-else-if="currentLevel === 'module'" class="level-container level-module-editor">
+    <main v-else-if="currentLevel === 'module' && !isPreviewOpen" class="level-container level-module-editor">
       <div class="level-top-header">
         <div class="header-titles">
           <button type="button" class="btn-back-link" @click="navigateToLevel('overview')">
@@ -1110,7 +1110,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- LEVEL 3: LESSON EDITOR                                                 -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-else-if="currentLevel === 'lesson'" class="level-container level-lesson-editor">
+    <main v-else-if="currentLevel === 'lesson' && !isPreviewOpen" class="level-container level-lesson-editor">
       <div class="level-top-header">
         <div class="header-titles">
           <div class="back-links-row">
@@ -3328,6 +3328,40 @@ const previewHasUnsavedEdits = ref(false);
 const isSavingPreviewEdits = ref(false);
 const previewSaveError = ref('');
 const previewedCheckpointId = ref(null);
+
+/**
+ * Editing is an explicit, toggleable capability layered on the real module —
+ * never the default. Preview opens as the plain student experience so the
+ * teacher sees exactly what a student sees; editing is then switched on from
+ * the floating controls.
+ */
+const editingEnabled = ref(false);
+
+/**
+ * Remount key for the experience. Bumped when the teacher jumps between
+ * lessons so the shared component restarts at the new checkpoint without the
+ * designer reaching inside it.
+ */
+const experienceKey = ref(0);
+
+/** Preview lands on the roadmap (student navigation), not straight on a lesson. */
+const previewInitialView = computed(() => (previewingLesson.value ? 'lesson' : 'roadmap'));
+
+// ── Mentor sidebar ────────────────────────────────────────────────────────
+// There is exactly one sidebar, owned by MentorSidebar itself. The experience
+// only reflects and toggles that shared state so the lesson can reclaim width.
+const SIDEBAR_STORAGE_KEY = 'risse_mentor_sidebar_collapsed';
+const mentorSidebarCollapsed = ref(
+  typeof localStorage !== 'undefined'
+    ? localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true'
+    : false
+);
+
+function syncSidebarState() {
+  try {
+    mentorSidebarCollapsed.value = localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+  } catch (_) {}
+}
 
 /**
  * Flips the real sidebar. Writing the shared storage key and dispatching an
@@ -6296,11 +6330,20 @@ function saveCourseDetails() {
 .intake-draft-sub { font-size: 12px; color: #64748b; }
 
 .student-experience-host {
+  /* Fills the mentor scroller while preview is open. The Studio levels and top
+     nav are not rendered at all in this state, so the module is the only thing
+     on the surface — no editor chrome behind it, nothing scrolled on top. */
   position: absolute;
   inset: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  
+}
+
+.student-experience-host > .module-experience {
+  flex: 1;
+  min-height: 0;
 }
 
 .float-cluster {

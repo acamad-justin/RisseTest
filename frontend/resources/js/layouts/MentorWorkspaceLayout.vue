@@ -667,13 +667,20 @@ async function handleStarSubmit(payload = null) {
   min-height: 0;
 }
 
-/* The module owns the scroll region; the Studio's scroller must not fight it. */
+/* The module owns the scroll region; the Studio's scroller must not fight it.
+ * `position: relative` is what lets the preview host (position:absolute;
+ * inset:0) resolve against THIS scroller instead of escaping up to
+ * .risse-main — without it the host fills the whole main column and the
+ * Studio content keeps rendering on top, so Preview appears to do nothing. */
 .mentor-main-container.is-lesson-editor-open .workspace-view-scroll {
-  overflow: visible;
+  position: relative;
+  overflow: hidden;
   max-width: none;
   padding-right: 0;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* The Studio header is not part of the student experience. */
