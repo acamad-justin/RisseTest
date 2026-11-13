@@ -1476,82 +1476,82 @@ function formatMessageText(text) {
   word-break: normal;
 }
 
-.checkpoint-page-container--tutor-hidden .intro-text p {
+.checkpoint-page-container--tutor-hidden .intro-text :deep(p) {
   margin: 0 0 14px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body h1,
-.checkpoint-page-container--tutor-hidden .callout-content h1,
-.checkpoint-page-container--tutor-hidden .activity-content h1 {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(h1),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(h1),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(h1) {
   font-size: 25px;
   line-height: 1.3;
   letter-spacing: -0.5px;
   margin: 30px 0 12px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body h2,
-.checkpoint-page-container--tutor-hidden .callout-content h2,
-.checkpoint-page-container--tutor-hidden .activity-content h2 {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(h2),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(h2),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(h2) {
   font-size: 21px;
   line-height: 1.35;
   letter-spacing: -0.35px;
   margin: 28px 0 10px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body h3,
-.checkpoint-page-container--tutor-hidden .callout-content h3,
-.checkpoint-page-container--tutor-hidden .activity-content h3 {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(h3),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(h3),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(h3) {
   font-size: 17.5px;
   line-height: 1.4;
   margin: 24px 0 8px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body > :first-child,
-.checkpoint-page-container--tutor-hidden .callout-content > :first-child,
-.checkpoint-page-container--tutor-hidden .activity-content > :first-child {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(> :first-child),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(> :first-child),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(> :first-child) {
   margin-top: 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body p,
-.checkpoint-page-container--tutor-hidden .callout-content p,
-.checkpoint-page-container--tutor-hidden .activity-content p {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(p),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(p),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(p) {
   margin: 0 0 16px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body strong,
-.checkpoint-page-container--tutor-hidden .callout-content strong,
-.checkpoint-page-container--tutor-hidden .activity-content strong {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(strong),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(strong),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(strong) {
   color: #0f172a;
   font-weight: 700;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body em,
-.checkpoint-page-container--tutor-hidden .callout-content em,
-.checkpoint-page-container--tutor-hidden .activity-content em {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(em),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(em),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(em) {
   color: #1e293b;
 }
 
 /* Lists: readable indentation and breathing room between items. */
-.checkpoint-page-container--tutor-hidden .markdown-body ul,
-.checkpoint-page-container--tutor-hidden .markdown-body ol,
-.checkpoint-page-container--tutor-hidden .callout-content ul,
-.checkpoint-page-container--tutor-hidden .callout-content ol,
-.checkpoint-page-container--tutor-hidden .activity-content ul,
-.checkpoint-page-container--tutor-hidden .activity-content ol {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(ul),
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(ol),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(ul),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(ol),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(ul),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(ol) {
   margin: 0 0 18px 0;
   padding-left: 28px;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body li,
-.checkpoint-page-container--tutor-hidden .callout-content li,
-.checkpoint-page-container--tutor-hidden .activity-content li {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(li),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(li) {
   margin-bottom: 9px;
   line-height: 1.72;
   padding-left: 2px;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body li::marker,
-.checkpoint-page-container--tutor-hidden .activity-content li::marker {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li::marker),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(li::marker) {
   color: #ea580c;
   font-weight: 700;
 }
@@ -1562,55 +1562,55 @@ function formatMessageText(text) {
  * items AND drops the wrapped second line below the marker instead of aligning
  * it with the item text. Let the <li> own item spacing instead.
  */
-.checkpoint-page-container--tutor-hidden .markdown-body li > p,
-.checkpoint-page-container--tutor-hidden .callout-content li > p,
-.checkpoint-page-container--tutor-hidden .activity-content li > p {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > p),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(li > p),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(li > p) {
   margin: 0;
   max-width: 100%;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body li > p + p,
-.checkpoint-page-container--tutor-hidden .callout-content li > p + p,
-.checkpoint-page-container--tutor-hidden .activity-content li > p + p {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > p + p),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(li > p + p),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(li > p + p) {
   margin-top: 10px;
 }
 
 /* Intentional blank lines: keep a visible line instead of collapsing to 0px. */
-.checkpoint-page-container--tutor-hidden .markdown-body p:empty,
-.checkpoint-page-container--tutor-hidden .markdown-body p:has(> br:only-child),
-.checkpoint-page-container--tutor-hidden .callout-content p:empty,
-.checkpoint-page-container--tutor-hidden .activity-content p:empty {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(p:empty),
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(p:has(> br:only-child)),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(p:empty),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(p:empty) {
   min-height: 1.8em;
   margin: 0 0 16px 0;
 }
 
 /* Ordered lists keep their numbers readable at the larger text scale. */
-.checkpoint-page-container--tutor-hidden .markdown-body ol,
-.checkpoint-page-container--tutor-hidden .callout-content ol,
-.checkpoint-page-container--tutor-hidden .activity-content ol {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(ol),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(ol),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(ol) {
   list-style-position: outside;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body ol > li,
-.checkpoint-page-container--tutor-hidden .callout-content ol > li {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(ol > li),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(ol > li) {
   padding-left: 4px;
 }
 
 /* Nested lists step in and stay visually distinct from their parent. */
-.checkpoint-page-container--tutor-hidden .markdown-body li > ul,
-.checkpoint-page-container--tutor-hidden .markdown-body li > ol {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ul),
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ol) {
   padding-left: 24px;
 }
 
 /* Alignment / size / colour / highlight applied in the editor must survive. */
-.checkpoint-page-container--tutor-hidden .markdown-body [style*="text-align"],
-.checkpoint-page-container--tutor-hidden .callout-content [style*="text-align"],
-.checkpoint-page-container--tutor-hidden .activity-content [style*="text-align"] {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep([style*="text-align"]),
+.checkpoint-page-container--tutor-hidden .callout-content :deep([style*="text-align"]),
+.checkpoint-page-container--tutor-hidden .activity-content :deep([style*="text-align"]) {
   max-width: 100%;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body li > ul,
-.checkpoint-page-container--tutor-hidden .markdown-body li > ol {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ul),
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ol) {
   margin-top: 8px;
   margin-bottom: 4px;
 }
@@ -1709,25 +1709,25 @@ function formatMessageText(text) {
 }
 
 /* Images and embedded media fill the measure without overflowing. */
-.checkpoint-page-container--tutor-hidden .markdown-body img,
-.checkpoint-page-container--tutor-hidden .callout-content img,
-.checkpoint-page-container--tutor-hidden .activity-content img {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(img),
+.checkpoint-page-container--tutor-hidden .callout-content :deep(img),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(img) {
   max-width: 100%;
   height: auto;
   border-radius: 10px;
   margin: 18px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body table,
-.checkpoint-page-container--tutor-hidden .activity-content table {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(table),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(table) {
   font-size: 14px;
   margin: 14px 0;
 }
 
-.checkpoint-page-container--tutor-hidden .markdown-body th,
-.checkpoint-page-container--tutor-hidden .markdown-body td,
-.checkpoint-page-container--tutor-hidden .activity-content th,
-.checkpoint-page-container--tutor-hidden .activity-content td {
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(th),
+.checkpoint-page-container--tutor-hidden .markdown-body :deep(td),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(th),
+.checkpoint-page-container--tutor-hidden .activity-content :deep(td) {
   padding: 10px 14px;
 }
 
@@ -2542,11 +2542,11 @@ function formatMessageText(text) {
   margin: 0;
 }
 
-.intro-text p {
+.intro-text :deep(p) {
   margin: 0 0 8px 0;
 }
 
-.intro-text p:last-child {
+.intro-text :deep(p:last-child) {
   margin-bottom: 0;
 }
 
@@ -2611,73 +2611,73 @@ function formatMessageText(text) {
 }
 
 /* Rich HTML emitted by the Word-style editor must match Markdown typography. */
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3,
-.callout-content h1,
-.callout-content h2,
-.callout-content h3,
-.activity-content h1,
-.activity-content h2,
-.activity-content h3 {
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.callout-content :deep(h1),
+.callout-content :deep(h2),
+.callout-content :deep(h3),
+.activity-content :deep(h1),
+.activity-content :deep(h2),
+.activity-content :deep(h3) {
   font-weight: 700;
   color: #0f172a;
   margin: 16px 0 8px 0;
   line-height: 1.35;
 }
 
-.markdown-body h1,
-.callout-content h1,
-.activity-content h1 { font-size: 16px; }
-.markdown-body h2,
-.callout-content h2,
-.activity-content h2 { font-size: 15px; }
-.markdown-body h3,
-.callout-content h3,
-.activity-content h3 { font-size: 14px; }
+.markdown-body :deep(h1),
+.callout-content :deep(h1),
+.activity-content :deep(h1) { font-size: 16px; }
+.markdown-body :deep(h2),
+.callout-content :deep(h2),
+.activity-content :deep(h2) { font-size: 15px; }
+.markdown-body :deep(h3),
+.callout-content :deep(h3),
+.activity-content :deep(h3) { font-size: 14px; }
 
-.markdown-body p,
-.callout-content p,
-.activity-content p {
+.markdown-body :deep(p),
+.callout-content :deep(p),
+.activity-content :deep(p) {
   margin: 0 0 10px 0;
   line-height: 1.65;
 }
 
-.markdown-body ul,
-.markdown-body ol,
-.callout-content ul,
-.callout-content ol,
-.activity-content ul,
-.activity-content ol {
+.markdown-body :deep(ul),
+.markdown-body :deep(ol),
+.callout-content :deep(ul),
+.callout-content :deep(ol),
+.activity-content :deep(ul),
+.activity-content :deep(ol) {
   margin: 0 0 12px 0;
   padding-left: 20px;
 }
 
-.markdown-body ul,
-.callout-content ul,
-.activity-content ul { list-style-type: disc; }
+.markdown-body :deep(ul),
+.callout-content :deep(ul),
+.activity-content :deep(ul) { list-style-type: disc; }
 
-.markdown-body ol,
-.callout-content ol,
-.activity-content ol { list-style-type: decimal; }
+.markdown-body :deep(ol),
+.callout-content :deep(ol),
+.activity-content :deep(ol) { list-style-type: decimal; }
 
-.markdown-body li,
-.callout-content li,
-.activity-content li {
+.markdown-body :deep(li),
+.callout-content :deep(li),
+.activity-content :deep(li) {
   margin-bottom: 4px;
   line-height: 1.6;
 }
 
-.markdown-body mark,
-.callout-content mark,
-.activity-content mark {
+.markdown-body :deep(mark),
+.callout-content :deep(mark),
+.activity-content :deep(mark) {
   border-radius: 3px;
   padding: 1px 2px;
 }
 
-.markdown-body img,
-.callout-content img,
-.activity-content img {
+.markdown-body :deep(img),
+.callout-content :deep(img),
+.activity-content :deep(img) {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
@@ -2685,65 +2685,65 @@ function formatMessageText(text) {
   margin: 10px 0;
 }
 
-.markdown-body table,
-.callout-content table,
-.activity-content table {
+.markdown-body :deep(table),
+.callout-content :deep(table),
+.activity-content :deep(table) {
   width: 100%;
   border-collapse: collapse;
   margin: 10px 0;
   font-size: 12.5px;
 }
 
-.markdown-body th,
-.markdown-body td,
-.callout-content th,
-.callout-content td,
-.activity-content th,
-.activity-content td {
+.markdown-body :deep(th),
+.markdown-body :deep(td),
+.callout-content :deep(th),
+.callout-content :deep(td),
+.activity-content :deep(th),
+.activity-content :deep(td) {
   border: 1px solid #e2e8f0;
   padding: 7px 10px;
   text-align: left;
   vertical-align: top;
 }
 
-.markdown-body th,
-.callout-content th,
-.activity-content th {
+.markdown-body :deep(th),
+.callout-content :deep(th),
+.activity-content :deep(th) {
   background: #f8fafc;
   font-weight: 700;
   color: #0f172a;
 }
 
-.lesson-markdown-content .md-h1,
-.lesson-markdown-content .md-h2,
-.lesson-markdown-content .md-h3 {
+.lesson-markdown-content :deep(.md-h1),
+.lesson-markdown-content :deep(.md-h2),
+.lesson-markdown-content :deep(.md-h3) {
   font-weight: 700;
   color: #0f172a;
   margin: 16px 0 8px 0;
 }
 
-.lesson-markdown-content .md-h1 { font-size: 16px; }
-.lesson-markdown-content .md-h2 { font-size: 15px; }
-.lesson-markdown-content .md-h3 { font-size: 14px; }
+.lesson-markdown-content :deep(.md-h1) { font-size: 16px; }
+.lesson-markdown-content :deep(.md-h2) { font-size: 15px; }
+.lesson-markdown-content :deep(.md-h3) { font-size: 14px; }
 
-.lesson-markdown-content .md-p {
+.lesson-markdown-content :deep(.md-p) {
   margin: 0 0 10px 0;
 }
 
-.lesson-markdown-content .md-ul,
-.lesson-markdown-content .md-ol {
+.lesson-markdown-content :deep(.md-ul),
+.lesson-markdown-content :deep(.md-ol) {
   margin: 0 0 12px 0;
   padding-left: 20px;
 }
 
-.lesson-markdown-content .md-ul { list-style-type: disc; }
-.lesson-markdown-content .md-ol { list-style-type: decimal; }
+.lesson-markdown-content :deep(.md-ul) { list-style-type: disc; }
+.lesson-markdown-content :deep(.md-ol) { list-style-type: decimal; }
 
-.lesson-markdown-content .md-li {
+.lesson-markdown-content :deep(.md-li) {
   margin-bottom: 4px;
 }
 
-.lesson-markdown-content .md-inline-code {
+.lesson-markdown-content :deep(.md-inline-code) {
   background: #f1f5f9;
   color: #0f172a;
   padding: 2px 6px;
@@ -2752,7 +2752,7 @@ function formatMessageText(text) {
   font-family: monospace;
 }
 
-.lesson-markdown-content .md-code-block {
+.lesson-markdown-content :deep(.md-code-block) {
   background: #0f172a;
   color: #f8fafc;
   padding: 12px 14px;
