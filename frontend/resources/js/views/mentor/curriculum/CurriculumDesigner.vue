@@ -1871,18 +1871,6 @@
           <span>Sidebar</span>
         </button>
 
-        <button
-          type="button"
-          class="float-btn float-btn--sm"
-          :class="{ 'is-active': showTutorInEditor }"
-          :aria-pressed="showTutorInEditor"
-          @click="toggleTutorInEditor"
-          :title="showTutorInEditor ? 'Hide the AI Tutor and give the lesson the full width' : 'Show the AI Tutor as students see it'"
-          id="btn-toggle-editor-tutor"
-        >
-          <span>AI Tutor</span>
-        </button>
-
         <span class="float-divider" aria-hidden="true"></span>
 
         <button
@@ -1997,7 +1985,6 @@
         :editable="editingEnabled"
         :layout-mode="layoutModeEnabled"
         :snap-to-grid="snapToGridEnabled"
-        :show-tutor="showTutorInEditor"
         @notify="previewNotice"
         @back="closeStudentPreview"
         @select-checkpoint="handlePreviewSelectCheckpoint"
@@ -3884,29 +3871,6 @@ function redoLayout() {
 // ── Layout Mode controls ───────────────────────────────────────────────────
 const layoutModeEnabled = ref(false);
 const snapToGridEnabled = ref(false);
-
-/**
- * Whether the editor previews the lesson with the Risse AI tutor beside it.
- * Students always have the tutor, so this only controls the teacher's view of
- * the real student layout. Persisted because it is a workspace preference, not
- * a per-lesson edit (it changes nothing that gets saved).
- */
-const TUTOR_PREF_KEY = 'risse_editor_show_tutor';
-const showTutorInEditor = ref(
-  typeof localStorage !== 'undefined' ? localStorage.getItem(TUTOR_PREF_KEY) !== 'false' : true
-);
-
-function toggleTutorInEditor() {
-  showTutorInEditor.value = !showTutorInEditor.value;
-  try {
-    localStorage.setItem(TUTOR_PREF_KEY, String(showTutorInEditor.value));
-  } catch (_) {}
-  previewNotice(
-    showTutorInEditor.value
-      ? 'AI Tutor shown — this is the student layout.'
-      : 'AI Tutor hidden — the lesson uses the full width.'
-  );
-}
 
 /** True when the previewed lesson has any custom layout worth resetting. */
 /** Reads the arrangement from whatever is currently on screen (buffer or saved). */

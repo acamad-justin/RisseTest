@@ -6,9 +6,6 @@
       // Teacher editing session: scopes editing affordances only. Student
       // presentation is deliberately NOT altered here.
       'checkpoint-page-container--editing': canResizeBlocks,
-      // Student-environment simulation: the AI tutor column. Defaults to how
-      // students actually see the lesson (tutor visible).
-      'checkpoint-page-container--tutor-hidden': !tutorColumnVisible,
       'is-resizing': Boolean(activeResize),
       'is-moving': Boolean(activeDrag),
     }"
@@ -710,10 +707,10 @@
       </section>
     </div>
 
-    <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text) -->
-    <!-- Teacher Preview removes the tutor entirely so the lesson owns the width. -->
+    <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text).
+         Always rendered: the tutor column is part of the student layout, so
+         hiding it would give the lesson a width students never see. -->
     <aside
-      v-if="tutorColumnVisible"
       class="chatbot-panel-card" 
       :class="{ 'chatbot-panel-card--maximized': isChatMaximized }"
       aria-label="Risse AI Chat Assistant"
@@ -941,16 +938,6 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  /**
-   * Teacher editor only: show the Risse AI tutor column so the layout can be
-   * previewed the way students will see it. The tutor is never *usable* in
-   * preview (sendMessage refuses), it is only rendered for layout parity.
-   * Students always get the tutor; this prop is ignored for them.
-   */
-  showTutor: {
-    type: Boolean,
-    default: true,
-  },
 });
 
 const emit = defineEmits([
@@ -1161,14 +1148,6 @@ const layoutModeActive = computed(() => canResizeBlocks.value && Boolean(props.l
  * Being *visible* never means being *usable*: sendMessage() refuses to call
  * the model in preview mode.
  */
-const tutorColumnVisible = computed(() => {
-  // Students always have the tutor. In the editor it defaults to visible too,
-  // because the student environment is the reference: the teacher opts OUT to
-  // see the wider layout, rather than having to opt IN to match reality.
-  if (!props.previewMode) return true;
-  return Boolean(props.showTutor);
-});
-
 const snapToGridEnabled = computed(() => Boolean(props.snapToGrid));
 
 /** The block currently being dragged: pointer bookkeeping + live offsets. */
@@ -2270,16 +2249,6 @@ function formatMessageText(text) {
 
 .checkpoint-page-container.is-chat-maximized {
   grid-template-columns: 0fr 1fr;
-  gap: 0;
-}
-
-/*
- * Tutor hidden => a single column that takes the whole width. This is what
- * "reclaim the panel's space" means: the 410px track is removed entirely, not
- * merely emptied, so the lesson actually reflows into it.
- */
-.checkpoint-page-container--tutor-hidden {
-  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
