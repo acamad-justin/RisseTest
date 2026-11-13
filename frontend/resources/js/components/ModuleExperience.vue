@@ -44,7 +44,6 @@
       :read-only="readOnly"
       :layout-mode="layoutMode"
       :snap-to-grid="snapToGrid"
-      :show-tutor="showTutor"
       @back="viewState = 'roadmap'"
       @notify="forwardNotify"
       @complete-checkpoint="handleCheckpointCompleted"
@@ -79,7 +78,6 @@ const props = defineProps({
   editable: { type: Boolean, default: false },
   layoutMode: { type: Boolean, default: false },
   snapToGrid: { type: Boolean, default: false },
-  showTutor: { type: Boolean, default: true },
 
   /** Whether the lesson may be opened from the roadmap at all. */
   allowLockedNavigation: { type: Boolean, default: false },
