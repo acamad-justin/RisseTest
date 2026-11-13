@@ -3,12 +3,12 @@
     class="checkpoint-page-container"
     :class="{
       'is-chat-maximized': isChatMaximized,
-      // Document typography + no student chrome. Driven by previewMode, not by
-      // whether the tutor column happens to be visible.
-      'checkpoint-page-container--tutor-hidden': previewMode,
-      // The tutor column itself. Teachers can toggle it in the editor so they
-      // can see the real student layout; students always have it.
-      'checkpoint-page-container--tutor-visible': tutorColumnVisible,
+      // Teacher editing session: scopes editing affordances only. Student
+      // presentation is deliberately NOT altered here.
+      'checkpoint-page-container--editing': canResizeBlocks,
+      // Student-environment simulation: the AI tutor column. Defaults to how
+      // students actually see the lesson (tutor visible).
+      'checkpoint-page-container--tutor-hidden': !tutorColumnVisible,
       'is-resizing': Boolean(activeResize),
       'is-moving': Boolean(activeDrag),
     }"
@@ -1149,15 +1149,19 @@ const layoutModeActive = computed(() => canResizeBlocks.value && Boolean(props.l
  * Whether the Risse AI column is rendered.
  *  - Students always see it (props.showTutor defaults to true and they never
  *    pass the prop).
- *  - In the teacher editor it is opt-in, so a mentor can preview the lesson
- *    both with and without the tutor beside it.
+ *  - In the teacher editor it mirrors that default, so a mentor sees the real
+ *    student layout first and opts OUT to inspect the wider, tutor-free one.
  * Being *visible* never means being *usable*: sendMessage() refuses to call
  * the model in preview mode.
  */
 const tutorColumnVisible = computed(() => {
+  // Students always have the tutor. In the editor it defaults to visible too,
+  // because the student environment is the reference: the teacher opts OUT to
+  // see the wider layout, rather than having to opt IN to match reality.
   if (!props.previewMode) return true;
   return Boolean(props.showTutor);
 });
+
 const snapToGridEnabled = computed(() => Boolean(props.snapToGrid));
 
 /** The block currently being dragged: pointer bookkeeping + live offsets. */
@@ -1256,19 +1260,6 @@ function startBlockDrag(event, index) {
     height: blockRect.height,
   };
 
-  // Dragging an in-flow block pins it immediately at its current spot, so the
-  // pointer and the block stay aligned from the first pixel of movement.
-  if (!position) {
-    const x = (activeDrag.value.originLeft / canvasRect.width) * 100;
-    const y = activeDrag.value.originTop;
-    emitBlockLayout(index, {
-      ...readBlockLayout(block),
-      x: Math.round(x * 10) / 10,
-      y: Math.round(y),
-      ...(readBlockLayout(block).width == null ? { width: Math.round(blockRect.width) } : {}),
-    });
-  }
-
   window.addEventListener('pointermove', onBlockDragMove);
   window.addEventListener('pointerup', endBlockDrag);
   window.addEventListener('pointercancel', endBlockDrag);
@@ -1302,6 +1293,21 @@ function applyDragFrame() {
   const dy = drag.lastY - drag.startClientY;
 
   if (!drag.moved && Math.hypot(dx, dy) < DRAG_START_THRESHOLD) return;
+
+  // First real movement: an in-flow block is promoted into the canvas at the
+  // exact spot it already occupies, so the pointer and the block stay aligned
+  // from the first pixel. Doing this on pointerdown instead would persist a
+  // layout for a plain click, which is a selection, not a move.
+  if (!drag.moved && !drag.wasPinned) {
+    const canvasWidth = drag.canvasWidth || 1;
+    const layout = readBlockLayout(drag.block);
+    emitBlockLayout(drag.index, {
+      ...layout,
+      x: Math.round((drag.originLeft / canvasWidth) * 1000) / 10,
+      y: Math.round(Math.max(0, drag.originTop)),
+      ...(layout.width == null ? { width: Math.round(drag.width) } : {}),
+    });
+  }
   drag.moved = true;
 
   /*
@@ -2257,99 +2263,72 @@ function formatMessageText(text) {
 }
 
 /*
- * Teacher Preview (previewMode) removes the AI tutor completely — not hidden,
- * not collapsed to an empty column — so the lesson owns the full width.
+ * Tutor hidden => a single column that takes the whole width. This is what
+ * "reclaim the panel's space" means: the 410px track is removed entirely, not
+ * merely emptied, so the lesson actually reflows into it.
  */
 .checkpoint-page-container--tutor-hidden {
-  /* Document mode: the host (full-screen editor) owns scrolling. */
-  height: auto;
-  min-height: 100%;
-  overflow: visible;
-}
-
-/*
- * The tutor column is a SEPARATE decision from document styling.
- *
- * previewMode implies a single-column document, but when the teacher opts to
- * preview the student layout we must go back to two columns — otherwise the
- * AI panel would render *under* the lesson instead of beside it.
- */
-.checkpoint-page-container--tutor-hidden:not(.checkpoint-page-container--tutor-visible) {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
-.checkpoint-page-container--tutor-hidden.checkpoint-page-container--tutor-visible {
-  grid-template-columns: minmax(0, 1fr) 410px;
-  gap: 28px;
-  /* The tutor is a fixed-height dashboard panel, so this mode scrolls inside
-     the main column rather than letting the whole document grow. */
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * TEACHER EDITING SESSION
+ *
+ * The student view is the source of truth for PRESENTATION, so the editor no
+ * longer restyles lesson content: block cards, headings, lists, callouts,
+ * activities and typography all come from the base student rules below.
+ *
+ * These rules only make the SAME layout behave correctly inside a full-height
+ * editor: the lesson gets its own scroll region and the canvas fills the space
+ * the columns leave. Nothing here changes how content looks.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+.checkpoint-page-container--editing {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  /* Columns are what the simulation toggles control, so animate them. */
+  transition: grid-template-columns 0.32s cubic-bezier(0.2, 0, 0, 1),
+              gap 0.32s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.checkpoint-page-container--editing .checkpoint-main-column {
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
-/* With the tutor beside it, the lesson keeps its own scroll region. */
-.checkpoint-page-container--tutor-hidden.checkpoint-page-container--tutor-visible .checkpoint-main-column {
-  max-width: none;
-  height: 100%;
+/* The teacher scrolls the lesson itself, exactly like a student would. */
+.checkpoint-page-container--editing .lesson-lecture-column {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 8px;
+  padding-right: 12px;
 }
+
+/*
+ * The tutor column is a SEPARATE decision from document styling.
+ *
+ * Without this a hidden tutor left the 410px grid track reserved, so the
+ * lesson never reclaimed the space a student would gain.
+ */
+
+/* With the tutor beside it, the lesson keeps its own scroll region. */
 
 /*
  * Teacher preview keeps the tutor visible but inert; make that legible instead
  * of letting it look like a working chat that silently refuses to reply.
  */
-.checkpoint-page-container--tutor-hidden.checkpoint-page-container--tutor-visible .chatbot-panel-card {
-  position: relative;
-}
-
-.checkpoint-page-container--tutor-hidden .checkpoint-main-column {
-  max-width: 1040px;
-  width: 100%;
-  height: auto;
-  margin: 0 auto;
-  padding: 0;
-  overflow: visible;
-  box-sizing: border-box;
-}
-
-.checkpoint-page-container--tutor-hidden .lesson-lecture-column {
-  overflow: visible;
-  padding-right: 0;
-}
 
 /* ── Teacher Editor Document Typography ───────────────────────────────────
  * The full-screen editor is a reading/writing surface, not a dashboard card.
  * Within preview mode we raise the type scale and calm the chrome so long
  * lessons stay readable, while leaving every student-workspace rule untouched.
  */
-.checkpoint-page-container--tutor-hidden .checkpoint-header {
-  margin-bottom: 20px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid #eef2f7;
-}
-
-.checkpoint-page-container--tutor-hidden .checkpoint-title {
-  font-size: 34px;
-  line-height: 1.15;
-  letter-spacing: -0.9px;
-  max-width: 26ch;
-  overflow-wrap: anywhere;
-}
-
-.checkpoint-page-container--tutor-hidden .sub-category-tag {
-  font-size: 11px;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-}
-
-.checkpoint-page-container--tutor-hidden .parent-module-text {
-  font-size: 13px;
-}
 
 /*
  * A lesson documents itself: the "Instructional Guide" / "Overview" wrapper
@@ -2357,137 +2336,10 @@ function formatMessageText(text) {
  * stack of nested cards. Optional containers (callouts, activities, tables,
  * code, assessment) keep a single restrained surface each.
  */
-.checkpoint-page-container--tutor-hidden .lesson-section-box {
-  padding: 0;
-  margin-bottom: 32px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.checkpoint-page-container--tutor-hidden .lesson-intro-card,
-.checkpoint-page-container--tutor-hidden .lesson-guide-card {
-  padding-bottom: 4px;
-}
-
-.checkpoint-page-container--tutor-hidden .block-text-box {
-  padding: 0;
-  border: none;
-  box-shadow: none;
-  background: transparent;
-  margin-bottom: 26px;
-}
-
-.checkpoint-page-container--tutor-hidden .block-title {
-  font-size: 23px;
-  line-height: 1.3;
-  letter-spacing: -0.4px;
-  margin: 0 0 14px 0;
-  overflow-wrap: anywhere;
-}
-
-.checkpoint-page-container--tutor-hidden .section-title {
-  font-size: 13px;
-  letter-spacing: 1.1px;
-  text-transform: uppercase;
-  color: var(--risse-orange-hover, #ea580c);
-  margin: 0 0 16px 0;
-}
 
 /* Body copy: comfortable measure and line height for sustained editing. */
-.checkpoint-page-container--tutor-hidden .markdown-body,
-.checkpoint-page-container--tutor-hidden .lesson-markdown-content,
-.checkpoint-page-container--tutor-hidden .intro-text,
-.checkpoint-page-container--tutor-hidden .callout-content,
-.checkpoint-page-container--tutor-hidden .activity-content {
-  font-size: 16.5px;
-  line-height: 1.8;
-  color: #334155;
-  max-width: 100%;
-  overflow-wrap: break-word;
-  word-break: normal;
-}
-
-.checkpoint-page-container--tutor-hidden .intro-text :deep(p) {
-  margin: 0 0 14px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(h1),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(h1),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(h1) {
-  font-size: 25px;
-  line-height: 1.3;
-  letter-spacing: -0.5px;
-  margin: 30px 0 12px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(h2),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(h2),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(h2) {
-  font-size: 21px;
-  line-height: 1.35;
-  letter-spacing: -0.35px;
-  margin: 28px 0 10px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(h3),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(h3),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(h3) {
-  font-size: 17.5px;
-  line-height: 1.4;
-  margin: 24px 0 8px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(> :first-child),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(> :first-child),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(> :first-child) {
-  margin-top: 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(p),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(p),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(p) {
-  margin: 0 0 16px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(strong),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(strong),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(strong) {
-  color: #0f172a;
-  font-weight: 700;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(em),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(em),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(em) {
-  color: #1e293b;
-}
 
 /* Lists: readable indentation and breathing room between items. */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(ul),
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(ol),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(ul),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(ol),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(ul),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(ol) {
-  margin: 0 0 18px 0;
-  padding-left: 28px;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(li),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(li) {
-  margin-bottom: 9px;
-  line-height: 1.72;
-  padding-left: 2px;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li::marker),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(li::marker) {
-  color: #ea580c;
-  font-weight: 700;
-}
 
 /*
  * Tiptap stores list items as <li><p>…</p></li>. The paragraph rules above add
@@ -2495,273 +2347,37 @@ function formatMessageText(text) {
  * items AND drops the wrapped second line below the marker instead of aligning
  * it with the item text. Let the <li> own item spacing instead.
  */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > p),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(li > p),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(li > p) {
-  margin: 0;
-  max-width: 100%;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > p + p),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(li > p + p),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(li > p + p) {
-  margin-top: 10px;
-}
 
 /* Intentional blank lines: keep a visible line instead of collapsing to 0px. */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(p:empty),
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(p:has(> br:only-child)),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(p:empty),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(p:empty) {
-  min-height: 1.8em;
-  margin: 0 0 16px 0;
-}
 
 /* Ordered lists keep their numbers readable at the larger text scale. */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(ol),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(ol),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(ol) {
-  list-style-position: outside;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(ol > li),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(ol > li) {
-  padding-left: 4px;
-}
 
 /* Nested lists step in and stay visually distinct from their parent. */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ul),
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ol) {
-  padding-left: 24px;
-}
 
 /* Alignment / size / colour / highlight applied in the editor must survive. */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep([style*="text-align"]),
-.checkpoint-page-container--tutor-hidden .callout-content :deep([style*="text-align"]),
-.checkpoint-page-container--tutor-hidden .activity-content :deep([style*="text-align"]) {
-  max-width: 100%;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ul),
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(li > ol) {
-  margin-top: 8px;
-  margin-bottom: 4px;
-}
 
 /* Callouts: one accent container instead of card-inside-card. */
-.checkpoint-page-container--tutor-hidden .block-callout-card {
-  padding: 22px 26px;
-  border-radius: 10px;
-  background: #fff9f0;
-  border-left: 4px solid #f97316;
-}
-
-.checkpoint-page-container--tutor-hidden .block-callout-card.is-analogy {
-  background: #fffbeb;
-  border-left-color: #f59e0b;
-}
-
-.checkpoint-page-container--tutor-hidden .callout-title {
-  font-size: 17px;
-  letter-spacing: -0.2px;
-}
-
-.checkpoint-page-container--tutor-hidden .callout-icon {
-  font-size: 19px;
-}
-
-.checkpoint-page-container--tutor-hidden .analogy-takeaway-box {
-  margin-top: 16px;
-  padding: 14px 18px;
-  font-size: 15px;
-  line-height: 1.65;
-  border-radius: 8px;
-}
 
 /* Activities + assessment: roomy cards with a clear heading, no deep nesting. */
-.checkpoint-page-container--tutor-hidden .block-activity-card {
-  padding: 22px 26px;
-  background: #f7fbfa;
-  border-color: #d6ece6;
-}
-
-.checkpoint-page-container--tutor-hidden .activity-title {
-  font-size: 17.5px;
-  letter-spacing: -0.2px;
-}
-
-.checkpoint-page-container--tutor-hidden .block-table-card,
-.checkpoint-page-container--tutor-hidden .block-code-card {
-  padding: 0;
-  overflow: hidden;
-  border-radius: 12px;
-}
-
-.checkpoint-page-container--tutor-hidden .block-code-card .block-title,
-.checkpoint-page-container--tutor-hidden .block-table-card .table-title {
-  font-size: 16px;
-  padding: 16px 20px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .block-markdown-table {
-  padding: 16px 20px 20px;
-}
-
-.checkpoint-page-container--tutor-hidden .interactive-assessment-section {
-  padding: 26px 28px;
-  border: 1px solid #f0e2d3;
-  border-radius: 12px;
-  background: #fffdfa;
-  margin-top: 32px;
-  margin-bottom: 0;
-}
-
-.checkpoint-page-container--tutor-hidden .assessment-question-card {
-  padding: 20px 0 22px;
-  margin-bottom: 4px;
-  border-radius: 0;
-  border: none;
-  border-top: 1px solid #f1eee9;
-  background: transparent;
-}
-
-.checkpoint-page-container--tutor-hidden .assessment-question-card:first-of-type {
-  border-top: none;
-  padding-top: 6px;
-}
-
-.checkpoint-page-container--tutor-hidden .question-header {
-  font-size: 16px;
-  line-height: 1.5;
-  margin-bottom: 14px;
-}
-
-.checkpoint-page-container--tutor-hidden .section-subtitle {
-  font-size: 13.5px;
-  line-height: 1.6;
-}
 
 /* Images and embedded media fill the measure without overflowing. */
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(img),
-.checkpoint-page-container--tutor-hidden .callout-content :deep(img),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(img) {
-  max-width: 100%;
-  height: auto;
-  border-radius: 10px;
-  margin: 18px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(table),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(table) {
-  font-size: 14px;
-  margin: 14px 0;
-}
-
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(th),
-.checkpoint-page-container--tutor-hidden .markdown-body :deep(td),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(th),
-.checkpoint-page-container--tutor-hidden .activity-content :deep(td) {
-  padding: 10px 14px;
-}
 
 /* Editing affordances stay legible but never compete with the lesson text. */
-.checkpoint-page-container--tutor-hidden .btn-inline-edit-hint {
+.checkpoint-page-container--editing .btn-inline-edit-hint {
   margin-bottom: 8px;
   font-size: 11px;
 }
 
-.checkpoint-page-container--tutor-hidden .lesson-footer-citations {
-  margin-top: 8px;
-  padding-bottom: 32px;
-}
-
 /* Containers that ARE meaningful (callout, activity, table, code, quiz) get
  * one calm surface each rather than a card-inside-card stack. */
-.checkpoint-page-container--tutor-hidden .block-callout-card,
-.checkpoint-page-container--tutor-hidden .block-activity-card,
-.checkpoint-page-container--tutor-hidden .block-code-card,
-.checkpoint-page-container--tutor-hidden .block-table-card,
-.checkpoint-page-container--tutor-hidden .interactive-assessment-section,
-.checkpoint-page-container--tutor-hidden .concept-block,
-.checkpoint-page-container--tutor-hidden .activity-card,
-.checkpoint-page-container--tutor-hidden .challenge-card,
-.checkpoint-page-container--tutor-hidden .quiz-question-box,
-.checkpoint-page-container--tutor-hidden .assessment-question-card {
-  margin-bottom: 18px;
-}
 
 /* Legacy 8-section sections: the same rhythm as block-rendered lessons. */
-.checkpoint-page-container--tutor-hidden .concepts-section,
-.checkpoint-page-container--tutor-hidden .examples-section,
-.checkpoint-page-container--tutor-hidden .activities-section,
-.checkpoint-page-container--tutor-hidden .challenges-section,
-.checkpoint-page-container--tutor-hidden .assessment-section {
-  padding: 0;
-}
-
-.checkpoint-page-container--tutor-hidden .concept-block {
-  padding: 18px 20px;
-  border-radius: 9px;
-}
-
-.checkpoint-page-container--tutor-hidden .concept-title {
-  font-size: 17.5px;
-  letter-spacing: -0.2px;
-}
-
-.checkpoint-page-container--tutor-hidden .concept-text,
-.checkpoint-page-container--tutor-hidden .concept-example,
-.checkpoint-page-container--tutor-hidden .concept-key-idea,
-.checkpoint-page-container--tutor-hidden .activity-text,
-.checkpoint-page-container--tutor-hidden .challenge-text {
-  font-size: 16px;
-  line-height: 1.75;
-}
-
-.checkpoint-page-container--tutor-hidden .examples-list {
-  font-size: 16px;
-  line-height: 1.75;
-  padding-left: 26px;
-}
-
-.checkpoint-page-container--tutor-hidden .examples-list li {
-  margin-bottom: 9px;
-}
-
-.checkpoint-page-container--tutor-hidden .activity-card,
-.checkpoint-page-container--tutor-hidden .challenge-card {
-  padding: 16px 18px;
-  margin-bottom: 12px;
-  border-radius: 9px;
-}
-
-.checkpoint-page-container--tutor-hidden .quiz-question-box {
-  padding: 20px 22px;
-  border-radius: 10px;
-}
-
-.checkpoint-page-container--tutor-hidden .question-title {
-  font-size: 16.5px;
-  line-height: 1.5;
-}
-
-.checkpoint-page-container--tutor-hidden .opt-item {
-  font-size: 15.5px;
-  line-height: 1.7;
-}
-
-.checkpoint-page-container--tutor-hidden .question-explanation {
-  font-size: 15px;
-  line-height: 1.7;
-  padding: 12px 16px;
-  border-radius: 8px;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* PHASE 1 — RESIZABLE LESSON CONTAINERS                                      */
 /* Dimensions are layout only: text wraps and reflows, nothing is scaled.      */
 /* ═══════════════════════════════════════════════════════════════════════════ */
-.checkpoint-page-container--tutor-hidden .is-block-resizable {
+.checkpoint-page-container--editing .is-block-resizable {
   position: relative;
   box-sizing: border-box;
   /* Never wider than the workspace: the document must not scroll sideways. */
@@ -2778,7 +2394,7 @@ function formatMessageText(text) {
  * The stored height is treated as a minimum instead, so content simply grows
  * the block rather than being trapped behind a scrollbar.
  */
-.checkpoint-page-container--tutor-hidden .is-block-resizable.has-custom-size {
+.checkpoint-page-container--editing .is-block-resizable.has-custom-size {
   overflow: visible;
   height: auto;
 }
@@ -2794,24 +2410,15 @@ function formatMessageText(text) {
  * so the handles never overlap the prose. Right padding is slightly larger than
  * the handle width (8px) plus breathing room.
  */
-.checkpoint-page-container--tutor-hidden .is-block-resizable.has-custom-size,
-.checkpoint-page-container--tutor-hidden .is-block-resizable.is-block-selected {
-  padding: 14px 18px 16px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fcfdff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
-}
-
 /* Selected: a clear, RISSE-orange boundary that reads as "this box is active". */
-.checkpoint-page-container--tutor-hidden .is-block-selected {
+.checkpoint-page-container--editing .is-block-selected {
   outline: 2px solid rgba(255, 122, 0, 0.55);
   outline-offset: 4px;
   border-radius: 12px;
 }
 
 /* Handles: hidden until hover/selection so the document stays clean. */
-.checkpoint-page-container--tutor-hidden .block-resize-handle {
+.checkpoint-page-container--editing .block-resize-handle {
   position: absolute;
   z-index: 6;
   display: none;
@@ -2820,8 +2427,8 @@ function formatMessageText(text) {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
-.checkpoint-page-container--tutor-hidden .is-block-resizable:hover > .block-resize-handle,
-.checkpoint-page-container--tutor-hidden .is-block-selected > .block-resize-handle {
+.checkpoint-page-container--editing .is-block-resizable:hover > .block-resize-handle,
+.checkpoint-page-container--editing .is-block-selected > .block-resize-handle {
   display: block;
 }
 
@@ -2833,7 +2440,7 @@ function formatMessageText(text) {
  */
 
 /* Right edge — horizontal resize */
-.checkpoint-page-container--tutor-hidden .block-resize-handle--e {
+.checkpoint-page-container--editing .block-resize-handle--e {
   top: 50%;
   right: 0;
   transform: translateY(-50%);
@@ -2844,7 +2451,7 @@ function formatMessageText(text) {
 }
 
 /* Bottom edge — vertical resize */
-.checkpoint-page-container--tutor-hidden .block-resize-handle--s {
+.checkpoint-page-container--editing .block-resize-handle--s {
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
@@ -2855,7 +2462,7 @@ function formatMessageText(text) {
 }
 
 /* Bottom-right corner — both axes */
-.checkpoint-page-container--tutor-hidden .block-resize-handle--se {
+.checkpoint-page-container--editing .block-resize-handle--se {
   right: 0;
   bottom: 0;
   width: 14px;
@@ -2865,7 +2472,7 @@ function formatMessageText(text) {
   border: 2px solid #ffffff;
 }
 
-.checkpoint-page-container--tutor-hidden .block-reset-size {
+.checkpoint-page-container--editing .block-reset-size {
   position: absolute;
   top: -12px;
   right: 10px;
@@ -2882,7 +2489,7 @@ function formatMessageText(text) {
   cursor: pointer;
 }
 
-.checkpoint-page-container--tutor-hidden .is-block-selected .block-reset-size {
+.checkpoint-page-container--editing .is-block-selected .block-reset-size {
   display: block;
 }
 
@@ -2892,18 +2499,18 @@ function formatMessageText(text) {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* The canvas is the coordinate space pinned blocks are placed against. */
-.checkpoint-page-container--tutor-hidden .lesson-blocks-stream.is-layout-canvas {
+.checkpoint-page-container--editing .lesson-blocks-stream.is-layout-canvas {
   position: relative;
 }
 
 /* A pinned block leaves the flow and is placed on the canvas. */
-.checkpoint-page-container--tutor-hidden .is-block-pinned {
+.checkpoint-page-container--editing .is-block-pinned {
   position: absolute;
   margin-bottom: 0;
   z-index: 1;
 }
 
-.checkpoint-page-container--tutor-hidden .is-block-pinned.is-block-selected {
+.checkpoint-page-container--editing .is-block-pinned.is-block-selected {
   z-index: 5;
 }
 
@@ -2912,7 +2519,7 @@ function formatMessageText(text) {
  * Deliberately NO position/size transition: the block must sit exactly under
  * the pointer. Transitions on left/top here would add lag and rubber-banding.
  */
-.checkpoint-page-container--tutor-hidden .is-block-dragging {
+.checkpoint-page-container--editing .is-block-dragging {
   z-index: 9 !important;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
   cursor: grabbing;
@@ -2925,35 +2532,35 @@ function formatMessageText(text) {
  * released block settles smoothly instead of snapping. Scoped away from the
  * drag itself so the follow stays 1:1 with the pointer.
  */
-.checkpoint-page-container--tutor-hidden .is-block-pinned:not(.is-block-dragging) {
+.checkpoint-page-container--editing .is-block-pinned:not(.is-block-dragging) {
   transition: left 0.18s cubic-bezier(0.2, 0, 0, 1),
               top 0.18s cubic-bezier(0.2, 0, 0, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .checkpoint-page-container--tutor-hidden .is-block-pinned:not(.is-block-dragging) {
+  .checkpoint-page-container--editing .is-block-pinned:not(.is-block-dragging) {
     transition: none;
   }
 }
 
 /* Layout Mode: show a boundary on every movable block. */
-.checkpoint-page-container--tutor-hidden .is-layout-mode {
+.checkpoint-page-container--editing .is-layout-mode {
+  /* Outline only: the student card keeps its own radius, padding and border. */
   outline: 1px dashed #cbd5e1;
   outline-offset: 3px;
-  border-radius: 12px;
 }
 
-.checkpoint-page-container--tutor-hidden .is-layout-mode:hover {
+.checkpoint-page-container--editing .is-layout-mode:hover {
   outline-color: #94a3b8;
 }
 
-.checkpoint-page-container--tutor-hidden .is-layout-mode.is-block-selected {
+.checkpoint-page-container--editing .is-layout-mode.is-block-selected {
   outline: 2px solid rgba(255, 122, 0, 0.55);
   outline-offset: 4px;
 }
 
 /* ── Drag handle ─────────────────────────────────────────────────────────── */
-.checkpoint-page-container--tutor-hidden .block-drag-handle {
+.checkpoint-page-container--editing .block-drag-handle {
   position: absolute;
   top: -11px;
   left: -11px;
@@ -2975,27 +2582,27 @@ function formatMessageText(text) {
   outline-offset: 4px;
 }
 
-.checkpoint-page-container--tutor-hidden .block-drag-handle::after {
+.checkpoint-page-container--editing .block-drag-handle::after {
   content: '';
   position: absolute;
   inset: -5px;
 }
 
-.checkpoint-page-container--tutor-hidden .block-drag-handle:hover {
+.checkpoint-page-container--editing .block-drag-handle:hover {
   background: #ffedd5;
   border-color: #fdba74;
 }
 
-.checkpoint-page-container--tutor-hidden .block-drag-handle:active {
+.checkpoint-page-container--editing .block-drag-handle:active {
   cursor: grabbing;
 }
 
-.checkpoint-page-container--tutor-hidden .is-block-dragging .block-drag-handle {
+.checkpoint-page-container--editing .is-block-dragging .block-drag-handle {
   cursor: grabbing;
 }
 
 /* ── Unpin control ───────────────────────────────────────────────────────── */
-.checkpoint-page-container--tutor-hidden .block-unpin-btn {
+.checkpoint-page-container--editing .block-unpin-btn {
   position: absolute;
   top: -12px;
   right: 10px;
@@ -3012,43 +2619,43 @@ function formatMessageText(text) {
   cursor: pointer;
 }
 
-.checkpoint-page-container--tutor-hidden .is-block-selected .block-unpin-btn {
+.checkpoint-page-container--editing .is-block-selected .block-unpin-btn {
   display: block;
 }
 
 /* "Reset size" and "Unpin" both live top-right; stack them when both apply. */
-.checkpoint-page-container--tutor-hidden .is-block-selected .block-reset-size {
+.checkpoint-page-container--editing .is-block-selected .block-reset-size {
   right: 58px;
 }
 
 /* ── Alignment guides ────────────────────────────────────────────────────── */
-.checkpoint-page-container--tutor-hidden .layout-guides {
+.checkpoint-page-container--editing .layout-guides {
   position: absolute;
   inset: 0;
   z-index: 7;
   pointer-events: none;
 }
 
-.checkpoint-page-container--tutor-hidden .layout-guide {
+.checkpoint-page-container--editing .layout-guide {
   position: absolute;
   background: rgba(255, 122, 0, 0.55);
 }
 
-.checkpoint-page-container--tutor-hidden .layout-guide--center {
+.checkpoint-page-container--editing .layout-guide--center {
   top: 0;
   bottom: 0;
   left: 50%;
   width: 1px;
 }
 
-.checkpoint-page-container--tutor-hidden .layout-guide--left {
+.checkpoint-page-container--editing .layout-guide--left {
   top: 0;
   bottom: 0;
   left: 0;
   width: 1px;
 }
 
-.checkpoint-page-container--tutor-hidden .layout-guide--right {
+.checkpoint-page-container--editing .layout-guide--right {
   top: 0;
   bottom: 0;
   right: 0;
@@ -3056,14 +2663,14 @@ function formatMessageText(text) {
 }
 
 /* A block being dragged must not fight the pointer with text selection. */
-.checkpoint-page-container--tutor-hidden.is-resizing,
-.checkpoint-page-container--tutor-hidden.is-resizing * {
+.checkpoint-page-container--editing.is-resizing,
+.checkpoint-page-container--editing.is-resizing * {
   cursor: inherit;
   user-select: none;
 }
 
-.checkpoint-page-container--tutor-hidden.is-moving,
-.checkpoint-page-container--tutor-hidden.is-moving * {
+.checkpoint-page-container--editing.is-moving,
+.checkpoint-page-container--editing.is-moving * {
   user-select: none;
 }
 
@@ -3077,55 +2684,6 @@ function formatMessageText(text) {
 
 :global(body.risse-is-dragging *) {
   cursor: grabbing !important;
-}
-
-/* The empty state's "return" belongs to the roadmap; in the editor it means
- * "back to the module outline", which is exactly what the back arrow emits. */
-.checkpoint-page-container--tutor-hidden .lesson-empty-state-card {
-  padding: 40px 32px;
-  border-radius: 12px;
-  border-color: #e8edf4;
-}
-
-.checkpoint-page-container--tutor-hidden .empty-state-title {
-  font-size: 21px;
-  letter-spacing: -0.3px;
-}
-
-.checkpoint-page-container--tutor-hidden .empty-state-message {
-  font-size: 15px;
-  line-height: 1.7;
-  max-width: 60ch;
-}
-
-.checkpoint-page-container--tutor-hidden .btn-return-roadmap {
-  font-size: 13px;
-}
-
-/* Keep the editor usable on narrower viewports. */
-@media (max-width: 900px) {
-  .checkpoint-page-container--tutor-hidden .checkpoint-title {
-    font-size: 26px;
-  }
-
-  .checkpoint-page-container--tutor-hidden .block-callout-card,
-  .checkpoint-page-container--tutor-hidden .block-activity-card,
-  .checkpoint-page-container--tutor-hidden .interactive-assessment-section {
-    padding: 20px 20px;
-  }
-
-  .checkpoint-page-container--tutor-hidden .lesson-blocks-stream {
-    gap: 14px;
-  }
-
-  .checkpoint-page-container--tutor-hidden .markdown-body,
-  .checkpoint-page-container--tutor-hidden .lesson-markdown-content,
-  .checkpoint-page-container--tutor-hidden .intro-text,
-  .checkpoint-page-container--tutor-hidden .callout-content,
-  .checkpoint-page-container--tutor-hidden .activity-content {
-    font-size: 15px;
-    line-height: 1.72;
-  }
 }
 
 .checkpoint-main-column {

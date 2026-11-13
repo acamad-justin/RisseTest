@@ -1885,23 +1885,6 @@
                 <span>{{ layoutModeEnabled ? 'Layout Mode On' : 'Layout Mode' }}</span>
               </button>
 
-              <!-- Tutor visibility sits outside the Layout Mode branch: a teacher
-                   may want to preview the student layout without arranging. -->
-              <button
-                type="button"
-                class="lesson-editor-layout-btn"
-                :class="{ 'is-active': showTutorInEditor }"
-                :aria-pressed="showTutorInEditor"
-                @click="toggleTutorInEditor"
-                :title="showTutorInEditor ? 'Hide the AI Tutor to see the full-width layout' : 'Show the AI Tutor to preview the student layout'"
-                id="btn-toggle-editor-tutor"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span>{{ showTutorInEditor ? 'AI Tutor On' : 'AI Tutor Off' }}</span>
-              </button>
-
               <template v-if="layoutModeEnabled">
                 <button
                   type="button"
@@ -1956,20 +1939,45 @@
               </template>
             </div>
 
-            <button
-              type="button"
-              class="lesson-editor-sidebar-toggle"
-              @click="toggleMentorSidebar"
-              :title="mentorSidebarCollapsed ? 'Expand the mentor sidebar' : 'Collapse the mentor sidebar for more space'"
-              aria-label="Toggle mentor sidebar"
-              id="btn-toggle-editor-sidebar"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <line x1="9" y1="4" x2="9" y2="20" />
-              </svg>
-              <span>{{ mentorSidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar' }}</span>
-            </button>
+            <!--
+              Student View simulation. These mirror how the lesson is presented
+              to a STUDENT; they never change student settings for real, and
+              they never touch saved lesson content or layout metadata.
+            -->
+            <div v-if="previewingLesson" class="lesson-editor-view-group" role="group" aria-label="Student view simulation">
+              <span class="lesson-editor-view-label">Student view</span>
+
+              <button
+                type="button"
+                class="lesson-editor-layout-btn"
+                :class="{ 'is-active': !mentorSidebarCollapsed }"
+                :aria-pressed="!mentorSidebarCollapsed"
+                @click="toggleMentorSidebar"
+                :title="mentorSidebarCollapsed ? 'Show the student sidebar' : 'Hide the student sidebar'"
+                id="btn-toggle-editor-sidebar"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <line x1="9" y1="4" x2="9" y2="20" />
+                </svg>
+                <span>Sidebar</span>
+              </button>
+
+              <button
+                type="button"
+                class="lesson-editor-layout-btn"
+                :class="{ 'is-active': showTutorInEditor }"
+                :aria-pressed="showTutorInEditor"
+                @click="toggleTutorInEditor"
+                :title="showTutorInEditor ? 'Hide the AI Tutor and give the lesson the full width' : 'Show the AI Tutor as students see it'"
+                id="btn-toggle-editor-tutor"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>AI Tutor</span>
+              </button>
+            </div>
 
             <span v-if="previewHasUnsavedEdits" class="lesson-editor-unsaved" role="status">
               <span class="lesson-editor-unsaved-dot"></span> Unsaved changes
@@ -5895,6 +5903,29 @@ function saveCourseDetails() {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* ── Student view simulation group ───────────────────────────────────────────
+   Kept visually distinct from layout controls: these change how the lesson is
+   PRESENTED, not how it is authored. */
+.lesson-editor-view-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 3px 3px 9px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.lesson-editor-view-label {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  white-space: nowrap;
 }
 
 /* ── Layout Mode controls (Phase 2) ──────────────────────────────────────────
