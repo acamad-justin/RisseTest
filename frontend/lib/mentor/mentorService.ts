@@ -3069,7 +3069,8 @@ export class MentorService {
   private static async reconcileStudentFacingContent(
     proposalId: string,
     mentorId: string,
-    modulesPayload: any[]
+    modulesPayload: any[],
+    publishedData: any
   ): Promise<boolean> {
     if (!isValidUuid(proposalId)) return true; // demo/test mode: no rows to reconcile
 
@@ -3094,7 +3095,28 @@ export class MentorService {
 
     let allFresh = true;
     try {
-      // 1. Published child modules — the courses students are actually enrolled in.
+      // 1. The proposal that was just published.
+      //
+      // In separate_modules mode this row is written by the RPC, which is not in
+      // this repository — and the client never wrote it itself. When the edited
+      // module's own proposal is the row students read, a publish that skipped
+      // it left students on the previous version while the teacher's Studio
+      // (which re-reads the staged draft) showed the edit. Verified, and only
+      // rewritten when it genuinely disagrees.
+      if (publishedData) {
+        const { data: selfRow, error: selfErr } = await supabase
+          .from('curriculum_proposals')
+          .select('id, proposal_data')
+          .eq('id', proposalId)
+          .maybeSingle();
+
+        if (!selfErr && selfRow && contentFingerprint(selfRow.proposal_data) !== contentFingerprint(publishedData)) {
+          const repaired = await writeContent('id', proposalId, publishedData);
+          if (!repaired) allFresh = false;
+        }
+      }
+
+      // 2. Published child modules — the courses students are actually enrolled in.
       const { data: children, error } = await supabase
         .from('courses')
         .select('id, title, curriculum_proposals(*)')
@@ -3186,7 +3208,7 @@ export class MentorService {
 
     // The RPC created/updated the student-facing rows; confirm they hold the
     // content that was just published before telling the teacher it worked.
-    const reconciled = await this.reconcileStudentFacingContent(proposalId, mentorId, modulesPayload);
+    const reconciled = await this.reconcileStudentFacingContent(proposalId, mentorId, modulesPayload, proposalData);
     if (!reconciled) return false;
 
     const cached = testState.curriculumProposals.get(proposalId);
@@ -4717,6 +4739,45 @@ export class MentorService {
   /**
    * Publish learning module: sets module and draft status to published
    */
+  /**
+   * Promotes every staged teacher draft on a course into its live published
+   * content, dropping the staging wrapper.
+   *
+   * Returns false when a row could not be written (RLS refusal or missing row),
+   * so publishing can fail instead of silently leaving students on old content.
+   */
+  private static async promoteStagedDraftsForCourse(courseId: string): Promise<boolean> {
+    const { data: rows, error } = await supabase
+      .from('curriculum_proposals')
+      .select('id, proposal_data')
+      .eq('course_id', courseId);
+
+    // Unreadable (offline/demo mode): nothing provable to promote.
+    if (error || !Array.isArray(rows)) return true;
+
+    for (const row of rows) {
+      const staged = row?.proposal_data?.unpublished_draft;
+      if (!staged || typeof staged !== 'object') continue;
+
+      const promoted = this.unwrapStagedDraft(row.proposal_data);
+      const { data: written, error: wErr } = await supabase
+        .from('curriculum_proposals')
+        .update({ proposal_data: promoted, status: 'published', updated_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .select('id');
+
+      if (wErr || !Array.isArray(written) || written.length === 0) {
+        console.error(
+          '[MentorService] publishModule could not promote the staged draft for proposal',
+          row.id,
+          wErr?.message || '(0 rows updated — RLS refused or row missing)'
+        );
+        return false;
+      }
+    }
+    return true;
+  }
+
   static async publishModule(moduleId: string, mentorId: string): Promise<{ success: boolean; error?: string; status?: string }> {
     if (!moduleId || !mentorId) return { success: false, error: 'Module ID and Mentor ID required.' };
     const effectiveMentorId = normalizeMentorId(mentorId);
@@ -4751,6 +4812,20 @@ export class MentorService {
           .from('curriculum_proposals')
           .update({ status: 'published', updated_at: new Date().toISOString() })
           .eq('course_id', moduleId);
+
+        // Publishing must PROMOTE the staged draft, not merely mark the row
+        // published. Edits to an already-published module are parked in
+        // proposal_data.unpublished_draft (so students never see half-finished
+        // work); flipping `status` alone leaves proposal_data at the pre-edit
+        // version, so students keep reading the old lesson while the teacher's
+        // Studio — which edits the staged draft — shows the new one.
+        const promoOk = await this.promoteStagedDraftsForCourse(moduleId);
+        if (!promoOk) {
+          return {
+            success: false,
+            error: 'The published content could not be updated. Students may still see the previous version.',
+          };
+        }
 
         // Auto-enroll active students from assigned sections
         const { data: secRows } = await supabase

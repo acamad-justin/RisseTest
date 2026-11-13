@@ -152,6 +152,62 @@ denyWrites=true;
 const sepFail=await MentorService.publishCurriculumProposal(parentId, MENTOR, propData('<p>New</p>'));
 t('6 unreconcilable publish returns false (no silent success)', sepFail===false, String(sepFail));
 
+/* 7. THE REPORTED BUG: publishModule must publish the staged draft, not just flip status */
+reset();
+const mid='33333333-3333-4333-8333-333333333333';
+db.courses.set(mid,{id:mid,title:'Module M',status:'published'});
+db.curriculum_proposals.set('p7',{id:'p7',course_id:mid,created_by:MENTOR,status:'published',
+  proposal_data:{...propData('<p>Old</p>'), unpublished_draft:propData('<p>New</p>')}});
+const pm=await MentorService.publishModule(mid, MENTOR);
+t('7 publishModule reports success', pm.success===true, JSON.stringify(pm));
+const row7=db.curriculum_proposals.get('p7');
+t('7b staged draft is promoted into the live student content',
+  row7.proposal_data.learning_nodes[0].blocks[0].content==='<p>New</p>',
+  JSON.stringify(row7.proposal_data.learning_nodes?.[0]?.blocks?.[0]));
+t('7c staging wrapper removed on promotion', row7.proposal_data.unpublished_draft===undefined);
+
+/* 8. publishModule must fail loudly when the promotion is refused */
+reset();
+db.courses.set(mid,{id:mid,title:'Module M',status:'published'});
+db.curriculum_proposals.set('p7',{id:'p7',course_id:mid,created_by:MENTOR,status:'published',
+  proposal_data:{...propData('<p>Old</p>'), unpublished_draft:propData('<p>New</p>')}});
+denyWrites=true;
+const pmFail=await MentorService.publishModule(mid, MENTOR);
+t('8 refused promotion fails the publish (never silent)', pmFail.success===false, JSON.stringify(pmFail));
+t('8b live content left untouched when refused',
+  db.curriculum_proposals.get('p7').proposal_data.learning_nodes[0].blocks[0].content==='<p>Old</p>');
+
+/* 9. separate_modules: the published proposal's OWN row is verified and repaired.
+ *    This is the path taken when the RPC does not persist proposal_data: the row
+ *    students read stayed on the pre-edit content while the Studio showed the edit. */
+reset();
+rpcBehavior='noop';
+const pid9='44444444-4444-4444-8444-444444444444';
+db.courses.set('c9',{id:'c9',title:'Module M9',status:'published'});
+db.curriculum_proposals.set(pid9,{id:pid9,course_id:'c9',created_by:MENTOR,status:'published',
+  proposal_data:propData('<p>Old</p>')});
+const ok9=await MentorService.publishCurriculumProposal(pid9, MENTOR, propData('<p>New</p>'));
+t('9 separate-modules publish succeeds', ok9===true, String(ok9));
+t('9b the published proposal row now holds the edited lesson',
+  db.curriculum_proposals.get(pid9).proposal_data.learning_nodes[0].blocks[0].content==='<p>New</p>',
+  JSON.stringify(db.curriculum_proposals.get(pid9).proposal_data.learning_nodes?.[0]?.blocks?.[0]));
+
+/* 10. a matching row is never rewritten (no churn on every publish) */
+reset();
+rpcBehavior='noop';
+db.courses.set('c10',{id:'c10',title:'Module M10',status:'published'});
+const pid10='55555555-5555-4555-8555-555555555555';
+db.curriculum_proposals.set(pid10,{id:pid10,course_id:'c10',created_by:MENTOR,status:'published',
+  proposal_data:propData('<p>Same</p>')});
+const writes=[];
+const origFrom=supabase.from;
+supabase.from=(tbl)=>{const b=origFrom(tbl);const u=b.update;b.update=(p)=>{writes.push(tbl);return u(p);};return b;};
+const ok10=await MentorService.publishCurriculumProposal(pid10, MENTOR, propData('<p>Same</p>'));
+supabase.from=origFrom;
+t('10 publish succeeds when content already matches', ok10===true, String(ok10));
+t('10b no content rewrite when the row already matches', writes.filter(w=>w==='curriculum_proposals').length===0,
+  writes.join(','));
+
 test('published content reaches the student-facing rows and failures are never silent', () => {
   assert.equal(_fail, 0, `failed checks:\n - ${failures.join('\n - ')}`);
   assert.ok(_pass > 0, 'checks must actually run');
