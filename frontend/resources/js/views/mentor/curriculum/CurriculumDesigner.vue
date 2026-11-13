@@ -1825,7 +1825,7 @@
     <div v-if="isPreviewOpen" class="student-experience-host" role="region" aria-label="Student module experience">
 
       <!-- ── Floating: leave preview / enter editing ─────────────────────── -->
-      <div class="float-cluster float-cluster--top-left">
+      <div class="float-cluster float-cluster--top-right">
         <button
           type="button"
           class="float-btn float-btn--ghost"
@@ -1856,7 +1856,7 @@
       </div>
 
       <!-- ── Floating: student-environment toggles (only while editing) ──── -->
-      <div v-if="editingEnabled" class="float-cluster float-cluster--top-right">
+      <div v-if="editingEnabled" class="float-cluster float-cluster--bottom-right">
         <span class="float-label">Student view</span>
 
         <button
@@ -6376,14 +6376,28 @@ function saveCourseDetails() {
               0 14px 34px -8px rgba(15, 23, 42, 0.22);
 }
 
-.float-cluster--top-left {
-  top: 14px;
-  left: 250px; 
-}
-
+/*
+ * Placement rule for the whole preview toolbar: sit over the workspace CHROME,
+ * never over the lesson.
+ *
+ * The preview controls used to be pinned at `left: 250px; top: 14px` — inside
+ * the lesson column, on top of its header, covering the "Module" eyebrow and
+ * clipping the top of the lesson title. Students saw the header intact; the
+ * mentor did not, so preview was not the student presentation.
+ *
+ * Both clusters now hang in the right-hand chrome column (the tutor panel's
+ * header and footer) where nothing is lesson content.
+ */
 .float-cluster--top-right {
   top: 14px;
   right: 18px;
+}
+
+.float-cluster--bottom-right {
+  right: 18px;
+  /* Clears the tutor's input row so the editing toggles sit over empty chat
+     space rather than on top of a control. */
+  bottom: 88px;
 }
 
 .float-cluster--bottom-center {
@@ -6539,13 +6553,18 @@ function saveCourseDetails() {
  * the labels collapse to icons. Nothing is placed inside the lesson flow.
  */
 @media (max-width: 1180px) {
+  /* Keep both clusters in the chrome column, just tighter to the edges. */
   .float-cluster--top-right {
-    top: auto;
-    right: 12px;
-    bottom: 12px;
+    top: 10px;
+    right: 10px;
   }
+  .float-cluster--bottom-right {
+    right: 10px;
+    bottom: 80px;
+  }
+  /* Pending-changes bar moves off centre so it cannot meet the bottom-right one. */
   .float-cluster--bottom-center {
-    left: 12px;
+    left: 10px;
     transform: none;
   }
   .float-label {
