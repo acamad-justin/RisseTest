@@ -2148,6 +2148,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
+import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/mentor/lessonDocument.ts';
 // The shared student module experience. Preview uses this same component the
 // student workspace uses — there is no editor-specific renderer.
 import ModuleExperience from '../../../components/ModuleExperience.vue';
@@ -3682,6 +3683,21 @@ function handlePreviewLessonUpdate(payload) {
   if (twins.length === 0) return;
 
   for (const checkpoint of twins) {
+    if (payload.kind === 'document') {
+      // The document is the source of truth for what students read; `blocks` is
+      // a derived projection that older screens still consult. Both copies of
+      // the lesson (`learning_nodes` and `modules[].checkpoints`) carry the same
+      // document, and both stay a draft until the teacher publishes.
+      const document = normalizeLessonDocument(payload.document);
+      checkpoint.document = document;
+      if (!checkpoint.node_content) checkpoint.node_content = {};
+      checkpoint.node_content.document = document;
+      checkpoint.blocks = documentToBlocks(document);
+      checkpoint.node_content.core_lesson = document.flow;
+      checkpoint.node_content.step_by_step_guide = document.flow;
+      continue;
+    }
+
     if (payload.kind === 'block') {
       const block = (checkpoint.blocks || [])[payload.index];
       if (!block) continue;

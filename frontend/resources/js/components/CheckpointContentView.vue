@@ -110,9 +110,22 @@
 
       <!-- Educational Lesson Text & Core Concepts (When content is populated) -->
       <section v-else class="lesson-lecture-column">
-        <!-- Structured Content Blocks Stream (When blocks exist) -->
+        <!--
+          Shared lesson document — the same component renders for students and for
+          the teacher's preview/editing session, so what a teacher arranges is
+          literally what a student receives.
+        -->
+        <LessonDocumentView
+          v-if="lessonDocument"
+          :document="lessonDocument"
+          :editable="isEditable"
+          @update:document="onDocumentUpdate"
+          @update:flow="onDocumentFlow"
+        />
+
+        <!-- Structured Content Blocks Stream (legacy lessons without a document) -->
         <div
-          v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0"
+          v-if="!lessonDocument && activeLessonData.blocks && activeLessonData.blocks.length > 0"
           ref="canvasRef"
           class="lesson-blocks-stream"
           :class="{
@@ -877,7 +890,9 @@ import {
   NUDGE_STEP,
   NUDGE_STEP_LARGE,
 } from '../../../lib/mentor/lessonBlockLayout.ts';
+import { hasLessonDocument, lessonDocumentOf } from '../../../lib/mentor/lessonDocument.ts';
 import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
+import LessonDocumentView from './mentor/LessonDocumentView.vue';
 
 const authStore = useAuthStore();
 
@@ -985,6 +1000,33 @@ function isEditingTarget(kind, field, index = null) {
 const selectedBlockIndex = ref(null);
 /** The exact array the template renders, so index lookups always resolve. */
 const currentBlocks = computed(() => activeLessonData.value?.blocks || []);
+
+/**
+ * The lesson's shared document.
+ *
+ * An authored document always wins. A lesson that only has legacy blocks is
+ * bridged on read, so students and the teacher get the document experience with
+ * exactly one renderer — old lessons migrate forward the first time a teacher
+ * saves them, without anyone having to regenerate content.
+ */
+const lessonDocument = computed(() => {
+  const own = props.checkpointData;
+  const siblings = props.moduleData?.checkpoints;
+  let record = own;
+
+  if (!hasLessonDocument(own) && Array.isArray(siblings)) {
+    const title = (props.checkpointTitle || '').trim();
+    const match = siblings.find(c =>
+      (title && (c.name || c.title) === title) ||
+      (own?.id != null && String(c.id) === String(own.id))
+    );
+    if (match) record = match;
+  }
+
+  if (own && hasLessonDocument(own)) return lessonDocumentOf(own);
+  if (record && hasLessonDocument(record)) return lessonDocumentOf(record);
+  return lessonDocumentOf(own) || (record && record !== own ? lessonDocumentOf(record) : null);
+});
 /** Live drag state: { index, edge, startX, startY, startW, startH }. */
 const activeResize = ref(null);
 
@@ -1591,6 +1633,29 @@ function nodeContentField(field) {
  * Emits buffered (never directly persisted) lesson content updates to the
  * Module Studio preview. The parent stores them in its preview draft only.
  */
+/**
+ * Document edits are buffered exactly like block edits: nothing here persists,
+ * the Module Studio parent keeps them in its preview draft until Save.
+ */
+function onDocumentUpdate(document) {
+  if (!document) return;
+  emit('update-lesson-content', {
+    kind: 'document',
+    checkpointId: props.checkpointData?.id ?? null,
+    document,
+  });
+}
+
+function onDocumentFlow(flowHtml) {
+  const document = lessonDocument.value;
+  if (!document) return;
+  emit('update-lesson-content', {
+    kind: 'document',
+    checkpointId: props.checkpointData?.id ?? null,
+    document: { ...document, flow: flowHtml },
+  });
+}
+
 function onInlineEditUpdate(html, kind, index = null, field = null) {
   const cleanHtml = sanitizeLessonHtml(html || '');
   emit('update-lesson-content', {

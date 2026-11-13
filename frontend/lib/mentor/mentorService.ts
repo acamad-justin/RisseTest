@@ -20,6 +20,7 @@
 
 import { supabase } from '../../resources/js/lib/supabaseClient.js';
 import { extractDocument } from './documentExtractor.ts';
+import { attachLessonDocuments } from './lessonDocument.ts';
 import { 
   CurriculumAiEngine,
   type LearningNode,
@@ -2567,6 +2568,12 @@ export class MentorService {
 
     if (moduleRes.success && moduleRes.draft) {
       const draft = moduleRes.draft;
+
+      // Every generated lesson ships in the shared document representation:
+      // continuous prose plus the few purposeful elements the AI chose, so the
+      // teacher edits a flowing document instead of a wall of boxes and the
+      // student renderer has one shape to draw.
+      attachLessonDocuments(draft);
       const allModules: CurriculumProposalModule[] = [
         {
           id: `mod-${courseId}-1`,
