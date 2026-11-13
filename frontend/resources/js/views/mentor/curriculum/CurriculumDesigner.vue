@@ -1814,71 +1814,168 @@
     </main>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <!-- MODALS: PREVIEW, PUBLISH & EDIT COURSE                                -->
+    <!-- FULL-SCREEN LESSON EDITOR (real student renderer + inline editing)     -->
+    <!-- Teleported to <body> so it covers the entire application (including    -->
+    <!-- the mentor sidebar) and is not constrained by the Studio's DOM tree.    -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <Teleport to="body">
+      <div
+        v-if="isPreviewOpen"
+        class="lesson-editor-shell"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Lesson editor"
+      >
+        <!-- Top bar: breadcrumb + path toggle + unsaved state + close -->
+        <header class="lesson-editor-topbar">
+          <div class="lesson-editor-topbar-left">
+            <button
+              type="button"
+              class="lesson-editor-icon-btn"
+              @click="closeStudentPreview"
+              title="Close the lesson editor (Esc)"
+              aria-label="Close the lesson editor"
+              id="btn-close-lesson-editor"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
 
-    <!-- Student Experience Preview Modal (real student renderer + inline editing) -->
-    <div v-if="isPreviewOpen" class="modal-overlay" @click.self="closeStudentPreview">
-      <div class="preview-modal-card preview-modal-card--studio" role="dialog" aria-modal="true" aria-labelledby="modal-preview-title">
-        <div class="preview-modal-header">
-          <div>
-            <span class="badge-preview-pill">STUDENT PREVIEW · CLICK ANY LESSON TEXT TO EDIT</span>
-            <h3 id="modal-preview-title" class="preview-course-title">
-              {{ previewingLesson ? previewingLesson.title : editableProposal.proposal_data.title }}
-            </h3>
-          </div>
-          <button type="button" class="btn-close-modal" @click="closeStudentPreview">&times;</button>
-        </div>
-
-        <div class="preview-modal-body preview-modal-body--studio">
-          <!-- Full Course Roadmap Preview -->
-          <div v-if="!previewingLesson" class="sim-modules-catalog">
-            <p class="preview-explanation">
-              This preview shows how enrolled students in your assigned classes will navigate the learning roadmap.
-              Open a lesson to edit its text in place.
-            </p>
-            <div class="sim-modules-grid">
-              <div 
-                v-for="(mod, mIdx) in previewModules" 
-                :key="mod.id || mIdx"
-                class="sim-module-card"
+            <nav class="lesson-editor-crumbs" aria-label="Lesson editor breadcrumb">
+              <span class="lesson-editor-crumb lesson-editor-crumb--root">{{ previewCourseTitle }}</span>
+              <span class="lesson-editor-crumb-sep">/</span>
+              <button
+                type="button"
+                class="lesson-editor-crumb"
+                :class="{ 'lesson-editor-crumb--current': !previewingLesson }"
+                @click="backToPreviewRoadmap"
+                :disabled="!previewingLesson"
+                title="All lessons in this module"
               >
-                <div class="sim-card-top">
-                  <span class="sim-level-badge">{{ mod.level || 'Beginner' }}</span>
-                  <span class="sim-steps-count">{{ (mod.checkpoints || []).length }} Steps</span>
+                {{ previewParentModuleTitle }}
+              </button>
+              <template v-if="previewingLesson">
+                <span class="lesson-editor-crumb-sep">/</span>
+                <span class="lesson-editor-crumb lesson-editor-crumb--current">
+                  {{ previewingLesson.title || previewingLesson.name }}
+                </span>
+              </template>
+            </nav>
+          </div>
+
+          <div class="lesson-editor-topbar-right">
+            <span v-if="previewHasUnsavedEdits" class="lesson-editor-unsaved" role="status">
+              <span class="lesson-editor-unsaved-dot"></span> Unsaved changes
+            </span>
+            <span v-else-if="hasStagedDraft" class="lesson-editor-staged">
+              Staged draft — students still see the published version
+            </span>
+
+            <button
+              type="button"
+              class="lesson-editor-path-toggle"
+              :class="{ 'is-active': isPreviewPathOpen }"
+              @click="isPreviewPathOpen = !isPreviewPathOpen"
+              :aria-expanded="isPreviewPathOpen"
+              id="btn-toggle-lesson-path"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" />
+                <line x1="3" y1="12" x2="3.01" y2="12" />
+                <line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+              <span>{{ isPreviewPathOpen ? 'Hide Path' : 'Show Path' }}</span>
+            </button>
+
+            <button
+              type="button"
+              class="lesson-editor-btn lesson-editor-btn--ghost"
+              @click="closeStudentPreview"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="lesson-editor-btn lesson-editor-btn--primary"
+              :disabled="isSavingPreviewEdits || !previewHasUnsavedEdits"
+              @click="saveStudentPreviewEdits"
+            >
+              {{ isSavingPreviewEdits ? 'Saving...' : 'Save Draft' }}
+            </button>
+          </div>
+        </header>
+
+        <!-- Inline status line (save confirmation / errors) -->
+        <p v-if="previewSaveError || previewInlineNotice" class="lesson-editor-status" :class="{ 'is-error': previewSaveError }" role="status">
+          {{ previewSaveError || previewInlineNotice }}
+        </p>
+
+        <div class="lesson-editor-body">
+          <!-- Optional node rail: the lesson path for this module -->
+          <aside v-if="isPreviewPathOpen" class="lesson-editor-rail" aria-label="Lesson path">
+            <div class="lesson-editor-rail-head">
+              <span class="lesson-editor-rail-title">Lesson Path</span>
+              <span class="lesson-editor-rail-count">{{ previewAllCheckpoints.length }} nodes</span>
+            </div>
+            <div class="lesson-editor-rail-list">
+              <section v-for="grp in previewPathGroups" :key="grp.key" class="lesson-editor-rail-group">
+                <h3 class="lesson-editor-rail-group-title">{{ grp.title }}</h3>
+                <ol class="lesson-editor-rail-items">
+                  <li v-for="cp in grp.lessons" :key="cp.id || cp.title">
+                    <button
+                      type="button"
+                      class="lesson-editor-rail-item"
+                      :class="{ 'is-current': isPreviewingCheckpoint(cp) }"
+                      @click="openStudentPreview(cp)"
+                    >
+                      <span class="lesson-editor-rail-index">{{ previewCheckpointNumber(cp) }}</span>
+                      <span class="lesson-editor-rail-label">{{ cp.title || cp.name }}</span>
+                    </button>
+                  </li>
+                </ol>
+              </section>
+            </div>
+          </aside>
+
+          <!-- Module outline (no lesson selected yet) -->
+          <!-- `sim-modules-catalog` is the established Studio preview contract. -->
+          <div v-if="!previewingLesson" class="lesson-editor-outline sim-modules-catalog">
+            <h2 class="lesson-editor-outline-title">{{ previewCourseTitle }}</h2>
+            <p class="lesson-editor-outline-sub">
+              Choose a lesson to read and edit in place. Formatting uses the same
+              renderer students see.
+            </p>
+            <div class="lesson-editor-outline-grid">
+              <section v-for="(mod, mIdx) in previewModules" :key="mod.id || mIdx" class="lesson-editor-outline-card">
+                <div class="lesson-editor-outline-card-head">
+                  <h3 class="lesson-editor-outline-card-title">{{ mod.title }}</h3>
+                  <span class="lesson-editor-outline-card-count">{{ (mod.checkpoints || []).length }} steps</span>
                 </div>
-                <h4 class="sim-card-title">{{ mod.title }}</h4>
-                <p class="sim-card-desc">{{ mod.description }}</p>
-                <div class="sim-checkpoints-summary">
-                  <button
-                    v-for="cp in (mod.checkpoints || [])"
-                    :key="cp.id"
-                    type="button"
-                    class="sim-cp-item sim-cp-button"
-                    @click="openStudentPreview(cp)"
-                    :title="'Preview and edit: ' + cp.title"
-                  >
-                    <span>{{ cp.type === 'lab' ? '🧪' : cp.type === 'challenge' ? '🏆' : '📖' }} {{ cp.title }}</span>
-                  </button>
-                </div>
-              </div>
+                <p v-if="mod.description" class="lesson-editor-outline-card-desc">{{ mod.description }}</p>
+                <ul class="lesson-editor-outline-lessons">
+                  <li v-for="cp in (mod.checkpoints || [])" :key="cp.id || cp.title">
+                    <button type="button" class="lesson-editor-outline-lesson" @click="openStudentPreview(cp)">
+                      <span class="lesson-editor-outline-lesson-icon">
+                        {{ cp.type === 'lab' ? '🧪' : cp.type === 'challenge' ? '🏆' : '📖' }}
+                      </span>
+                      <span class="lesson-editor-outline-lesson-title">{{ cp.title || cp.name }}</span>
+                      <span class="lesson-editor-outline-lesson-go">Edit →</span>
+                    </button>
+                  </li>
+                </ul>
+              </section>
             </div>
           </div>
 
-          <!-- Single Lesson: the SAME renderer students use -->
-          <div v-else class="sim-lesson-preview">
-            <div class="sim-lesson-toolbar">
-              <button type="button" class="btn-outline-action btn-preview-back" @click="backToPreviewRoadmap">
-                ← Back to roadmap
-              </button>
-              <span class="sim-lesson-toolbar-note" v-if="previewHasUnsavedEdits">
-                ● Unsaved preview edits
-              </span>
-            </div>
-
-            <div class="sim-lesson-content-view sim-lesson-content-view--student">
+          <!-- The lesson itself: the SAME renderer students use -->
+          <div v-else class="lesson-editor-document">
+            <div class="lesson-editor-scroll" ref="previewScrollRef">
               <CheckpointContentView
-                ref="previewRendererRef"
                 :key="'studio-preview-' + (previewingLesson.id || previewingLesson.title)"
                 :checkpoint-title="previewingLesson.title || previewingLesson.name"
                 :parent-module-name="previewParentModuleTitle"
@@ -1891,31 +1988,40 @@
               />
             </div>
 
+            <!-- Previous / Next lesson controls -->
+            <footer class="lesson-editor-lesson-nav">
+              <button
+                type="button"
+                class="lesson-editor-btn lesson-editor-btn--nav"
+                :disabled="!previewPrevCheckpoint"
+                @click="previewPrevCheckpoint && goToPreviewCheckpoint(previewPrevCheckpoint)"
+              >
+                <span class="lesson-editor-nav-dir">← Previous</span>
+                <span class="lesson-editor-nav-name">{{ previewPrevCheckpoint ? (previewPrevCheckpoint.title || previewPrevCheckpoint.name) : 'Start of path' }}</span>
+              </button>
+
+              <span class="lesson-editor-nav-position">
+                {{ previewCheckpointPosition }} of {{ previewAllCheckpoints.length }}
+              </span>
+
+              <button
+                type="button"
+                class="lesson-editor-btn lesson-editor-btn--nav lesson-editor-btn--nav-next"
+                :disabled="!previewNextCheckpoint"
+                @click="previewNextCheckpoint && goToPreviewCheckpoint(previewNextCheckpoint)"
+              >
+                <span class="lesson-editor-nav-dir">Next →</span>
+                <span class="lesson-editor-nav-name">{{ previewNextCheckpoint ? (previewNextCheckpoint.title || previewNextCheckpoint.name) : 'End of path' }}</span>
+              </button>
+            </footer>
           </div>
         </div>
-
-        <div class="preview-modal-footer preview-modal-footer--studio">
-          <span v-if="previewInlineNotice" class="preview-inline-notice" role="status">
-            {{ previewInlineNotice }}
-          </span>
-          <span v-if="previewSaveError" class="preview-save-error">{{ previewSaveError }}</span>
-          <span v-if="hasStagedDraft" class="preview-draft-note">
-            Staged draft — students still see the currently published version.
-          </span>
-          <button type="button" class="btn-outline-action" @click="closeStudentPreview">
-            Cancel
-          </button>
-          <button 
-            type="button" 
-            class="btn-primary-action btn-save-preview-edits" 
-            :disabled="isSavingPreviewEdits || !previewHasUnsavedEdits"
-            @click="saveStudentPreviewEdits"
-          >
-            {{ isSavingPreviewEdits ? 'Saving...' : 'Save Draft' }}
-          </button>
-        </div>
       </div>
-    </div>
+    </Teleport>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- MODALS: PUBLISH & EDIT COURSE                                          -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
     <!-- Publish Confirmation Dialog -->
     <div v-if="isPublishModalOpen" class="modal-overlay" @click.self="isPublishModalOpen = false">
@@ -2056,7 +2162,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
 import CheckpointContentView from '../../../components/CheckpointContentView.vue';
@@ -2749,12 +2855,20 @@ function returnToIntake() {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  // Never leave the page locked if the Studio unmounts mid-edit.
+  document.body.style.overflow = '';
+});
+
+// The full-screen editor covers the whole app, so the page behind it must not
+// scroll (otherwise the sidebar scrolls under the overlay on wheel/touch).
+watch(isPreviewOpen, open => {
+  document.body.style.overflow = open ? 'hidden' : '';
 });
 
 function handleKeydown(e) {
   if (e.key === 'Escape') {
     if (isPublishModalOpen.value) isPublishModalOpen.value = false;
-    else if (isPreviewOpen.value) isPreviewOpen.value = false;
+    else if (isPreviewOpen.value) closeStudentPreview();
     else if (isEditCourseModalOpen.value) isEditCourseModalOpen.value = false;
   }
 }
@@ -3223,7 +3337,69 @@ const previewHasUnsavedEdits = ref(false);
 const isSavingPreviewEdits = ref(false);
 const previewSaveError = ref('');
 const previewedCheckpointId = ref(null);
-const previewRendererRef = ref(null);
+const isPreviewPathOpen = ref(false);
+const previewScrollRef = ref(null);
+
+/** Course/module title shown in the editor top bar. */
+const previewCourseTitle = computed(
+  () => props.activeCourse?.title || previewProposalData.value?.title || 'Module Studio'
+);
+
+/** Index of the lesson being edited inside the flat lesson path. */
+const previewCheckpointIndex = computed(() => {
+  const lesson = previewingLesson.value;
+  if (!lesson) return -1;
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  return previewAllCheckpoints.value.findIndex(
+    cp => (cp.id ?? cp.title) === (targetId ?? lesson.title) ||
+          cp.title === (lesson.title || lesson.name)
+  );
+});
+
+const previewPrevCheckpoint = computed(() => {
+  const idx = previewCheckpointIndex.value;
+  return idx > 0 ? previewAllCheckpoints.value[idx - 1] : null;
+});
+
+const previewNextCheckpoint = computed(() => {
+  const idx = previewCheckpointIndex.value;
+  return idx >= 0 && idx < previewAllCheckpoints.value.length - 1
+    ? previewAllCheckpoints.value[idx + 1]
+    : null;
+});
+
+const previewCheckpointPosition = computed(() =>
+  previewCheckpointIndex.value >= 0 ? previewCheckpointIndex.value + 1 : 0
+);
+
+/** 1-based position of a lesson in the full path (0 when not found). */
+function previewCheckpointNumber(cp) {
+  const idx = previewAllCheckpoints.value.findIndex(
+    item => item === cp || (item.id ?? item.title) === (cp.id ?? cp.title)
+  );
+  return idx >= 0 ? idx + 1 : '';
+}
+
+function isPreviewingCheckpoint(cp) {
+  if (!cp) return false;
+  const lesson = previewingLesson.value;
+  if (!lesson) return false;
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  return (cp.id ?? cp.title) === (targetId ?? lesson.title) ||
+         cp.title === (lesson.title || lesson.name);
+}
+
+/** Switches lessons without closing the editor, keeping buffered edits intact. */
+function goToPreviewCheckpoint(cp) {
+  if (!cp) return;
+  previewedCheckpointId.value = cp.id ?? null;
+  previewingLesson.value = cp;
+  // New lesson starts at the top of the document.
+  nextTick(() => {
+    const scroller = previewScrollRef.value;
+    if (scroller && scroller.scrollTo) scroller.scrollTo({ top: 0, behavior: 'auto' });
+  });
+}
 
 const previewModules = computed(() => {
   const data = previewProposalData.value;
@@ -3328,6 +3504,44 @@ const previewCheckpointData = computed(() => {
   };
 });
 
+/**
+ * The lesson path grouped the way the module outline presents it: one group per
+ * module (falling back to the flat learning_nodes list), each with its lessons.
+ * Used by the editor's node rail.
+ */
+const previewPathGroups = computed(() => {
+  const data = previewProposalData.value;
+  const seen = new Set();
+  const take = list => {
+    const out = [];
+    for (const cp of list || []) {
+      if (!cp) continue;
+      const key = String(cp.id ?? cp.title ?? cp.name ?? '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(cp);
+    }
+    return out;
+  };
+
+  const groups = [];
+  const modules = Array.isArray(data?.modules) ? data.modules : [];
+  for (const mod of modules) {
+    const lessons = take(mod.checkpoints);
+    if (lessons.length > 0) groups.push({ key: mod.id || mod.title, title: mod.title, lessons });
+  }
+  // Any learning_nodes the modules list did not cover (legacy proposals).
+  const leftovers = take(data?.learning_nodes);
+  if (leftovers.length > 0) {
+    groups.push({
+      key: 'preview-path-learning-nodes',
+      title: groups.length > 0 ? (data?.title || 'Additional lessons') : (data?.title || 'Lesson path'),
+      lessons: leftovers,
+    });
+  }
+  return groups;
+});
+
 // The renderer's toast channel belongs to the student workspace shell; in the
 // Studio preview we surface the same message inline instead.
 const previewInlineNotice = ref('');
@@ -3343,14 +3557,17 @@ function previewNotice(message) {
 }
 
 function openStudentPreview(lesson = null) {
+  if (!isPreviewOpen.value) {
+    // A fresh editor session always starts from the saved proposal (no stale edits).
+    previewEditBuffer.value = null;
+    previewHasUnsavedEdits.value = false;
+    isPreviewPathOpen.value = false;
+  }
   isPreviewOpen.value = true;
   previewSaveError.value = '';
   previewInlineNotice.value = '';
   previewedCheckpointId.value = lesson?.id ?? null;
   previewingLesson.value = lesson;
-  // A fresh preview session always starts from the saved proposal (no stale edits).
-  previewEditBuffer.value = null;
-  previewHasUnsavedEdits.value = false;
 }
 
 function backToPreviewRoadmap() {
@@ -3364,6 +3581,7 @@ function closeStudentPreview() {
   isPreviewOpen.value = false;
   previewingLesson.value = null;
   previewedCheckpointId.value = null;
+  isPreviewPathOpen.value = false;
   previewEditBuffer.value = null;
   previewHasUnsavedEdits.value = false;
   previewSaveError.value = '';
@@ -5014,7 +5232,6 @@ function saveCourseDetails() {
   padding: 20px;
 }
 
-.preview-modal-card,
 .publish-confirm-dialog,
 .edit-course-modal {
   background: #ffffff;
@@ -5036,7 +5253,6 @@ function saveCourseDetails() {
   max-width: 600px;
 }
 
-.preview-modal-header,
 .publish-dialog-header,
 .modal-header {
   padding: 18px 24px;
@@ -5046,20 +5262,10 @@ function saveCourseDetails() {
   justify-content: space-between;
 }
 
-.preview-course-title,
 .publish-dialog-title {
   margin: 4px 0 0 0;
   font-size: 18px;
   font-weight: 800;
-}
-
-.badge-preview-pill {
-  font-size: 10px;
-  font-weight: 800;
-  background: #eff6ff;
-  color: #1d4ed8;
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .btn-close-modal {
@@ -5070,14 +5276,12 @@ function saveCourseDetails() {
   cursor: pointer;
 }
 
-.preview-modal-body,
 .publish-dialog-body,
 .modal-body {
   padding: 24px;
   overflow-y: auto;
 }
 
-.preview-modal-footer,
 .publish-dialog-footer,
 .modal-footer {
   padding: 16px 24px;
@@ -5088,129 +5292,648 @@ function saveCourseDetails() {
   background: #f8fafc;
 }
 
-/* ── Student Preview (embedded shared renderer + inline editing) ─────────── */
-.preview-modal-card--studio {
-  max-width: 1180px;
-  width: calc(100vw - 48px);
-  height: 90vh;
-  height: min(90vh, 900px);
-}
-
-.preview-modal-body--studio {
-  padding: 0;
-  overflow: hidden;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  background: #f8fafc;
-}
-
-.preview-modal-body--studio .sim-modules-catalog {
-  padding: 24px;
-  overflow-y: auto;
-  width: 100%;
-}
-
-.preview-modal-body--studio .sim-lesson-preview {
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* FULL-SCREEN LESSON EDITOR                                                  */
+/* A viewport-filling document surface, not a centered modal card.            */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+.lesson-editor-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  min-height: 0;
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  background: #f7f8fa;
+  color: #0f172a;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
 }
 
-.sim-lesson-toolbar {
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.lesson-editor-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 10px 18px;
+  background: #ffffff;
+  border-bottom: 1px solid #e6eaf0;
+}
+
+.lesson-editor-topbar-left {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 18px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
+  min-width: 0;
+}
+
+.lesson-editor-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-shrink: 0;
 }
 
-.btn-preview-back {
-  padding: 5px 12px;
-  font-size: 12px;
-}
-
-.sim-lesson-toolbar-note {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #b45309;
-}
-
-.sim-lesson-content-view--student {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding: 16px 20px 0;
-  background: #f8fafc;
-}
-
-/* The embedded student renderer owns the scroll region, exactly as in production. */
-.sim-lesson-content-view--student :deep(.checkpoint-page-container) {
-  height: 100%;
-}
-
-.preview-modal-footer--studio {
+.lesson-editor-icon-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-}
-
-/* One growing status slot, then the Cancel / Save Draft actions on the right. */
-.preview-modal-footer--studio > span {
-  flex: 0 1 auto;
-}
-
-.preview-modal-footer--studio > span:first-child {
-  margin-right: auto;
-}
-
-.preview-inline-notice {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #15803d;
-}
-
-.preview-save-error {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #b91c1c;
-}
-
-.preview-draft-note {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #b45309;
-}
-
-.btn-save-preview-edits {
-  background: #ff6b00;
-}
-
-.btn-save-preview-edits:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sim-cp-button {
-  width: 100%;
-  text-align: left;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: 6px;
-  padding: 4px 6px;
-  font-size: 12px;
-  font-family: inherit;
-  color: #334155;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid #e6eaf0;
+  background: #ffffff;
+  color: #475569;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.sim-cp-button:hover {
+.lesson-editor-icon-btn:hover {
   background: #fff7ed;
   border-color: #fed7aa;
+  color: var(--risse-orange-active, #c2410c);
+}
+
+.lesson-editor-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lesson-editor-crumb {
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34vw;
+}
+
+.lesson-editor-crumb:hover {
+  color: var(--risse-orange-hover, #ea580c);
+}
+
+.lesson-editor-crumb-sep {
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.lesson-editor-crumb--root {
+  color: #94a3b8;
+  font-weight: 600;
+  cursor: default;
+  max-width: 22vw;
+}
+
+.lesson-editor-crumb--current {
+  color: #0f172a;
+  font-weight: 700;
+  cursor: default;
+  max-width: 34vw;
+}
+
+.lesson-editor-crumb:disabled {
+  cursor: default;
+}
+
+.lesson-editor-unsaved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+.lesson-editor-unsaved-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  animation: lessonEditorPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes lessonEditorPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.lesson-editor-staged {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.lesson-editor-path-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid #e6eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.lesson-editor-path-toggle:hover {
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.lesson-editor-path-toggle.is-active {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: var(--risse-orange-active, #c2410c);
+}
+
+.lesson-editor-btn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.lesson-editor-btn--ghost {
+  border: 1px solid #e6eaf0;
+  background: #ffffff;
+  color: #475569;
+}
+
+.lesson-editor-btn--ghost:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.lesson-editor-btn--primary {
+  border: none;
+  background: linear-gradient(135deg, var(--risse-orange, #ff7a00), var(--risse-orange-hover, #ea580c));
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(255, 122, 0, 0.24);
+}
+
+.lesson-editor-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff8c1a, var(--risse-orange-hover, #f97316));
+}
+
+.lesson-editor-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ── Status line ─────────────────────────────────────────────────────────── */
+.lesson-editor-status {
+  margin: 0;
+  padding: 8px 20px;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #15803d;
+  background: #f0fdf4;
+  border-bottom: 1px solid #dcfce7;
+}
+
+.lesson-editor-status.is-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-bottom-color: #fee2e2;
+}
+
+/* ── Body: rail + document ───────────────────────────────────────────────── */
+.lesson-editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.lesson-editor-rail {
+  width: 268px;
+  flex-shrink: 0;
+  border-right: 1px solid #e6eaf0;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lesson-editor-rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 18px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.lesson-editor-rail-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.lesson-editor-rail-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.lesson-editor-rail-list {
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.lesson-editor-rail-group {
+  margin-bottom: 14px;
+}
+
+.lesson-editor-rail-group:last-child {
+  margin-bottom: 0;
+}
+
+.lesson-editor-rail-group-title {
+  margin: 4px 8px 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.lesson-editor-rail-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lesson-editor-rail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #475569;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.lesson-editor-rail-item:hover {
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.lesson-editor-rail-item.is-current {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: var(--risse-orange-active, #c2410c);
+}
+
+.lesson-editor-rail-index {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.lesson-editor-rail-item.is-current .lesson-editor-rail-index {
+  background: #ffedd5;
   color: #c2410c;
+}
+
+.lesson-editor-rail-label {
+  overflow-wrap: anywhere;
+}
+
+/* ── Outline (no lesson chosen) ──────────────────────────────────────────── */
+.lesson-editor-outline {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 40px 32px 56px;
+}
+
+.lesson-editor-outline-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  color: #0f172a;
+  margin: 0 auto 8px;
+  max-width: 1120px;
+}
+
+.lesson-editor-outline-sub {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #64748b;
+  margin: 0 auto 28px;
+  max-width: 1120px;
+}
+
+.lesson-editor-outline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+  max-width: 1120px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.lesson-editor-outline-card {
+  background: #ffffff;
+  border: 1px solid #e8edf4;
+  border-radius: 12px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.lesson-editor-outline-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.lesson-editor-outline-card-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: #0f172a;
+  margin: 0;
+}
+
+.lesson-editor-outline-card-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.lesson-editor-outline-card-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #64748b;
+  margin: 0 0 14px;
+}
+
+.lesson-editor-outline-lessons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lesson-editor-outline-lesson {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.lesson-editor-outline-lesson:hover {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: var(--risse-orange-active, #c2410c);
+}
+
+.lesson-editor-outline-lesson-icon {
+  flex-shrink: 0;
+}
+
+.lesson-editor-outline-lesson-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lesson-editor-outline-lesson-go {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.lesson-editor-outline-lesson:hover .lesson-editor-outline-lesson-go {
+  color: var(--risse-orange-hover, #ea580c);
+}
+
+/* ── Document ────────────────────────────────────────────────────────────── */
+.lesson-editor-document {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lesson-editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Horizontal padding only; the document centres itself in the remaining width. */
+  padding: 34px 40px 12px;
+  scroll-behavior: smooth;
+  scroll-padding-top: 16px;
+}
+
+/*
+ * The shared renderer reports document mode itself (`--tutor-hidden`), so this
+ * scroller is the only scroll container in the editor.
+ */
+.lesson-editor-scroll :deep(.checkpoint-page-container) {
+  min-height: 100%;
+}
+
+/* ── Previous / Next ─────────────────────────────────────────────────────── */
+.lesson-editor-lesson-nav {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 40px;
+  background: #ffffff;
+  border-top: 1px solid #e6eaf0;
+}
+
+.lesson-editor-btn--nav {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  height: auto;
+  min-width: 0;
+  max-width: 38%;
+  padding: 8px 14px;
+  border: 1px solid #e6eaf0;
+  background: #ffffff;
+  color: #334155;
+  text-align: left;
+}
+
+.lesson-editor-btn--nav:hover:not(:disabled) {
+  border-color: #fed7aa;
+  background: #fffaf5;
+}
+
+.lesson-editor-btn--nav-next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.lesson-editor-nav-dir {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.lesson-editor-nav-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.lesson-editor-nav-position {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+/* ── Responsive: keep the lesson usable on smaller screens ───────────────── */
+@media (max-width: 1100px) {
+  .lesson-editor-scroll {
+    padding: 24px 24px 8px;
+  }
+
+  .lesson-editor-lesson-nav {
+    padding: 10px 24px;
+  }
+
+  .lesson-editor-rail {
+    width: 224px;
+  }
+}
+
+@media (max-width: 820px) {
+  .lesson-editor-topbar {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .lesson-editor-staged,
+  .lesson-editor-unsaved {
+    display: none;
+  }
+
+  .lesson-editor-crumb {
+    max-width: 40vw;
+  }
+
+  /* The rail becomes an overlay drawer so the document keeps full width. */
+  .lesson-editor-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    width: min(84vw, 300px);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  }
+
+  .lesson-editor-body {
+    position: relative;
+  }
+
+  .lesson-editor-outline {
+    padding: 24px 16px 40px;
+  }
+
+  .lesson-editor-outline-title {
+    font-size: 23px;
+  }
+
+  .lesson-editor-outline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-editor-scroll {
+    padding: 16px 14px 8px;
+  }
+
+  .lesson-editor-lesson-nav {
+    padding: 10px 14px;
+  }
+
+  .lesson-editor-nav-name {
+    display: none;
+  }
 }
 
 .btn-confirm-publish {
