@@ -1885,6 +1885,23 @@
                 <span>{{ layoutModeEnabled ? 'Layout Mode On' : 'Layout Mode' }}</span>
               </button>
 
+              <!-- Tutor visibility sits outside the Layout Mode branch: a teacher
+                   may want to preview the student layout without arranging. -->
+              <button
+                type="button"
+                class="lesson-editor-layout-btn"
+                :class="{ 'is-active': showTutorInEditor }"
+                :aria-pressed="showTutorInEditor"
+                @click="toggleTutorInEditor"
+                :title="showTutorInEditor ? 'Hide the AI Tutor to see the full-width layout' : 'Show the AI Tutor to preview the student layout'"
+                id="btn-toggle-editor-tutor"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>{{ showTutorInEditor ? 'AI Tutor On' : 'AI Tutor Off' }}</span>
+              </button>
+
               <template v-if="layoutModeEnabled">
                 <button
                   type="button"
@@ -2073,6 +2090,7 @@
                 :preview-mode="true"
                 :layout-mode="layoutModeEnabled"
                 :snap-to-grid="snapToGridEnabled"
+                :show-tutor="showTutorInEditor"
                 @notify="previewNotice"
                 @update-lesson-content="handlePreviewLessonUpdate"
                 @update-block-layout="handlePreviewBlockLayout"
@@ -3989,6 +4007,29 @@ function redoLayout() {
 // ── Layout Mode controls ───────────────────────────────────────────────────
 const layoutModeEnabled = ref(false);
 const snapToGridEnabled = ref(false);
+
+/**
+ * Whether the editor previews the lesson with the Risse AI tutor beside it.
+ * Students always have the tutor, so this only controls the teacher's view of
+ * the real student layout. Persisted because it is a workspace preference, not
+ * a per-lesson edit (it changes nothing that gets saved).
+ */
+const TUTOR_PREF_KEY = 'risse_editor_show_tutor';
+const showTutorInEditor = ref(
+  typeof localStorage !== 'undefined' ? localStorage.getItem(TUTOR_PREF_KEY) !== 'false' : true
+);
+
+function toggleTutorInEditor() {
+  showTutorInEditor.value = !showTutorInEditor.value;
+  try {
+    localStorage.setItem(TUTOR_PREF_KEY, String(showTutorInEditor.value));
+  } catch (_) {}
+  previewNotice(
+    showTutorInEditor.value
+      ? 'AI Tutor shown — this is the student layout.'
+      : 'AI Tutor hidden — the lesson uses the full width.'
+  );
+}
 
 /** True when the previewed lesson has any custom layout worth resetting. */
 /** Reads the arrangement from whatever is currently on screen (buffer or saved). */

@@ -3,7 +3,12 @@
     class="checkpoint-page-container"
     :class="{
       'is-chat-maximized': isChatMaximized,
+      // Document typography + no student chrome. Driven by previewMode, not by
+      // whether the tutor column happens to be visible.
       'checkpoint-page-container--tutor-hidden': previewMode,
+      // The tutor column itself. Teachers can toggle it in the editor so they
+      // can see the real student layout; students always have it.
+      'checkpoint-page-container--tutor-visible': tutorColumnVisible,
       'is-resizing': Boolean(activeResize),
       'is-moving': Boolean(activeDrag),
     }"
@@ -117,7 +122,11 @@
           ref="canvasRef"
           class="lesson-blocks-stream"
           :class="{
-            'is-layout-canvas': layoutModeActive || hasAnyPinnedBlock(),
+            // Always a positioning context while the editor can arrange blocks.
+            // Previously this was only true once something was already pinned,
+            // so the first grab measured against a different containing block
+            // and the block landed offset by the stream's top edge.
+            'is-layout-canvas': canResizeBlocks.value,
             'is-layout-mode': layoutModeActive,
             'is-dragging-block': Boolean(activeDrag),
           }"
@@ -707,7 +716,7 @@
     <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text) -->
     <!-- Teacher Preview removes the tutor entirely so the lesson owns the width. -->
     <aside
-      v-if="!previewMode"
+      v-if="tutorColumnVisible"
       class="chatbot-panel-card" 
       :class="{ 'chatbot-panel-card--maximized': isChatMaximized }"
       aria-label="Risse AI Chat Assistant"
@@ -925,6 +934,16 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  /**
+   * Teacher editor only: show the Risse AI tutor column so the layout can be
+   * previewed the way students will see it. The tutor is never *usable* in
+   * preview (sendMessage refuses), it is only rendered for layout parity.
+   * Students always get the tutor; this prop is ignored for them.
+   */
+  showTutor: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 const emit = defineEmits([
@@ -1125,6 +1144,20 @@ function endBlockResize() {
 
 /** Layout Mode gate. Owned by the editor, mirrored here for rendering. */
 const layoutModeActive = computed(() => canResizeBlocks.value && Boolean(props.layoutMode));
+
+/**
+ * Whether the Risse AI column is rendered.
+ *  - Students always see it (props.showTutor defaults to true and they never
+ *    pass the prop).
+ *  - In the teacher editor it is opt-in, so a mentor can preview the lesson
+ *    both with and without the tutor beside it.
+ * Being *visible* never means being *usable*: sendMessage() refuses to call
+ * the model in preview mode.
+ */
+const tutorColumnVisible = computed(() => {
+  if (!props.previewMode) return true;
+  return Boolean(props.showTutor);
+});
 const snapToGridEnabled = computed(() => Boolean(props.snapToGrid));
 
 /** The block currently being dragged: pointer bookkeeping + live offsets. */
@@ -1271,8 +1304,26 @@ function applyDragFrame() {
   if (!drag.moved && Math.hypot(dx, dy) < DRAG_START_THRESHOLD) return;
   drag.moved = true;
 
-  let left = drag.originLeft + dx;
-  let top = drag.originTop + dy;
+  /*
+   * Anchor the block to the POINTER, not to a remembered offset.
+   *
+   * The pointer grabbed the block `grabX/grabY` inside its box. Re-deriving the
+   * position from the live pointer means the block sits exactly under the cursor
+   * even if the canvas scrolled, the sidebar collapsed, or the containing block
+   * changed between pointerdown and the first move. A stored origin + delta
+   * silently drifts in all of those cases (that is what caused the block to
+   * jump far below the cursor).
+   */
+  const canvasRect = canvasEl()?.getBoundingClientRect();
+  if (canvasRect) {
+    // Keep the measurements current for bounds and guide maths.
+    drag.canvasWidth = canvasRect.width;
+    drag.originLeft = drag.lastX - drag.grabX - canvasRect.left;
+    drag.originTop = drag.lastY - drag.grabY - canvasRect.top;
+  }
+
+  let left = drag.originLeft;
+  let top = drag.originTop;
 
   // ── canvas bounds: the block can never leave the visible workspace ──
   left = clampOffset(left, drag.width, drag.canvasWidth);
@@ -2210,12 +2261,50 @@ function formatMessageText(text) {
  * not collapsed to an empty column — so the lesson owns the full width.
  */
 .checkpoint-page-container--tutor-hidden {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
   /* Document mode: the host (full-screen editor) owns scrolling. */
   height: auto;
   min-height: 100%;
   overflow: visible;
+}
+
+/*
+ * The tutor column is a SEPARATE decision from document styling.
+ *
+ * previewMode implies a single-column document, but when the teacher opts to
+ * preview the student layout we must go back to two columns — otherwise the
+ * AI panel would render *under* the lesson instead of beside it.
+ */
+.checkpoint-page-container--tutor-hidden:not(.checkpoint-page-container--tutor-visible) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.checkpoint-page-container--tutor-hidden.checkpoint-page-container--tutor-visible {
+  grid-template-columns: minmax(0, 1fr) 410px;
+  gap: 28px;
+  /* The tutor is a fixed-height dashboard panel, so this mode scrolls inside
+     the main column rather than letting the whole document grow. */
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* With the tutor beside it, the lesson keeps its own scroll region. */
+.checkpoint-page-container--tutor-hidden.checkpoint-page-container--tutor-visible .checkpoint-main-column {
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+}
+
+/*
+ * Teacher preview keeps the tutor visible but inert; make that legible instead
+ * of letting it look like a working chat that silently refuses to reply.
+ */
+.checkpoint-page-container--tutor-hidden.checkpoint-page-container--tutor-visible .chatbot-panel-card {
+  position: relative;
 }
 
 .checkpoint-page-container--tutor-hidden .checkpoint-main-column {
