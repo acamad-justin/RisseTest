@@ -779,11 +779,11 @@
             type="button" 
             id="btn-approve-publish"
             class="btn-footer-action btn-publish"
-            :disabled="isPublishing || (isPublished && !hasStagedDraft)"
+            :disabled="isPublishing || (isPublished && !hasPendingPublish)"
             @click="openPublishModal"
           >
             <span v-if="isPublishing">Publishing...</span>
-            <span v-else-if="isPublished && hasStagedDraft">Publish Staged Draft</span>
+            <span v-else-if="isPublished && hasPendingPublish">Publish Updates</span>
             <span v-else-if="isPublished">✓ Published to Students</span>
             <span v-else>Publish Module</span>
           </button>
@@ -2914,6 +2914,24 @@ const isApproved = computed(() => {
 const isPublished = computed(() => {
   return props.proposal?.status === 'published' || props.activeCourse?.status === 'published';
 });
+
+/**
+ * A published module parks teacher edits in `proposal_data.unpublished_draft`
+ * until they are promoted, so publishing again is a real, distinct action.
+ *
+ * This binding was referenced by the publish button but never declared: Vue
+ * resolves an unknown template identifier to `undefined`, so it was permanently
+ * falsy. That left the button disabled and labelled "Published to Students" even
+ * with edits waiting — the only way to ship them was to unpublish and publish
+ * again, which is exactly what happened.
+ */
+const hasStagedDraft = computed(() => {
+  const staged = props.proposal?.proposal_data?.unpublished_draft;
+  return Boolean(staged && typeof staged === 'object');
+});
+
+/** There is content to publish: a saved staged draft, or unsaved editor changes. */
+const hasPendingPublish = computed(() => hasStagedDraft.value || isDirty.value);
 
 function formatStatus(status) {
   if (status === 'published') return 'Published';
