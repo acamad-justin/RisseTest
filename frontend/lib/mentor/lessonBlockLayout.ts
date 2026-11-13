@@ -235,7 +235,7 @@ export function hasCustomLayout(block: any): boolean {
 export function blockPositionStyle(block: any): Record<string, string> {
   const position = readBlockPosition(block);
   if (!position) return {};
-  const { width } = readBlockLayout(block);
+  const { width, height } = readBlockLayout(block);
 
   const style: Record<string, string> = {
     left: `${position.x}%`,
@@ -245,6 +245,9 @@ export function blockPositionStyle(block: any): Record<string, string> {
     style.width = `${width}px`;
     style.maxWidth = `${width}px`;
   }
+  // Without this a pinned block would lose the height the teacher set: the
+  // absolute box sizes to content instead of honouring the stored dimension.
+  if (height != null) style.height = `${height}px`;
   if (position.order != null) style.zIndex = String(1 + position.order);
   return style;
 }

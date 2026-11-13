@@ -1423,15 +1423,18 @@ const canvasStyle = computed(() => {
   return { minHeight: `${canvasMinHeight.value}px` };
 });
 
-// Re-measure whenever the arrangement, the lesson, or the viewport changes.
-watch(
-  () => currentBlocks.value.map(b => JSON.stringify(b?.metadata?.layout || null)).join('|'),
-  () => nextTick(recomputeCanvasHeight)
-);
-watch(() => activeDrag.value, () => nextTick(recomputeCanvasHeight));
+// Re-measure when the arrangement changes. Registered in onMounted rather than
+// at the top level: a watcher getter is evaluated immediately, and `currentBlocks`
+// reads `activeLessonData`, which is declared further down this file. Touching it
+// during setup threw a ReferenceError and left the whole lesson blank.
 onMounted(() => {
   nextTick(recomputeCanvasHeight);
   window.addEventListener('resize', recomputeCanvasHeight);
+  watch(
+    () => currentBlocks.value.map(b => JSON.stringify(b?.metadata?.layout || null)).join('|'),
+    () => nextTick(recomputeCanvasHeight)
+  );
+  watch(() => activeDrag.value, () => nextTick(recomputeCanvasHeight));
 });
 onBeforeUnmount(() => {
   window.removeEventListener('resize', recomputeCanvasHeight);
