@@ -1866,8 +1866,12 @@
           :aria-pressed="!mentorSidebarCollapsed"
           @click="toggleMentorSidebar"
           :title="mentorSidebarCollapsed ? 'Show the student sidebar' : 'Hide the student sidebar'"
+          aria-label="Toggle the student sidebar"
           id="btn-toggle-editor-sidebar"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
+          </svg>
           <span>Sidebar</span>
         </button>
 
@@ -1880,8 +1884,12 @@
           :aria-pressed="layoutModeEnabled"
           @click="layoutModeEnabled = !layoutModeEnabled"
           title="Drag blocks by their handle; arrow keys nudge the selected block"
+          aria-label="Toggle layout mode for positioning blocks"
           id="btn-toggle-layout-mode"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />
+          </svg>
           <span>Layout</span>
         </button>
 
@@ -1893,6 +1901,7 @@
             :aria-pressed="snapToGridEnabled"
             @click="snapToGridEnabled = !snapToGridEnabled"
             title="Snap dragged blocks to an 8px grid"
+            aria-label="Snap dragged blocks to an 8px grid"
             id="btn-toggle-snap-grid"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -6334,20 +6343,37 @@ function saveCourseDetails() {
   min-height: 0;
 }
 
+/*
+ * One toolbar. Controls are overlays, never layout: every cluster is `fixed`
+ * (out of flow) so showing or hiding it cannot move the lesson by a pixel.
+ */
 .float-cluster {
   position: fixed;
   z-index: 60;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.13);
-  backdrop-filter: blur(10px);
-  
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.9);
+  /* Two-tier shadow: a crisp edge plus a soft lift. Reads as a surface without
+     competing with the lesson content underneath. */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06),
+              0 8px 24px -6px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px) saturate(140%);
+  /* Edge safety: never wider than the workspace, wraps instead of clipping. */
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
   pointer-events: auto;
+  transition: box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.float-cluster:hover,
+.float-cluster:focus-within {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08),
+              0 14px 34px -8px rgba(15, 23, 42, 0.22);
 }
 
 .float-cluster--top-left {
@@ -6406,23 +6432,28 @@ function saveCourseDetails() {
 .float-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 11px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #334155;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Resting state is quiet; the surface appears on interaction. */
 .float-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #1e293b;
 }
 
 .float-btn.is-active {
@@ -6431,9 +6462,23 @@ function saveCourseDetails() {
   color: #c2410c;
 }
 
+.float-btn.is-active:hover:not(:disabled) {
+  background: #ffedd5;
+}
+
+/* Disabled reads as unavailable, not merely faded: no hover, no pointer. */
 .float-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
+  background: transparent;
+  border-color: transparent;
+  color: #94a3b8;
+}
+
+/* Keyboard focus must be obvious — these controls are the only way to edit. */
+.float-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #f97316;
 }
 
 .float-btn--sm {
@@ -6442,7 +6487,8 @@ function saveCourseDetails() {
 }
 
 .float-btn--icon {
-  padding: 5px 7px;
+  width: 28px;
+  padding: 0;
 }
 
 .float-btn--ghost {
@@ -6485,6 +6531,35 @@ function saveCourseDetails() {
   font-weight: 700;
   color: #b45309;
   white-space: nowrap;
+}
+
+/*
+ * Smaller workspaces: the two top clusters would meet in the middle and cover
+ * the lesson header, so the student-view cluster drops to the bottom edge and
+ * the labels collapse to icons. Nothing is placed inside the lesson flow.
+ */
+@media (max-width: 1180px) {
+  .float-cluster--top-right {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+  }
+  .float-cluster--bottom-center {
+    left: 12px;
+    transform: none;
+  }
+  .float-label {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .float-btn span {
+    display: none; /* icon-only; every control keeps title + aria-label */
+  }
+  .float-btn {
+    padding: 0 7px;
+  }
 }
 
 .float-unsaved-dot {
