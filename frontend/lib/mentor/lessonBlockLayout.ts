@@ -232,7 +232,9 @@ export function hasCustomLayout(block: any): boolean {
  *
  * `width` is emitted alongside `maxWidth` because an absolutely-positioned box
  * shrink-wraps its content; without an explicit width a pinned block would
- * collapse. Keeping `maxWidth` too means the responsive cap still applies.
+ * collapse. `maxWidth` is the responsive cap: it keeps the stored size while a
+ * canvas narrower than the block still shrinks it, so a pinned block can never
+ * render outside the lesson column.
  */
 export function blockPositionStyle(block: any): Record<string, string> {
   const position = readBlockPosition(block);
@@ -244,8 +246,23 @@ export function blockPositionStyle(block: any): Record<string, string> {
     top: `${position.y}px`,
   };
   if (width != null) {
+    // Keep the authored footprint, but cap it to the canvas.
+    //
+    // `width` is an absolute px value recorded against whatever canvas the block
+    // was positioned on. The lesson column is narrower than that canvas as soon
+    // as the tutor docks beside it, and an absolute `width` guarded by an equal
+    // `max-width` has nothing to shrink against — the block then renders wider
+    // than the column, overflows it, and is clipped underneath the tutor. This
+    // is the one path that emitted a hard width; `blockLayoutStyle` (in-flow)
+    // already caps with `max-width` only, for exactly this reason.
+    //
+    // The cap is measured against the positioned canvas, so a block that fits
+    // keeps its stored size and one that does not shrinks to the column. The
+    // block's own offset is subtracted because it is positioned from that
+    // offset: capping at a flat 100% would still let a block shifted to the
+    // right hang off the edge.
     style.width = `${width}px`;
-    style.maxWidth = `${width}px`;
+    style.maxWidth = `calc(100% - ${position.x}%)`;
   }
   // Same reasoning as the in-flow case: min-height keeps the teacher's height
   // without trapping content in an inner scroller.
