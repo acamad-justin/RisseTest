@@ -2000,6 +2000,7 @@
         :show-tutor="showTutorInEditor"
         @notify="previewNotice"
         @back="closeStudentPreview"
+        @select-checkpoint="handlePreviewSelectCheckpoint"
         @update-lesson-content="handlePreviewLessonUpdate"
         @update-block-layout="handlePreviewBlockLayout"
       />
@@ -3545,6 +3546,22 @@ function previewNotice(message) {
   }, 4000);
 }
 
+/**
+ * The teacher opened a lesson from the module's own roadmap.
+ *
+ * The module owns navigation (that is the point of previewing the real thing),
+ * so the designer has to follow it: it keeps `previewingLesson` pointing at the
+ * lesson actually on screen. Every content/layout edit is written through that
+ * reference, so leaving it null silently discarded each resize and drag.
+ */
+function handlePreviewSelectCheckpoint(cp) {
+  if (!cp) return;
+  previewedCheckpointId.value = cp.id ?? null;
+  // Adopt the buffered copy when one exists so pending edits are never replaced
+  // by the saved proposal's version of the same lesson.
+  previewingLesson.value = lessonTwins(cp)[0] || cp;
+}
+
 function openStudentPreview(lesson = null) {
   if (!isPreviewOpen.value) {
     // A fresh session always starts from the saved proposal (no stale edits).
@@ -3730,12 +3747,19 @@ function ensurePreviewBuffer() {
 }
 
 /** Every copy of the lesson currently being previewed (node list + module list). */
-function lessonTwins() {
-  const lesson = previewingLesson.value;
+/**
+ * Every copy of a lesson in the buffered draft (the canonical `learning_nodes`
+ * list plus the legacy `modules[].checkpoints[]` mirror).
+ *
+ * Pass a lesson to look up a specific one; omit it to resolve the lesson that is
+ * currently being previewed. Layout/content writes must hit every twin, or a
+ * save resurrects the old arrangement on whichever path students read.
+ */
+function lessonTwins(lesson = previewingLesson.value) {
   if (!lesson) return [];
   const buffer = ensurePreviewBuffer();
 
-  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const targetId = (lesson === previewingLesson.value ? previewedCheckpointId.value : null) ?? lesson.id;
   const targetTitle = lesson.title || lesson.name;
 
   const matches = cp =>

@@ -131,17 +131,29 @@ const checkpointTitle = computed(
     'Checkpoint'
 );
 
-const checkpointData = computed(() =>
-  activeCheckpoint.value
-    ? {
-        ...activeCheckpoint.value,
-        title:
-          activeCheckpoint.value.title ||
-          activeCheckpoint.value.name ||
-          'Checkpoint',
-      }
-    : null
-);
+/**
+ * The checkpoint handed to the renderer.
+ *
+ * `activeCheckpoint` records WHICH lesson is open; the data is always re-read
+ * from the owner's `moduleData` so the renderer follows the live draft. Keeping
+ * a snapshot here meant the renderer kept showing the copy captured at
+ * navigation time, so an accepted resize or drag was immediately overwritten by
+ * that stale object on the next render.
+ */
+const checkpointData = computed(() => {
+  const active = activeCheckpoint.value;
+  if (!active) return null;
+
+  const live =
+    (props.moduleData?.checkpoints || []).find(cp =>
+      active.id != null ? cp.id === active.id : (cp.title || cp.name) === (active.title || active.name)
+    ) || active;
+
+  return {
+    ...live,
+    title: live.title || live.name || 'Checkpoint',
+  };
+});
 
 function handleSelectCheckpoint(cp) {
   activeCheckpoint.value = cp;
