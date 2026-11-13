@@ -29,8 +29,17 @@
         </div>
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
+<<<<<<< HEAD
         <div v-if="!previewMode" class="checkpoint-header-actions">
+=======
+        <div class="checkpoint-header-actions">
+          <span v-if="previewMode" class="preview-mode-pill" id="preview-mode-indicator">
+            👁️ Teacher Preview — edits are not visible to students until you save
+          </span>
+
+>>>>>>> 02fa0d1e3d63aaea73b138c873f409643669db83
           <button 
+            v-if="!previewMode"
             type="button" 
             class="btn-complete-checkpoint-action" 
             :class="{ 'is-preview-disabled': previewMode }"
@@ -46,6 +55,7 @@
           </button>
 
           <button 
+            v-if="!previewMode"
             type="button" 
             class="btn-icon-control" 
             :class="{ 'is-starred': isStarred }"
@@ -103,18 +113,68 @@
         <div v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0" class="lesson-blocks-stream">
           <template v-for="(block, bIdx) in activeLessonData.blocks" :key="block.id || bIdx">
             <!-- Text Block -->
-            <div v-if="block.type === 'text'" class="lesson-section-box block-text-box">
+            <div v-if="block.type === 'text'" class="lesson-section-box block-text-box" :class="{ 'is-inline-editable': isEditable }">
               <h3 v-if="block.title" class="block-title">{{ block.title }}</h3>
-              <div class="markdown-body block-markdown" v-html="renderMarkdown(block.content)"></div>
+
+              <!-- Inline WYSIWYG editor (Mentor Module Studio preview only) -->
+              <LessonRichTextInlineEditor
+                v-if="activeEditTarget && activeEditTarget.kind === 'block' && activeEditTarget.index === bIdx"
+                :model-value="block.content"
+                @update:model-value="onInlineEditUpdate($event, 'block', bIdx)"
+                @done="finishInlineEdit"
+              />
+
+              <template v-else>
+                <button
+                  v-if="isEditable"
+                  type="button"
+                  class="btn-inline-edit-hint"
+                  @click.stop="startInlineEdit('block', bIdx)"
+                  :title="'Click to edit this lesson text'"
+                >
+                  ✎ Edit text
+                </button>
+                <div
+                  class="markdown-body block-markdown"
+                  :class="{ 'inline-editable-surface': isEditable }"
+                  v-html="renderLessonContent(block.content)"
+                  @click="isEditable && startInlineEdit('block', bIdx)"
+                ></div>
+              </template>
             </div>
 
             <!-- Callout / Analogy Block -->
-            <div v-else-if="block.type === 'callout'" class="lesson-section-box block-callout-card" :class="{ 'is-analogy': block.analogy }">
+            <div v-else-if="block.type === 'callout'" class="lesson-section-box block-callout-card" :class="{ 'is-analogy': block.analogy, 'is-inline-editable': isEditable }">
               <div class="callout-header">
                 <span class="callout-icon">💡</span>
                 <h3 class="callout-title">{{ block.title || 'Key Principle / Analogy' }}</h3>
               </div>
-              <div class="callout-content" v-html="renderMarkdown(block.content)"></div>
+
+              <LessonRichTextInlineEditor
+                v-if="activeEditTarget && activeEditTarget.kind === 'block' && activeEditTarget.index === bIdx"
+                :model-value="block.content"
+                @update:model-value="onInlineEditUpdate($event, 'block', bIdx)"
+                @done="finishInlineEdit"
+              />
+
+              <template v-else>
+                <button
+                  v-if="isEditable"
+                  type="button"
+                  class="btn-inline-edit-hint"
+                  @click.stop="startInlineEdit('block', bIdx)"
+                  title="Click to edit this callout text"
+                >
+                  ✎ Edit text
+                </button>
+                <div
+                  class="callout-content"
+                  :class="{ 'inline-editable-surface': isEditable }"
+                  v-html="renderLessonContent(block.content)"
+                  @click="isEditable && startInlineEdit('block', bIdx)"
+                ></div>
+              </template>
+
               <div v-if="block.analogy" class="analogy-takeaway-box">
                 <span class="takeaway-label">Key Takeaway:</span>
                 <span class="takeaway-text">{{ block.analogy }}</span>
@@ -140,16 +200,40 @@
             <!-- Table Block -->
             <div v-else-if="block.type === 'table'" class="lesson-section-box block-table-card">
               <h3 v-if="block.title" class="table-title">{{ block.title }}</h3>
-              <div class="markdown-body block-markdown-table" v-html="renderMarkdown(block.content)"></div>
+              <div class="markdown-body block-markdown-table" v-html="renderLessonContent(block.content)"></div>
             </div>
 
             <!-- Activity Block -->
-            <div v-else-if="block.type === 'activity'" class="lesson-section-box block-activity-card">
+            <div v-else-if="block.type === 'activity'" class="lesson-section-box block-activity-card" :class="{ 'is-inline-editable': isEditable }">
               <div class="activity-header">
                 <span class="activity-icon">🛠️</span>
                 <h3 class="activity-title">{{ block.title || 'Hands-on Activity' }}</h3>
               </div>
-              <div class="activity-content" v-html="renderMarkdown(block.content)"></div>
+
+              <LessonRichTextInlineEditor
+                v-if="activeEditTarget && activeEditTarget.kind === 'block' && activeEditTarget.index === bIdx"
+                :model-value="block.content"
+                @update:model-value="onInlineEditUpdate($event, 'block', bIdx)"
+                @done="finishInlineEdit"
+              />
+
+              <template v-else>
+                <button
+                  v-if="isEditable"
+                  type="button"
+                  class="btn-inline-edit-hint"
+                  @click.stop="startInlineEdit('block', bIdx)"
+                  title="Click to edit this activity text"
+                >
+                  ✎ Edit text
+                </button>
+                <div
+                  class="activity-content"
+                  :class="{ 'inline-editable-surface': isEditable }"
+                  v-html="renderLessonContent(block.content)"
+                  @click="isEditable && startInlineEdit('block', bIdx)"
+                ></div>
+              </template>
             </div>
           </template>
         </div>
@@ -157,15 +241,63 @@
         <!-- Fallback Standard 8-Section Layout (When blocks are not present) -->
         <template v-else>
           <!-- 1. Introduction & Overview -->
-          <div v-if="activeLessonData.introduction" class="lesson-section-box lesson-intro-card">
+          <div v-if="activeLessonData.introduction" class="lesson-section-box lesson-intro-card" :class="{ 'is-inline-editable': isEditable }">
             <h2 class="section-title">Overview & Introduction</h2>
-            <p class="intro-text">{{ activeLessonData.introduction }}</p>
+
+            <LessonRichTextInlineEditor
+              v-if="isEditingTarget('node_content', 'introduction')"
+              :model-value="nodeContentField('introduction')"
+              @update:model-value="onInlineEditUpdate($event, 'node_content', null, 'introduction')"
+              @done="finishInlineEdit"
+            />
+
+            <template v-else>
+              <button
+                v-if="isEditable"
+                type="button"
+                class="btn-inline-edit-hint"
+                @click.stop="startInlineEdit('node_content', null, 'introduction')"
+                title="Click to edit the lesson overview"
+              >
+                ✎ Edit text
+              </button>
+              <div
+                class="intro-text"
+                :class="{ 'inline-editable-surface': isEditable }"
+                v-html="renderLessonContent(activeLessonData.introduction)"
+                @click="isEditable && startInlineEdit('node_content', null, 'introduction')"
+              ></div>
+            </template>
           </div>
 
-          <!-- 2. Core Lesson Guide (Rendered Markdown) -->
-          <div v-if="activeLessonData.coreLesson" class="lesson-section-box lesson-guide-card">
+          <!-- 2. Core Lesson Guide (Rendered Rich HTML or Legacy Markdown) -->
+          <div v-if="activeLessonData.coreLesson" class="lesson-section-box lesson-guide-card" :class="{ 'is-inline-editable': isEditable }">
             <h2 class="section-title">Instructional Guide</h2>
-            <div class="markdown-body lesson-markdown-content" v-html="renderMarkdown(activeLessonData.coreLesson)"></div>
+
+            <LessonRichTextInlineEditor
+              v-if="isEditingTarget('node_content', 'core_lesson')"
+              :model-value="nodeContentField('core_lesson')"
+              @update:model-value="onInlineEditUpdate($event, 'node_content', null, 'core_lesson')"
+              @done="finishInlineEdit"
+            />
+
+            <template v-else>
+              <button
+                v-if="isEditable"
+                type="button"
+                class="btn-inline-edit-hint"
+                @click.stop="startInlineEdit('node_content', null, 'core_lesson')"
+                title="Click to edit the instructional guide"
+              >
+                ✎ Edit text
+              </button>
+              <div
+                class="markdown-body lesson-markdown-content"
+                :class="{ 'inline-editable-surface': isEditable }"
+                v-html="renderLessonContent(activeLessonData.coreLesson)"
+                @click="isEditable && startInlineEdit('node_content', null, 'core_lesson')"
+              ></div>
+            </template>
           </div>
 
           <!-- 3. Core Concepts -->
@@ -423,7 +555,7 @@
           ref="chatInputTextarea"
           v-model="userQuery" 
           :disabled="isStreaming"
-          placeholder="Ask Risse..." 
+          :placeholder="previewMode ? 'AI Tutor is disabled in Teacher Preview' : 'Ask Risse...'" 
           class="chat-text-input chat-text-textarea" 
           id="chat-input-query"
           rows="1"
@@ -466,6 +598,8 @@ import axios from 'axios';
 import { useAuthStore } from '../stores/authStore.js';
 import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
 import { ROBOTICS_AUTHENTIC_TOPICS, evaluateAssessmentAnswer } from '../../../lib/mentor/sourceFaithfulCurriculum.ts';
+import { renderLessonRichHtml, sanitizeLessonHtml } from '../../../lib/mentor/richLessonContent.ts';
+import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
 
 const authStore = useAuthStore();
 
@@ -486,14 +620,30 @@ const props = defineProps({
     type: Object,
     default: () => null,
   },
+<<<<<<< HEAD
   // Teacher preview: read-only. Disables Complete Checkpoint and every student-record write. Students never set this.
+=======
+  /**
+   * Mentor Module Studio inline editing. When true, lesson prose becomes
+   * click-to-edit with the Word-style compact formatting toolbar.
+   * Student workspaces never set this prop.
+   */
+  editable: {
+    type: Boolean,
+    default: false,
+  },
+  /**
+   * Teacher preview mode. Suppresses student progress, mastery, checkpoint
+   * completion, star and enrollment side effects while editing in preview.
+   */
+>>>>>>> 02fa0d1e3d63aaea73b138c873f409643669db83
   previewMode: {
     type: Boolean,
     default: false,
   },
 });
 
-const emit = defineEmits(['back', 'notify', 'complete-checkpoint']);
+const emit = defineEmits(['back', 'notify', 'complete-checkpoint', 'update-lesson-content']);
 
 const userQuery = ref('');
 const chatInputTextarea = ref(null);
@@ -510,6 +660,62 @@ const assessmentResults = ref({});
 const isAssessmentSubmitted = ref(false);
 const isAssessmentPassed = ref(false);
 const codeCopiedIndex = ref(null);
+
+// ── Mentor inline rich-text editing (Module Studio Student Preview only) ──
+const isEditable = computed(() => Boolean(props.editable));
+const activeEditTarget = ref(null); // { kind: 'block' | 'node_content', index: number|null, field?: string }
+
+function isEditingTarget(kind, field, index = null) {
+  const target = activeEditTarget.value;
+  if (!target) return false;
+  if (target.kind !== kind) return false;
+  if (kind === 'block') return target.index === index;
+  return target.field === field;
+}
+
+function startInlineEdit(kind, index = null, field = null) {
+  if (!isEditable.value) return;
+  activeEditTarget.value = { kind, index, field };
+}
+
+function finishInlineEdit() {
+  activeEditTarget.value = null;
+}
+
+/**
+ * Resolves the resolved lesson text backing an inline-editable 8-section
+ * section (node_content may live on a sibling checkpoint record).
+ */
+function nodeContentField(field) {
+  const data = activeLessonData.value;
+  if (field === 'core_lesson') return data.coreLesson || '';
+  if (field === 'introduction') return data.introduction || '';
+  return '';
+}
+
+/**
+ * Emits buffered (never directly persisted) lesson content updates to the
+ * Module Studio preview. The parent stores them in its preview draft only.
+ */
+function onInlineEditUpdate(html, kind, index = null, field = null) {
+  const cleanHtml = sanitizeLessonHtml(html || '');
+  emit('update-lesson-content', {
+    kind,
+    index,
+    field,
+    checkpointId: props.checkpointData?.id ?? null,
+    content: cleanHtml,
+    format: 'html',
+  });
+}
+
+/**
+ * Renders lesson prose safely: rich HTML from the Word-style editor, or legacy
+ * Markdown promoted to the same semantic markup so styling stays identical.
+ */
+function renderLessonContent(text) {
+  return renderLessonRichHtml(text);
+}
 
 function copyCode(code, idx) {
   if (navigator?.clipboard) {
@@ -544,6 +750,12 @@ function submitAssessment() {
   assessmentResults.value = results;
   isAssessmentSubmitted.value = true;
   isAssessmentPassed.value = allPassed;
+
+  if (props.previewMode) {
+    // Local feedback only: preview never records mastery or checkpoint completion.
+    emit('notify', allPassed ? 'Preview result: answers correct (nothing was recorded).' : 'Preview result: review the feedback above (nothing was recorded).');
+    return;
+  }
 
   if (allPassed) {
     emit('notify', props.previewMode ? 'Preview: assessment passed (demo only - nothing is recorded).' : 'Assessment passed! You have satisfied the completion requirement for this topic.');
@@ -619,7 +831,10 @@ const activeLessonData = computed(() => {
 
   // 1. Check if checkpoint has authentic node_content
   let nc = props.checkpointData?.node_content;
+<<<<<<< HEAD
   // Hoisted: step 3 below reads `found`, which was previously block-scoped here.
+=======
+>>>>>>> 02fa0d1e3d63aaea73b138c873f409643669db83
   let found = null;
   if (!nc && props.moduleData?.checkpoints) {
     found = props.moduleData.checkpoints.find(c => 
@@ -628,6 +843,11 @@ const activeLessonData = computed(() => {
     if (found?.node_content) {
       nc = found.node_content;
     }
+  } else if (props.moduleData?.checkpoints) {
+    // Resolve the sibling checkpoint record so block/assessment fallbacks stay in scope.
+    found = props.moduleData.checkpoints.find(c =>
+      (c.name || c.title) === title || String(c.id) === String(props.checkpointData?.id)
+    ) || null;
   }
 
   // 2. Test Module Checkpoints (explicitly supported for rapid testing and invariant verification)
@@ -868,50 +1088,23 @@ function getLessonContextText() {
   return sections.join('\n\n');
 }
 
-function renderMarkdown(text) {
-  if (!text) return '';
-  let safe = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // Headings
-  safe = safe.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
-  safe = safe.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
-  safe = safe.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
-
-  // Bold & Italic
-  safe = safe.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  safe = safe.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-  // Code blocks & inline code
-  safe = safe.replace(/```([a-z]*)\n([\s\S]*?)```/gim, '<pre class="md-code-block"><code>$2</code></pre>');
-  safe = safe.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
-
-  // Bullet points
-  safe = safe.replace(/^\s*-\s+(.*$)/gim, '<li class="md-li">$1</li>');
-  safe = safe.replace(/(<li class="md-li">.*<\/li>)/s, '<ul class="md-ul">$1</ul>');
-
-  // Paragraph breaks
-  safe = safe.split(/\n\s*\n/).map(p => {
-    if (p.startsWith('<h') || p.startsWith('<pre') || p.startsWith('<ul') || p.startsWith('<li')) {
-      return p;
-    }
-    return `<p class="md-p">${p.replace(/\n/g, '<br/>')}</p>`;
-  }).join('\n');
-
-  return safe;
-}
-
 function toggleStar() {
   isStarred.value = !isStarred.value;
   emit('notify', isStarred.value ? `Bookmarked "${props.checkpointTitle}"` : `Removed bookmark for "${props.checkpointTitle}"`);
 }
 
 async function handleCompleteCheckpoint() {
+<<<<<<< HEAD
   // Preview mode: never notify, advance, call /api/modules/progress, or record student progress.
   if (props.previewMode) return;
+=======
+  // Mentor preview must never touch student progress, mastery, checkpoint or star records.
+  if (props.previewMode) {
+    emit('notify', 'Preview mode — checkpoint completion is disabled for teachers.');
+    return;
+  }
+
+>>>>>>> 02fa0d1e3d63aaea73b138c873f409643669db83
   if (activeLessonData.value.assessment?.required_to_unlock_next && !isAssessmentPassed.value) {
     emit('notify', 'Please complete and pass the end-of-topic assessment before advancing to the next node.');
     return;
@@ -982,7 +1175,17 @@ onUnmounted(() => {
 });
 
 async function sendMessage() {
+<<<<<<< HEAD
   if (props.previewMode || !userQuery.value.trim() || isStreaming.value) return;
+=======
+  if (props.previewMode) {
+    // Preview keeps the tutor panel for layout parity but never sends lesson
+    // context to the model on behalf of the teacher's account.
+    emit('notify', 'AI Tutor is available in the student workspace — not in Teacher Preview.');
+    return;
+  }
+  if (!userQuery.value.trim() || isStreaming.value) return;
+>>>>>>> 02fa0d1e3d63aaea73b138c873f409643669db83
   const q = userQuery.value.trim();
   userQuery.value = '';
   if (chatInputTextarea.value) chatInputTextarea.value.style.height = 'auto';
@@ -1828,10 +2031,176 @@ function formatMessageText(text) {
   margin: 0;
 }
 
+.intro-text p {
+  margin: 0 0 8px 0;
+}
+
+.intro-text p:last-child {
+  margin-bottom: 0;
+}
+
 .lesson-markdown-content {
   font-size: 13.5px;
   line-height: 1.65;
   color: #334155;
+}
+
+/* ── Mentor Inline Rich-Text Editing (Module Studio preview only) ─────────── */
+.preview-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-right: 4px;
+  border-radius: 9999px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lesson-section-box.is-inline-editable {
+  position: relative;
+}
+
+.btn-inline-edit-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  border: 1px dashed #fdba74;
+  border-radius: 9999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-inline-edit-hint:hover {
+  opacity: 1;
+  background: #ffedd5;
+}
+
+.inline-editable-surface {
+  cursor: text;
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.inline-editable-surface:hover {
+  background: #fffbf5;
+  box-shadow: 0 0 0 1px #fed7aa;
+}
+
+/* Rich HTML emitted by the Word-style editor must match Markdown typography. */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.callout-content h1,
+.callout-content h2,
+.callout-content h3,
+.activity-content h1,
+.activity-content h2,
+.activity-content h3 {
+  font-weight: 700;
+  color: #0f172a;
+  margin: 16px 0 8px 0;
+  line-height: 1.35;
+}
+
+.markdown-body h1,
+.callout-content h1,
+.activity-content h1 { font-size: 16px; }
+.markdown-body h2,
+.callout-content h2,
+.activity-content h2 { font-size: 15px; }
+.markdown-body h3,
+.callout-content h3,
+.activity-content h3 { font-size: 14px; }
+
+.markdown-body p,
+.callout-content p,
+.activity-content p {
+  margin: 0 0 10px 0;
+  line-height: 1.65;
+}
+
+.markdown-body ul,
+.markdown-body ol,
+.callout-content ul,
+.callout-content ol,
+.activity-content ul,
+.activity-content ol {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.markdown-body ul,
+.callout-content ul,
+.activity-content ul { list-style-type: disc; }
+
+.markdown-body ol,
+.callout-content ol,
+.activity-content ol { list-style-type: decimal; }
+
+.markdown-body li,
+.callout-content li,
+.activity-content li {
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.markdown-body mark,
+.callout-content mark,
+.activity-content mark {
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+
+.markdown-body img,
+.callout-content img,
+.activity-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin: 10px 0;
+}
+
+.markdown-body table,
+.callout-content table,
+.activity-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 12.5px;
+}
+
+.markdown-body th,
+.markdown-body td,
+.callout-content th,
+.callout-content td,
+.activity-content th,
+.activity-content td {
+  border: 1px solid #e2e8f0;
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th,
+.callout-content th,
+.activity-content th {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .lesson-markdown-content .md-h1,
