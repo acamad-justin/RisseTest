@@ -1129,6 +1129,8 @@ const snapToGridEnabled = computed(() => Boolean(props.snapToGrid));
 
 /** The block currently being dragged: pointer bookkeeping + live offsets. */
 const activeDrag = ref(null);
+/** Live pixel offset of the block being dragged, in canvas coordinates. */
+const dragLive = ref(null);
 /** Alignment guides shown while dragging: 'left' | 'center' | 'right' | 'top'. */
 const dragGuides = ref([]);
 
@@ -1147,9 +1149,24 @@ function canMoveBlock(block) {
 function blockCanvasStyle(block) {
   if (!canResizeBlocks.value) return {};
   if (!isResizableBlockType(block?.type)) return {};
+
   const position = readBlockPosition(block);
-  if (position) return blockPositionStyle(block);
-  return blockLayoutStyle(block);
+  const style = position ? blockPositionStyle(block) : blockLayoutStyle(block);
+
+  // While this block is being dragged, render from the live pointer position.
+  // Driving it through the style binding (not by poking el.style) means a
+  // re-render triggered by guides/selection can no longer overwrite it.
+  if (dragLive.value && activeDrag.value?.index === currentBlocks.value.indexOf(block)) {
+    return {
+      ...style,
+      left: `${dragLive.value.left}px`,
+      top: `${dragLive.value.top}px`,
+      width: `${dragLive.value.width}px`,
+      maxWidth: `${dragLive.value.width}px`,
+      ...(dragLive.value.height != null ? { height: `${dragLive.value.height}px` } : {}),
+    };
+  }
+  return style;
 }
 
 function blockIsPinned(block) {
@@ -1198,6 +1215,14 @@ function startBlockDrag(event, index) {
     moved: false,
   };
 
+  // Seed the live offset so the very first frame already renders from state.
+  dragLive.value = {
+    left: activeDrag.value.originLeft,
+    top: activeDrag.value.originTop,
+    width: blockRect.width,
+    height: blockRect.height,
+  };
+
   // Dragging an in-flow block pins it immediately at its current spot, so the
   // pointer and the block stay aligned from the first pixel of movement.
   if (!position) {
@@ -1216,12 +1241,32 @@ function startBlockDrag(event, index) {
   window.addEventListener('pointercancel', endBlockDrag);
 }
 
+/**
+ * Pointer events can fire faster than the screen refreshes. We keep the latest
+ * coordinates and paint at most once per animation frame, which is what makes
+ * the follow feel smooth instead of jittery.
+ */
+let dragFrame = null;
+
 function onBlockDragMove(event) {
   const drag = activeDrag.value;
   if (!drag) return;
+  drag.lastX = event.clientX;
+  drag.lastY = event.clientY;
 
-  const dx = event.clientX - drag.startClientX;
-  const dy = event.clientY - drag.startClientY;
+  if (dragFrame != null) return;
+  dragFrame = requestAnimationFrame(() => {
+    dragFrame = null;
+    applyDragFrame();
+  });
+}
+
+function applyDragFrame() {
+  const drag = activeDrag.value;
+  if (!drag) return;
+
+  const dx = drag.lastX - drag.startClientX;
+  const dy = drag.lastY - drag.startClientY;
 
   if (!drag.moved && Math.hypot(dx, dy) < DRAG_START_THRESHOLD) return;
   drag.moved = true;
@@ -1259,22 +1304,31 @@ function onBlockDragMove(event) {
   drag.pendingLeft = left;
   drag.pendingTop = top;
 
-  // Paint the block at the dragged position immediately (no persistence here).
-  const el = document.querySelector(`[data-lesson-block-index="${drag.index}"]`);
-  if (el) {
-    el.style.left = `${Math.round(left)}px`;
-    el.style.top = `${Math.round(top)}px`;
-  }
+  // Reactive paint: the block follows the pointer on every frame. No DOM
+  // poking and nothing persisted until pointerup.
+  dragLive.value = {
+    left: Math.round(left * 10) / 10,
+    top: Math.round(top * 10) / 10,
+    width: drag.width,
+    height: drag.height,
+  };
 }
 
 function endBlockDrag(event) {
   const drag = activeDrag.value;
+  if (dragFrame != null) {
+    cancelAnimationFrame(dragFrame);
+    dragFrame = null;
+  }
+  // Flush the final pointer position so the drop lands exactly where released.
+  if (drag && drag.moved) applyDragFrame();
   window.removeEventListener('pointermove', onBlockDragMove);
   window.removeEventListener('pointerup', endBlockDrag);
   window.removeEventListener('pointercancel', endBlockDrag);
   document.body.classList.remove('risse-is-dragging');
   dragGuides.value = [];
   activeDrag.value = null;
+  dragLive.value = null;
 
   if (!drag) return;
 
@@ -2626,9 +2680,18 @@ function formatMessageText(text) {
   transition: box-shadow 0.15s ease, outline-color 0.15s ease;
 }
 
-/* A resized block with a fixed height scrolls its own content if needed. */
+/*
+ * A resized block must NOT scroll internally.
+ *
+ * `overflow: auto` here produced scrollbars inside the block, which (a) stole
+ * the resize handles sitting outside the edge at right/bottom: -7px and (b)
+ * turned every sized block into a nested scroller inside the page scroller.
+ * The stored height is treated as a minimum instead, so content simply grows
+ * the block rather than being trapped behind a scrollbar.
+ */
 .checkpoint-page-container--tutor-hidden .is-block-resizable.has-custom-size {
-  overflow: auto;
+  overflow: visible;
+  height: auto;
 }
 
 /*
@@ -2637,9 +2700,14 @@ function formatMessageText(text) {
  * resize is legible and the text does not appear to float. Padding is small and
  * symmetric so turning it on cannot reflow the prose in a surprising way.
  */
+/*
+ * Padding here also reserves the gutter that the inset resize handles sit in,
+ * so the handles never overlap the prose. Right padding is slightly larger than
+ * the handle width (8px) plus breathing room.
+ */
 .checkpoint-page-container--tutor-hidden .is-block-resizable.has-custom-size,
 .checkpoint-page-container--tutor-hidden .is-block-resizable.is-block-selected {
-  padding: 14px 16px;
+  padding: 14px 18px 16px 16px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: #fcfdff;
@@ -2668,32 +2736,42 @@ function formatMessageText(text) {
   display: block;
 }
 
+/*
+ * Handles sit INSIDE the block's own box (inset 0, see below) rather than
+ * hanging outside at negative offsets. Anything positioned outside the edge can
+ * be clipped by an ancestor's overflow or by the editor's scroll container,
+ * which is exactly how the resize controls became unreachable.
+ */
+
 /* Right edge — horizontal resize */
 .checkpoint-page-container--tutor-hidden .block-resize-handle--e {
   top: 50%;
-  right: -7px;
+  right: 0;
   transform: translateY(-50%);
-  width: 6px;
-  height: 46px;
+  width: 8px;
+  height: 44px;
+  border-radius: 4px 0 0 4px;
   cursor: ew-resize;
 }
 
 /* Bottom edge — vertical resize */
 .checkpoint-page-container--tutor-hidden .block-resize-handle--s {
   left: 50%;
-  bottom: -7px;
+  bottom: 0;
   transform: translateX(-50%);
-  height: 6px;
-  width: 46px;
+  height: 8px;
+  width: 44px;
+  border-radius: 4px 4px 0 0;
   cursor: ns-resize;
 }
 
 /* Bottom-right corner — both axes */
 .checkpoint-page-container--tutor-hidden .block-resize-handle--se {
-  right: -7px;
-  bottom: -7px;
-  width: 12px;
-  height: 12px;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px 0 0 0;
   cursor: nwse-resize;
   border: 2px solid #ffffff;
 }
@@ -2740,11 +2818,33 @@ function formatMessageText(text) {
   z-index: 5;
 }
 
-/* While dragging, lift the block and stop the browser selecting text. */
+/*
+ * While dragging, lift the block and stop the browser selecting text.
+ * Deliberately NO position/size transition: the block must sit exactly under
+ * the pointer. Transitions on left/top here would add lag and rubber-banding.
+ */
 .checkpoint-page-container--tutor-hidden .is-block-dragging {
   z-index: 9 !important;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
   cursor: grabbing;
+  will-change: left, top;
+  transition: none;
+}
+
+/*
+ * Pinned blocks ease into their committed position when the drop lands, so a
+ * released block settles smoothly instead of snapping. Scoped away from the
+ * drag itself so the follow stays 1:1 with the pointer.
+ */
+.checkpoint-page-container--tutor-hidden .is-block-pinned:not(.is-block-dragging) {
+  transition: left 0.18s cubic-bezier(0.2, 0, 0, 1),
+              top 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkpoint-page-container--tutor-hidden .is-block-pinned:not(.is-block-dragging) {
+    transition: none;
+  }
 }
 
 /* Layout Mode: show a boundary on every movable block. */
@@ -2772,8 +2872,8 @@ function formatMessageText(text) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid #ffd7a8;
   border-radius: 6px;
@@ -2782,6 +2882,14 @@ function formatMessageText(text) {
   cursor: grab;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
   touch-action: none;
+  /* Extra invisible hit area: easier to grab without a bigger visual. */
+  outline-offset: 4px;
+}
+
+.checkpoint-page-container--tutor-hidden .block-drag-handle::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
 }
 
 .checkpoint-page-container--tutor-hidden .block-drag-handle:hover {

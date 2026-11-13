@@ -173,7 +173,9 @@ export function blockLayoutStyle(block: any): Record<string, string> {
   const { width, height } = readBlockLayout(block);
   const style: Record<string, string> = {};
   if (width != null) style.maxWidth = `${width}px`;
-  if (height != null) style.height = `${height}px`;
+  // A minimum, not a fixed box: a resized block grows with its content instead
+  // of hiding text behind an internal scrollbar.
+  if (height != null) style.minHeight = `${height}px`;
   return style;
 }
 
@@ -245,9 +247,9 @@ export function blockPositionStyle(block: any): Record<string, string> {
     style.width = `${width}px`;
     style.maxWidth = `${width}px`;
   }
-  // Without this a pinned block would lose the height the teacher set: the
-  // absolute box sizes to content instead of honouring the stored dimension.
-  if (height != null) style.height = `${height}px`;
+  // Same reasoning as the in-flow case: min-height keeps the teacher's height
+  // without trapping content in an inner scroller.
+  if (height != null) style.minHeight = `${height}px`;
   if (position.order != null) style.zIndex = String(1 + position.order);
   return style;
 }
