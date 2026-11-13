@@ -1,11 +1,12 @@
 <template>
-  <div class="checkpoint-page-container" :class="{ 'is-chat-maximized': isChatMaximized }">
+  <div class="checkpoint-page-container" :class="{ 'is-chat-maximized': isChatMaximized, 'is-preview-mode': previewMode }">
     <!-- Left Column: Header (Back, Module Tag, Title, Meta) + Star/Kebab (outside chatbox) + Lesson Lecture -->
     <div class="checkpoint-main-column">
       <header class="checkpoint-header">
         <div class="checkpoint-header-left">
           <button 
             type="button" 
+            v-if="!previewMode"
             class="btn-back-nav" 
             @click="$emit('back')" 
             title="Back to Progression Map" 
@@ -28,12 +29,14 @@
         </div>
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
-        <div class="checkpoint-header-actions">
+        <div v-if="!previewMode" class="checkpoint-header-actions">
           <button 
             type="button" 
             class="btn-complete-checkpoint-action" 
+            :class="{ 'is-preview-disabled': previewMode }"
+            :disabled="previewMode"
             @click="handleCompleteCheckpoint"
-            title="Mark this checkpoint complete and advance progression"
+            :title="previewMode ? 'Disabled in preview - no progress is recorded' : 'Mark this checkpoint complete and advance progression'"
             id="btn-complete-checkpoint"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -89,7 +92,7 @@
         <p class="empty-state-message">
           Lesson content is not available yet. Please check back later.
         </p>
-        <button type="button" class="btn-return-roadmap" @click="$emit('back')">
+        <button v-if="!previewMode" type="button" class="btn-return-roadmap" @click="$emit('back')">
           ← Return to Progression Map
         </button>
       </div>
@@ -316,6 +319,7 @@
     <aside 
       class="chatbot-panel-card" 
       :class="{ 'chatbot-panel-card--maximized': isChatMaximized }"
+      v-if="!previewMode"
       aria-label="Risse AI Chat Assistant"
     >
       <div class="chatbot-header-controls">
@@ -482,6 +486,11 @@ const props = defineProps({
     type: Object,
     default: () => null,
   },
+  // Teacher preview: read-only. Disables Complete Checkpoint and every student-record write. Students never set this.
+  previewMode: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['back', 'notify', 'complete-checkpoint']);
@@ -537,9 +546,9 @@ function submitAssessment() {
   isAssessmentPassed.value = allPassed;
 
   if (allPassed) {
-    emit('notify', 'Assessment passed! You have satisfied the completion requirement for this topic.');
+    emit('notify', props.previewMode ? 'Preview: assessment passed (demo only - nothing is recorded).' : 'Assessment passed! You have satisfied the completion requirement for this topic.');
   } else {
-    emit('notify', 'Review feedback and try again to satisfy the topic requirement.');
+    emit('notify', props.previewMode ? 'Preview: some answers need revision (demo only - nothing is recorded).' : 'Review feedback and try again to satisfy the topic requirement.');
   }
 }
 
@@ -575,7 +584,7 @@ function setAiMode(mode) {
   try {
     const email = getActiveEmail();
     const key = email ? `risse_email_${email.replace(/[^a-z0-9]/g, '_')}_ai_mode` : 'risse_ai_mode';
-    localStorage.setItem(key, mode);
+    if (!props.previewMode) localStorage.setItem(key, mode);
   } catch (_) {}
   emit('notify', mode === 'competition' ? '⚡ Competition Mode Activated — Rapid pit tactics & tournament answers!' : '🎓 Socratic Mode Activated — Guided inquiry & conceptual learning.');
 }
@@ -610,8 +619,10 @@ const activeLessonData = computed(() => {
 
   // 1. Check if checkpoint has authentic node_content
   let nc = props.checkpointData?.node_content;
+  // Hoisted: step 3 below reads `found`, which was previously block-scoped here.
+  let found = null;
   if (!nc && props.moduleData?.checkpoints) {
-    const found = props.moduleData.checkpoints.find(c => 
+    found = props.moduleData.checkpoints.find(c => 
       (c.name || c.title) === title || String(c.id) === String(props.checkpointData?.id)
     );
     if (found?.node_content) {
@@ -899,6 +910,8 @@ function toggleStar() {
 }
 
 async function handleCompleteCheckpoint() {
+  // Preview mode: never notify, advance, call /api/modules/progress, or record student progress.
+  if (props.previewMode) return;
   if (activeLessonData.value.assessment?.required_to_unlock_next && !isAssessmentPassed.value) {
     emit('notify', 'Please complete and pass the end-of-topic assessment before advancing to the next node.');
     return;
@@ -969,7 +982,7 @@ onUnmounted(() => {
 });
 
 async function sendMessage() {
-  if (!userQuery.value.trim() || isStreaming.value) return;
+  if (props.previewMode || !userQuery.value.trim() || isStreaming.value) return;
   const q = userQuery.value.trim();
   userQuery.value = '';
   if (chatInputTextarea.value) chatInputTextarea.value.style.height = 'auto';
@@ -2255,5 +2268,19 @@ function formatMessageText(text) {
 .btn-submit-assessment:hover {
   background: linear-gradient(135deg, #fb923c, #f97316);
   transform: translateY(-1px);
+}
+
+/* Teacher preview: Complete Checkpoint is shown but inert */
+.btn-complete-checkpoint-action.is-preview-disabled,
+.btn-complete-checkpoint-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Teacher preview: no tutor column, so the lesson uses the full width */
+.checkpoint-page-container.is-preview-mode {
+  grid-template-columns: 1fr;
+  gap: 0;
 }
 </style>

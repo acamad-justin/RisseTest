@@ -443,8 +443,29 @@
           </div>
         </div>
 
+        <!-- Learning path toolbar: prominent Preview as Student + view switch -->
+        <div v-if="learningNodesList.length > 0" class="path-toolbar">
+          <div class="path-view-switch" role="group" aria-label="Learning node view">
+            <button type="button" :class="{ active: pathViewMode === 'cards' }" @click="pathViewMode = 'cards'">Node Cards</button>
+            <button type="button" :class="{ active: pathViewMode === 'path' }" @click="pathViewMode = 'path'">Learning Path</button>
+          </div>
+          <button type="button" id="btn-preview-as-student" class="btn-primary-action" @click="openStudentPreview()">
+            👁️ Preview as Student
+          </button>
+        </div>
+
+        <!-- Learning Path Editor (read-only; v-show keeps the node selection while switching views) -->
+        <LearningPathEditor
+          v-if="learningNodesList.length > 0"
+          v-show="pathViewMode === 'path'"
+          :nodes="learningNodesList"
+          @preview-node="openStudentPreview(learningNodesList[$event])"
+          @edit-node="openNodeEditor"
+          @selection-change="nodeSelection = $event"
+        />
+
         <!-- Learning Nodes Timeline / List (Primary Module-Centered Architecture) -->
-        <div v-if="learningNodesList.length > 0" class="learning-nodes-timeline-list">
+        <div v-if="learningNodesList.length > 0 && pathViewMode === 'cards'" class="learning-nodes-timeline-list">
           <template v-for="(node, nodeIdx) in learningNodesList" :key="node.id || nodeIdx">
             <!-- Topic Group Header Divider (rendered when group changes) -->
             <div 
@@ -539,7 +560,7 @@
         </div>
 
         <!-- Modules Accordion List (Legacy Multi-Module Fallback) -->
-        <div v-else-if="editableProposal.proposal_data.modules.length > 0" class="modules-accordion-list">
+        <div v-else-if="learningNodesList.length === 0 && editableProposal.proposal_data.modules.length > 0" class="modules-accordion-list">
           <div 
             v-for="(mod, modIdx) in editableProposal.proposal_data.modules" 
             :key="mod.id || modIdx"
@@ -1816,75 +1837,20 @@
     <!-- MODALS: PREVIEW, PUBLISH & EDIT COURSE                                -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-    <!-- Student Experience Preview Modal -->
-    <div v-if="isPreviewOpen" class="modal-overlay" @click.self="isPreviewOpen = false">
-      <div class="preview-modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-preview-title">
-        <div class="preview-modal-header">
-          <div>
-            <span class="badge-preview-pill">STUDENT SIMULATOR</span>
-            <h3 id="modal-preview-title" class="preview-course-title">
-              {{ previewingLesson ? previewingLesson.title : editableProposal.proposal_data.title }}
-            </h3>
-          </div>
-          <button type="button" class="btn-close-modal" @click="isPreviewOpen = false">&times;</button>
-        </div>
-
-        <div class="preview-modal-body">
-          <!-- Full Course Roadmap Preview -->
-          <div v-if="!previewingLesson" class="sim-modules-catalog">
-            <p class="preview-explanation">
-              This preview shows how enrolled students in your assigned classes will navigate the learning roadmap:
-            </p>
-            <div class="sim-modules-grid">
-              <div 
-                v-for="(mod, mIdx) in editableProposal.proposal_data.modules" 
-                :key="mod.id || mIdx"
-                class="sim-module-card"
-              >
-                <div class="sim-card-top">
-                  <span class="sim-level-badge">{{ mod.level || 'Beginner' }}</span>
-                  <span class="sim-steps-count">{{ (mod.checkpoints || []).length }} Steps</span>
-                </div>
-                <h4 class="sim-card-title">{{ mod.title }}</h4>
-                <p class="sim-card-desc">{{ mod.description }}</p>
-                <div class="sim-checkpoints-summary">
-                  <div v-for="cp in (mod.checkpoints || [])" :key="cp.id" class="sim-cp-item">
-                    <span>{{ cp.type === 'lab' ? '🧪' : cp.type === 'challenge' ? '🏆' : '📖' }} {{ cp.title }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Single Lesson Content Preview -->
-          <div v-else class="sim-lesson-preview">
-            <div class="sim-lesson-meta">
-              <span class="badge-lesson-type" :class="`type-${previewingLesson.type}`">
-                {{ formatLessonType(previewingLesson.type) }}
-              </span>
-              <span>Estimated Duration: {{ previewingLesson.duration_minutes || 30 }} mins</span>
-            </div>
-            <div class="sim-lesson-content-view">
-              <div v-if="previewingLesson.node_content" class="sim-content-rendered">
-                <h3>Introduction</h3>
-                <p>{{ previewingLesson.node_content.overview }}</p>
-                <h3>Core Guide</h3>
-                <p>{{ previewingLesson.node_content.step_by_step_guide }}</p>
-              </div>
-              <div v-else class="text-muted-inline">
-                No educational content has been generated for this lesson yet.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="preview-modal-footer">
-          <button type="button" class="btn-outline-action" @click="isPreviewOpen = false">
-            Close Preview
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Student Experience Preview (read-only snapshot; see ModulePreviewModal.vue) -->
+    <!-- Teleported to <body> so the preview is not nested inside the workspace layout (sidebar / main stacking context). -->
+    <Teleport to="body">
+    <ModulePreviewModal
+      v-if="isPreviewOpen"
+      :nodes="previewNodes"
+      :module-title="editableProposal.proposal_data?.title || activeCourse?.title || ''"
+      :module-id="activeCourseId || (activeCourse && activeCourse.id) || null"
+      :description="editableProposal.proposal_data?.summary || ''"
+      :start-index="previewStartIndex"
+      :has-unsaved-changes="isDirty"
+      @close="isPreviewOpen = false"
+    />
+    </Teleport>
 
     <!-- Publish Confirmation Dialog -->
     <div v-if="isPublishModalOpen" class="modal-overlay" @click.self="isPublishModalOpen = false">
@@ -2028,6 +1994,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
+import ModulePreviewModal from './ModulePreviewModal.vue';
+import LearningPathEditor from './LearningPathEditor.vue';
+import { findNodeIndex, flattenModuleCheckpoints } from './modulePreview.js';
 
 const mentorStore = useMentorStore();
 
@@ -2109,7 +2078,18 @@ const expandedModuleIndices = ref(new Set([0])); // First module expanded by def
 
 // Modals
 const isPreviewOpen = ref(false);
-const previewingLesson = ref(null);
+const previewStartIndex = ref(0);
+// 'cards' = existing node cards (reorder / duplicate / delete); 'path' = read-only Learning Path Editor.
+const pathViewMode = ref('cards');
+// Latest adjacent-node selection reported by LearningPathEditor. Phase 2 (Combine Nodes) reads this;
+// Phase 1 only holds it in memory and never persists or applies it.
+const nodeSelection = ref({ indices: [], nodeIds: [], keys: [], nodes: [], isValid: false });
+// Nodes in the exact order the student will see them (same source as learningNodesList; legacy modules flattened).
+const previewNodes = computed(() =>
+  learningNodesList.value.length > 0
+    ? learningNodesList.value
+    : flattenModuleCheckpoints(editableProposal.value?.proposal_data)
+);
 const isPublishModalOpen = ref(false);
 const isEditCourseModalOpen = ref(false);
 const isAiDrawerOpen = ref(false);
@@ -3160,8 +3140,10 @@ async function handleUnpublish() {
   }
 }
 
+// Opens the read-only student preview, optionally at a given node. No store / service calls.
 function openStudentPreview(lesson = null) {
-  previewingLesson.value = lesson;
+  const idx = lesson ? findNodeIndex(previewNodes.value, lesson) : 0;
+  previewStartIndex.value = idx >= 0 ? idx : 0;
   isPreviewOpen.value = true;
 }
 
@@ -5551,4 +5533,39 @@ function saveCourseDetails() {
 .intake-draft-meta { display: flex; flex-direction: column; gap: 2px; }
 .intake-draft-name { font-size: 14px; font-weight: 700; }
 .intake-draft-sub { font-size: 12px; color: #64748b; }
+
+/* Learning path toolbar (Phase 1) */
+.path-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.path-view-switch {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.path-view-switch button {
+  background: #ffffff;
+  border: none;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.path-view-switch button + button {
+  border-left: 1px solid #cbd5e1;
+}
+
+.path-view-switch button.active {
+  background: #0f172a;
+  color: #ffffff;
+}
 </style>
