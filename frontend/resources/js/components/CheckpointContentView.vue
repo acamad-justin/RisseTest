@@ -1,10 +1,17 @@
 <template>
-  <div class="checkpoint-page-container" :class="{ 'is-chat-maximized': isChatMaximized }">
+  <div
+    class="checkpoint-page-container"
+    :class="{
+      'is-chat-maximized': isChatMaximized,
+      'checkpoint-page-container--tutor-hidden': previewMode,
+    }"
+  >
     <!-- Left Column: Header (Back, Module Tag, Title, Meta) + Star/Kebab (outside chatbox) + Lesson Lecture -->
     <div class="checkpoint-main-column">
       <header class="checkpoint-header">
         <div class="checkpoint-header-left">
           <button 
+            v-if="!previewMode"
             type="button" 
             class="btn-back-nav" 
             @click="$emit('back')" 
@@ -62,7 +69,7 @@
             </svg>
           </button>
 
-          <div class="kebab-menu-wrapper" @click.stop>
+          <div v-if="!previewMode" class="kebab-menu-wrapper" @click.stop>
             <button 
               type="button" 
               class="btn-icon-control" 
@@ -441,7 +448,9 @@
     </div>
 
     <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text) -->
-    <aside 
+    <!-- Teacher Preview removes the tutor entirely so the lesson owns the width. -->
+    <aside
+      v-if="!previewMode"
       class="chatbot-panel-card" 
       :class="{ 'chatbot-panel-card--maximized': isChatMaximized }"
       aria-label="Risse AI Chat Assistant"
@@ -1335,6 +1344,465 @@ function formatMessageText(text) {
 .checkpoint-page-container.is-chat-maximized {
   grid-template-columns: 0fr 1fr;
   gap: 0;
+}
+
+/*
+ * Teacher Preview (previewMode) removes the AI tutor completely — not hidden,
+ * not collapsed to an empty column — so the lesson owns the full width.
+ */
+.checkpoint-page-container--tutor-hidden {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  /* Document mode: the host (full-screen editor) owns scrolling. */
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+.checkpoint-page-container--tutor-hidden .checkpoint-main-column {
+  max-width: 1040px;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  padding: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.checkpoint-page-container--tutor-hidden .lesson-lecture-column {
+  overflow: visible;
+  padding-right: 0;
+}
+
+/* ── Teacher Editor Document Typography ───────────────────────────────────
+ * The full-screen editor is a reading/writing surface, not a dashboard card.
+ * Within preview mode we raise the type scale and calm the chrome so long
+ * lessons stay readable, while leaving every student-workspace rule untouched.
+ */
+.checkpoint-page-container--tutor-hidden .checkpoint-header {
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.checkpoint-page-container--tutor-hidden .checkpoint-title {
+  font-size: 34px;
+  line-height: 1.15;
+  letter-spacing: -0.9px;
+  max-width: 26ch;
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-page-container--tutor-hidden .sub-category-tag {
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.checkpoint-page-container--tutor-hidden .parent-module-text {
+  font-size: 13px;
+}
+
+/*
+ * A lesson documents itself: the "Instructional Guide" / "Overview" wrapper
+ * cards carry no border or shadow in the editor, so the page never becomes a
+ * stack of nested cards. Optional containers (callouts, activities, tables,
+ * code, assessment) keep a single restrained surface each.
+ */
+.checkpoint-page-container--tutor-hidden .lesson-section-box {
+  padding: 0;
+  margin-bottom: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.checkpoint-page-container--tutor-hidden .lesson-intro-card,
+.checkpoint-page-container--tutor-hidden .lesson-guide-card {
+  padding-bottom: 4px;
+}
+
+.checkpoint-page-container--tutor-hidden .block-text-box {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  margin-bottom: 26px;
+}
+
+.checkpoint-page-container--tutor-hidden .block-title {
+  font-size: 23px;
+  line-height: 1.3;
+  letter-spacing: -0.4px;
+  margin: 0 0 14px 0;
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-page-container--tutor-hidden .section-title {
+  font-size: 13px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--risse-orange-hover, #ea580c);
+  margin: 0 0 16px 0;
+}
+
+/* Body copy: comfortable measure and line height for sustained editing. */
+.checkpoint-page-container--tutor-hidden .markdown-body,
+.checkpoint-page-container--tutor-hidden .lesson-markdown-content,
+.checkpoint-page-container--tutor-hidden .intro-text,
+.checkpoint-page-container--tutor-hidden .callout-content,
+.checkpoint-page-container--tutor-hidden .activity-content {
+  font-size: 16.5px;
+  line-height: 1.8;
+  color: #334155;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.checkpoint-page-container--tutor-hidden .intro-text p {
+  margin: 0 0 14px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body h1,
+.checkpoint-page-container--tutor-hidden .callout-content h1,
+.checkpoint-page-container--tutor-hidden .activity-content h1 {
+  font-size: 25px;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
+  margin: 30px 0 12px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body h2,
+.checkpoint-page-container--tutor-hidden .callout-content h2,
+.checkpoint-page-container--tutor-hidden .activity-content h2 {
+  font-size: 21px;
+  line-height: 1.35;
+  letter-spacing: -0.35px;
+  margin: 28px 0 10px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body h3,
+.checkpoint-page-container--tutor-hidden .callout-content h3,
+.checkpoint-page-container--tutor-hidden .activity-content h3 {
+  font-size: 17.5px;
+  line-height: 1.4;
+  margin: 24px 0 8px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body > :first-child,
+.checkpoint-page-container--tutor-hidden .callout-content > :first-child,
+.checkpoint-page-container--tutor-hidden .activity-content > :first-child {
+  margin-top: 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body p,
+.checkpoint-page-container--tutor-hidden .callout-content p,
+.checkpoint-page-container--tutor-hidden .activity-content p {
+  margin: 0 0 16px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body strong,
+.checkpoint-page-container--tutor-hidden .callout-content strong,
+.checkpoint-page-container--tutor-hidden .activity-content strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body em,
+.checkpoint-page-container--tutor-hidden .callout-content em,
+.checkpoint-page-container--tutor-hidden .activity-content em {
+  color: #1e293b;
+}
+
+/* Lists: readable indentation and breathing room between items. */
+.checkpoint-page-container--tutor-hidden .markdown-body ul,
+.checkpoint-page-container--tutor-hidden .markdown-body ol,
+.checkpoint-page-container--tutor-hidden .callout-content ul,
+.checkpoint-page-container--tutor-hidden .callout-content ol,
+.checkpoint-page-container--tutor-hidden .activity-content ul,
+.checkpoint-page-container--tutor-hidden .activity-content ol {
+  margin: 0 0 18px 0;
+  padding-left: 28px;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body li,
+.checkpoint-page-container--tutor-hidden .callout-content li,
+.checkpoint-page-container--tutor-hidden .activity-content li {
+  margin-bottom: 9px;
+  line-height: 1.72;
+  padding-left: 2px;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body li::marker,
+.checkpoint-page-container--tutor-hidden .activity-content li::marker {
+  color: #ea580c;
+  font-weight: 700;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body li > ul,
+.checkpoint-page-container--tutor-hidden .markdown-body li > ol {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+/* Callouts: one accent container instead of card-inside-card. */
+.checkpoint-page-container--tutor-hidden .block-callout-card {
+  padding: 22px 26px;
+  border-radius: 10px;
+  background: #fff9f0;
+  border-left: 4px solid #f97316;
+}
+
+.checkpoint-page-container--tutor-hidden .block-callout-card.is-analogy {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+}
+
+.checkpoint-page-container--tutor-hidden .callout-title {
+  font-size: 17px;
+  letter-spacing: -0.2px;
+}
+
+.checkpoint-page-container--tutor-hidden .callout-icon {
+  font-size: 19px;
+}
+
+.checkpoint-page-container--tutor-hidden .analogy-takeaway-box {
+  margin-top: 16px;
+  padding: 14px 18px;
+  font-size: 15px;
+  line-height: 1.65;
+  border-radius: 8px;
+}
+
+/* Activities + assessment: roomy cards with a clear heading, no deep nesting. */
+.checkpoint-page-container--tutor-hidden .block-activity-card {
+  padding: 22px 26px;
+  background: #f7fbfa;
+  border-color: #d6ece6;
+}
+
+.checkpoint-page-container--tutor-hidden .activity-title {
+  font-size: 17.5px;
+  letter-spacing: -0.2px;
+}
+
+.checkpoint-page-container--tutor-hidden .block-table-card,
+.checkpoint-page-container--tutor-hidden .block-code-card {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.checkpoint-page-container--tutor-hidden .block-code-card .block-title,
+.checkpoint-page-container--tutor-hidden .block-table-card .table-title {
+  font-size: 16px;
+  padding: 16px 20px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .block-markdown-table {
+  padding: 16px 20px 20px;
+}
+
+.checkpoint-page-container--tutor-hidden .interactive-assessment-section {
+  padding: 26px 28px;
+  border: 1px solid #f0e2d3;
+  border-radius: 12px;
+  background: #fffdfa;
+  margin-top: 32px;
+  margin-bottom: 0;
+}
+
+.checkpoint-page-container--tutor-hidden .assessment-question-card {
+  padding: 20px 0 22px;
+  margin-bottom: 4px;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid #f1eee9;
+  background: transparent;
+}
+
+.checkpoint-page-container--tutor-hidden .assessment-question-card:first-of-type {
+  border-top: none;
+  padding-top: 6px;
+}
+
+.checkpoint-page-container--tutor-hidden .question-header {
+  font-size: 16px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.checkpoint-page-container--tutor-hidden .section-subtitle {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* Images and embedded media fill the measure without overflowing. */
+.checkpoint-page-container--tutor-hidden .markdown-body img,
+.checkpoint-page-container--tutor-hidden .callout-content img,
+.checkpoint-page-container--tutor-hidden .activity-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 18px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body table,
+.checkpoint-page-container--tutor-hidden .activity-content table {
+  font-size: 14px;
+  margin: 14px 0;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body th,
+.checkpoint-page-container--tutor-hidden .markdown-body td,
+.checkpoint-page-container--tutor-hidden .activity-content th,
+.checkpoint-page-container--tutor-hidden .activity-content td {
+  padding: 10px 14px;
+}
+
+/* Editing affordances stay legible but never compete with the lesson text. */
+.checkpoint-page-container--tutor-hidden .btn-inline-edit-hint {
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.checkpoint-page-container--tutor-hidden .lesson-footer-citations {
+  margin-top: 8px;
+  padding-bottom: 32px;
+}
+
+/* Containers that ARE meaningful (callout, activity, table, code, quiz) get
+ * one calm surface each rather than a card-inside-card stack. */
+.checkpoint-page-container--tutor-hidden .block-callout-card,
+.checkpoint-page-container--tutor-hidden .block-activity-card,
+.checkpoint-page-container--tutor-hidden .block-code-card,
+.checkpoint-page-container--tutor-hidden .block-table-card,
+.checkpoint-page-container--tutor-hidden .interactive-assessment-section,
+.checkpoint-page-container--tutor-hidden .concept-block,
+.checkpoint-page-container--tutor-hidden .activity-card,
+.checkpoint-page-container--tutor-hidden .challenge-card,
+.checkpoint-page-container--tutor-hidden .quiz-question-box,
+.checkpoint-page-container--tutor-hidden .assessment-question-card {
+  margin-bottom: 18px;
+}
+
+/* Legacy 8-section sections: the same rhythm as block-rendered lessons. */
+.checkpoint-page-container--tutor-hidden .concepts-section,
+.checkpoint-page-container--tutor-hidden .examples-section,
+.checkpoint-page-container--tutor-hidden .activities-section,
+.checkpoint-page-container--tutor-hidden .challenges-section,
+.checkpoint-page-container--tutor-hidden .assessment-section {
+  padding: 0;
+}
+
+.checkpoint-page-container--tutor-hidden .concept-block {
+  padding: 18px 20px;
+  border-radius: 9px;
+}
+
+.checkpoint-page-container--tutor-hidden .concept-title {
+  font-size: 17.5px;
+  letter-spacing: -0.2px;
+}
+
+.checkpoint-page-container--tutor-hidden .concept-text,
+.checkpoint-page-container--tutor-hidden .concept-example,
+.checkpoint-page-container--tutor-hidden .concept-key-idea,
+.checkpoint-page-container--tutor-hidden .activity-text,
+.checkpoint-page-container--tutor-hidden .challenge-text {
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.checkpoint-page-container--tutor-hidden .examples-list {
+  font-size: 16px;
+  line-height: 1.75;
+  padding-left: 26px;
+}
+
+.checkpoint-page-container--tutor-hidden .examples-list li {
+  margin-bottom: 9px;
+}
+
+.checkpoint-page-container--tutor-hidden .activity-card,
+.checkpoint-page-container--tutor-hidden .challenge-card {
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  border-radius: 9px;
+}
+
+.checkpoint-page-container--tutor-hidden .quiz-question-box {
+  padding: 20px 22px;
+  border-radius: 10px;
+}
+
+.checkpoint-page-container--tutor-hidden .question-title {
+  font-size: 16.5px;
+  line-height: 1.5;
+}
+
+.checkpoint-page-container--tutor-hidden .opt-item {
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+
+.checkpoint-page-container--tutor-hidden .question-explanation {
+  font-size: 15px;
+  line-height: 1.7;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+/* The empty state's "return" belongs to the roadmap; in the editor it means
+ * "back to the module outline", which is exactly what the back arrow emits. */
+.checkpoint-page-container--tutor-hidden .lesson-empty-state-card {
+  padding: 40px 32px;
+  border-radius: 12px;
+  border-color: #e8edf4;
+}
+
+.checkpoint-page-container--tutor-hidden .empty-state-title {
+  font-size: 21px;
+  letter-spacing: -0.3px;
+}
+
+.checkpoint-page-container--tutor-hidden .empty-state-message {
+  font-size: 15px;
+  line-height: 1.7;
+  max-width: 60ch;
+}
+
+.checkpoint-page-container--tutor-hidden .btn-return-roadmap {
+  font-size: 13px;
+}
+
+/* Keep the editor usable on narrower viewports. */
+@media (max-width: 900px) {
+  .checkpoint-page-container--tutor-hidden .checkpoint-title {
+    font-size: 26px;
+  }
+
+  .checkpoint-page-container--tutor-hidden .block-callout-card,
+  .checkpoint-page-container--tutor-hidden .block-activity-card,
+  .checkpoint-page-container--tutor-hidden .interactive-assessment-section {
+    padding: 20px 20px;
+  }
+
+  .checkpoint-page-container--tutor-hidden .lesson-blocks-stream {
+    gap: 14px;
+  }
+
+  .checkpoint-page-container--tutor-hidden .markdown-body,
+  .checkpoint-page-container--tutor-hidden .lesson-markdown-content,
+  .checkpoint-page-container--tutor-hidden .intro-text,
+  .checkpoint-page-container--tutor-hidden .callout-content,
+  .checkpoint-page-container--tutor-hidden .activity-content {
+    font-size: 15px;
+    line-height: 1.72;
+  }
 }
 
 .checkpoint-main-column {

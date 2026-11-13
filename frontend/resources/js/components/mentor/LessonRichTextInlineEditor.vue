@@ -517,6 +517,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/*
+ * `overflow: visible` is required: the formatting toolbar is `position: sticky`
+ * and must escape this wrapper to stick to the editor's document scroller.
+ */
 .risse-word-inline-editor {
   border: 1.5px solid #f97316;
   border-radius: 10px;
@@ -524,8 +528,15 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 20px rgba(234, 88, 12, 0.1), 0 0 0 3px rgba(249, 115, 22, 0.12);
   overflow: visible;
   transition: box-shadow 0.15s ease;
+  /* Sticky offset clears the editor top bar when it pins. */
+  scroll-margin-top: 12px;
 }
 
+/*
+ * The toolbar sticks to the top of whatever scrolls the lesson. In the
+ * full-screen editor that is the document scroller, so a teacher formatting a
+ * long passage never has to scroll back up to reach it.
+ */
 .word-formatting-toolbar {
   position: sticky;
   top: 0;
@@ -533,11 +544,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  border-radius: 9px 9px 0 0;
+  gap: 4px 2px;
+  padding: 7px 10px;
+  background: #fbfcfe;
+  border-bottom: 1px solid #e6eaf0;
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 6px 14px -10px rgba(15, 23, 42, 0.35);
 }
 
 .toolbar-group {
@@ -549,8 +561,8 @@ onBeforeUnmount(() => {
 .toolbar-divider {
   width: 1px;
   height: 20px;
-  background: #cbd5e1;
-  margin: 0 3px;
+  background: #dbe2ea;
+  margin: 0 5px;
 }
 
 .toolbar-select {
@@ -751,19 +763,20 @@ onBeforeUnmount(() => {
 
 /* Editable Surface matching Student CheckpointContentView typography */
 .word-editor-surface {
-  padding: 12px 14px;
+  padding: 18px 20px;
 }
 
 .word-editor-surface :deep(.ProseMirror) {
   outline: none;
-  min-height: 54px;
-  font-size: 13.5px;
-  line-height: 1.65;
+  min-height: 84px;
+  font-size: 16.5px;
+  line-height: 1.8;
   color: #334155;
+  max-width: 100%;
 }
 
 .word-editor-surface :deep(.ProseMirror p) {
-  margin: 0 0 10px 0;
+  margin: 0 0 16px 0;
 }
 
 .word-editor-surface :deep(.ProseMirror p:last-child) {
@@ -771,33 +784,35 @@ onBeforeUnmount(() => {
 }
 
 .word-editor-surface :deep(.ProseMirror h1) {
-  font-size: 19px;
+  font-size: 25px;
   font-weight: 800;
+  letter-spacing: -0.5px;
   color: #0f172a;
-  margin: 14px 0 8px 0;
+  margin: 26px 0 12px 0;
   line-height: 1.3;
 }
 
 .word-editor-surface :deep(.ProseMirror h2) {
-  font-size: 16.5px;
+  font-size: 21px;
   font-weight: 700;
+  letter-spacing: -0.35px;
   color: #0f172a;
-  margin: 12px 0 8px 0;
+  margin: 24px 0 10px 0;
   line-height: 1.35;
 }
 
 .word-editor-surface :deep(.ProseMirror h3) {
-  font-size: 14.5px;
+  font-size: 17.5px;
   font-weight: 700;
   color: #0f172a;
-  margin: 10px 0 6px 0;
+  margin: 20px 0 8px 0;
   line-height: 1.4;
 }
 
 .word-editor-surface :deep(.ProseMirror ul),
 .word-editor-surface :deep(.ProseMirror ol) {
-  margin: 0 0 12px 0;
-  padding-left: 22px;
+  margin: 0 0 18px 0;
+  padding-left: 28px;
 }
 
 .word-editor-surface :deep(.ProseMirror ul) {
@@ -809,7 +824,8 @@ onBeforeUnmount(() => {
 }
 
 .word-editor-surface :deep(.ProseMirror li) {
-  margin-bottom: 4px;
+  margin-bottom: 9px;
+  line-height: 1.72;
 }
 
 .word-editor-surface :deep(.ProseMirror mark) {
