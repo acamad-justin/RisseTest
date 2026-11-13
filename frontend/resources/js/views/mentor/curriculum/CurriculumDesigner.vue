@@ -1814,17 +1814,16 @@
     </main>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <!-- FULL-SCREEN LESSON EDITOR (real student renderer + inline editing)     -->
-    <!-- Teleported to <body> so it covers the entire application (including    -->
-    <!-- the mentor sidebar) and is not constrained by the Studio's DOM tree.    -->
+    <!-- LESSON EDITOR WORKSPACE (real student renderer + inline editing)       -->
+    <!-- Docked into the Studio's main column rather than teleported to <body>, -->
+    <!-- so the single existing MentorSidebar stays visible and collapsible.    -->
+    <!-- The layout lifts its main column above app chrome while this is open.  -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <Teleport to="body">
-      <div
+    <div
         v-if="isPreviewOpen"
         class="lesson-editor-shell"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Lesson editor"
+        role="region"
+        aria-label="Lesson editor workspace"
       >
         <!-- Top bar: breadcrumb + path toggle + unsaved state + close -->
         <header class="lesson-editor-topbar">
@@ -1866,6 +1865,112 @@
           </div>
 
           <div class="lesson-editor-topbar-right">
+            <!-- Phase 2 layout controls: only meaningful on a real lesson -->
+            <div v-if="previewingLesson" class="lesson-editor-layout-controls">
+              <button
+                type="button"
+                class="lesson-editor-layout-btn lesson-editor-layout-btn--mode"
+                :class="{ 'is-active': layoutModeEnabled }"
+                :aria-pressed="layoutModeEnabled"
+                @click="toggleLayoutMode"
+                :title="layoutModeEnabled ? 'Turn Layout Mode off and edit text normally' : 'Enable Layout Mode to move blocks'"
+                id="btn-toggle-layout-mode"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  <path d="M10 6.5h5a3 3 0 0 1 3 3V12" />
+                  <path d="M14 17.5h-5a3 3 0 0 1-3-3V10" />
+                </svg>
+                <span>{{ layoutModeEnabled ? 'Layout Mode On' : 'Layout Mode' }}</span>
+              </button>
+
+              <!-- Tutor visibility sits outside the Layout Mode branch: a teacher
+                   may want to preview the student layout without arranging. -->
+              <button
+                type="button"
+                class="lesson-editor-layout-btn"
+                :class="{ 'is-active': showTutorInEditor }"
+                :aria-pressed="showTutorInEditor"
+                @click="toggleTutorInEditor"
+                :title="showTutorInEditor ? 'Hide the AI Tutor to see the full-width layout' : 'Show the AI Tutor to preview the student layout'"
+                id="btn-toggle-editor-tutor"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>{{ showTutorInEditor ? 'AI Tutor On' : 'AI Tutor Off' }}</span>
+              </button>
+
+              <template v-if="layoutModeEnabled">
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn"
+                  :class="{ 'is-active': snapToGridEnabled }"
+                  :aria-pressed="snapToGridEnabled"
+                  @click="snapToGridEnabled = !snapToGridEnabled"
+                  title="Snap dragged blocks to an 8px grid"
+                  id="btn-toggle-snap-grid"
+                >
+                  <span>Snap</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn"
+                  :disabled="!canUndoLayout"
+                  @click="undoLayout"
+                  title="Undo the last layout change"
+                  aria-label="Undo layout change"
+                  id="btn-undo-layout"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn"
+                  :disabled="!canRedoLayout"
+                  @click="redoLayout"
+                  title="Redo the last layout change"
+                  aria-label="Redo layout change"
+                  id="btn-redo-layout"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn lesson-editor-layout-btn--reset"
+                  :disabled="!hasLayoutWork"
+                  @click="resetLessonLayout"
+                  title="Return every block to the default document flow"
+                  id="btn-reset-layout"
+                >
+                  <span>Reset Layout</span>
+                </button>
+              </template>
+            </div>
+
+            <button
+              type="button"
+              class="lesson-editor-sidebar-toggle"
+              @click="toggleMentorSidebar"
+              :title="mentorSidebarCollapsed ? 'Expand the mentor sidebar' : 'Collapse the mentor sidebar for more space'"
+              aria-label="Toggle mentor sidebar"
+              id="btn-toggle-editor-sidebar"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <line x1="9" y1="4" x2="9" y2="20" />
+              </svg>
+              <span>{{ mentorSidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar' }}</span>
+            </button>
+
             <span v-if="previewHasUnsavedEdits" class="lesson-editor-unsaved" role="status">
               <span class="lesson-editor-unsaved-dot"></span> Unsaved changes
             </span>
@@ -1983,8 +2088,12 @@
                 :checkpoint-data="previewCheckpointData"
                 :editable="true"
                 :preview-mode="true"
+                :layout-mode="layoutModeEnabled"
+                :snap-to-grid="snapToGridEnabled"
+                :show-tutor="showTutorInEditor"
                 @notify="previewNotice"
                 @update-lesson-content="handlePreviewLessonUpdate"
+                @update-block-layout="handlePreviewBlockLayout"
               />
             </div>
 
@@ -2017,8 +2126,7 @@
           </div>
         </div>
       </div>
-    </Teleport>
-
+    
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- MODALS: PUBLISH & EDIT COURSE                                          -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -2217,6 +2325,8 @@ const emit = defineEmits([
   'approve-proposal',
   'publish-proposal',
   'update-course',
+  // Tells the layout when the lesson editor is docked so it can reserve space.
+  'editor-open-change',
 ]);
 
 // ── Studio entry: upload-first intake (creates/updates a DRAFT; never publishes) ──
@@ -2857,12 +2967,22 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
   // Never leave the page locked if the Studio unmounts mid-edit.
   document.body.style.overflow = '';
+  emit('editor-open-change', false);
+  window.removeEventListener('risse:mentor-sidebar-state', onSidebarState);
 });
 
 // The full-screen editor covers the whole app, so the page behind it must not
 // scroll (otherwise the sidebar scrolls under the overlay on wheel/touch).
 watch(isPreviewOpen, open => {
   document.body.style.overflow = open ? 'hidden' : '';
+  // Let the layout dock the editor beside the sidebar (rather than under it).
+  emit('editor-open-change', open);
+  if (open) {
+    syncSidebarState();
+    window.addEventListener('risse:mentor-sidebar-state', onSidebarState);
+  } else {
+    window.removeEventListener('risse:mentor-sidebar-state', onSidebarState);
+  }
 });
 
 function handleKeydown(e) {
@@ -3338,6 +3458,45 @@ const isSavingPreviewEdits = ref(false);
 const previewSaveError = ref('');
 const previewedCheckpointId = ref(null);
 const isPreviewPathOpen = ref(false);
+
+// ── Mentor sidebar (Phase 1) ───────────────────────────────────────────────
+// There is exactly one sidebar, owned by MentorSidebar itself. The editor only
+// reflects and toggles that shared state so the workspace can reclaim width.
+const SIDEBAR_STORAGE_KEY = 'risse_mentor_sidebar_collapsed';
+const mentorSidebarCollapsed = ref(
+  typeof localStorage !== 'undefined'
+    ? localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true'
+    : false
+);
+
+function syncSidebarState() {
+  try {
+    mentorSidebarCollapsed.value = localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+  } catch (_) {}
+}
+
+/**
+ * Flips the real sidebar. Writing the shared storage key and dispatching an
+ * event keeps MentorSidebar (which owns the state) in sync without a second
+ * sidebar or a duplicated collapse flag.
+ */
+function toggleMentorSidebar() {
+  const next = !mentorSidebarCollapsed.value;
+  mentorSidebarCollapsed.value = next;
+  try {
+    // Request only. MentorSidebar owns the state and writes the stored flag,
+    // then broadcasts the result back so this button's label stays truthful.
+    window.dispatchEvent(new CustomEvent('risse:mentor-sidebar-toggle', { detail: { collapsed: next } }));
+  } catch (_) {}
+}
+
+/** Mirrors the sidebar's own state so the toolbar button label is always right. */
+function onSidebarState(event) {
+  if (typeof event?.detail?.collapsed === 'boolean') {
+    mentorSidebarCollapsed.value = event.detail.collapsed;
+  }
+}
+
 const previewScrollRef = ref(null);
 
 /** Course/module title shown in the editor top bar. */
@@ -3586,6 +3745,9 @@ function closeStudentPreview() {
   previewHasUnsavedEdits.value = false;
   previewSaveError.value = '';
   previewInlineNotice.value = '';
+  // Layout Mode is an editing session, not a stored preference.
+  layoutModeEnabled.value = false;
+  layoutHistory.value = { past: [], future: [] };
   if (previewInlineNoticeTimer) {
     clearTimeout(previewInlineNoticeTimer);
     previewInlineNoticeTimer = null;
@@ -3670,6 +3832,272 @@ function handlePreviewLessonUpdate(payload) {
   previewingLesson.value = twins[0];
   previewHasUnsavedEdits.value = true;
   previewSaveError.value = '';
+}
+
+/**
+ * Phase 1 + 2: applies a block's layout (size AND position) to the buffered
+ * preview copy.
+ *
+ * Only `block.metadata.layout` is written — never `content`, `title`, or any
+ * rich-text field — so resizing or moving a block can not alter lesson prose or
+ * formatting. The same block can exist in both `learning_nodes[]` and
+ * `modules[].checkpoints[]`, so every twin is updated by id (falling back to
+ * position) to prevent a save resurrecting the old layout on whichever path
+ * students actually read.
+ */
+function handlePreviewBlockLayout(payload) {
+  if (!payload || payload.kind !== 'block') return;
+  const lesson = previewingLesson.value;
+  if (!lesson) return;
+
+  const twins = lessonTwins();
+  if (twins.length === 0) return;
+
+  // Record the pre-change arrangement so Undo can step back to it.
+  pushLayoutHistory();
+
+  writeBlockLayout(twins, payload.index, normalizeLayout(payload.layout));
+
+  previewingLesson.value = twins[0];
+  markLayoutDirty();
+}
+
+/**
+ * Returns the preview edit buffer, creating it from the saved proposal on first
+ * layout change. Without this, layout controls would go dead after a save (the
+ * save nulls the buffer) even though the lesson still has an arrangement.
+ */
+function ensurePreviewBuffer() {
+  if (!previewEditBuffer.value) {
+    previewEditBuffer.value = JSON.parse(
+      JSON.stringify(editableProposal.value?.proposal_data || { modules: [], title: '', summary: '' })
+    );
+  }
+  return previewEditBuffer.value;
+}
+
+/** Every copy of the lesson currently being previewed (node list + module list). */
+function lessonTwins() {
+  const lesson = previewingLesson.value;
+  if (!lesson) return [];
+  const buffer = ensurePreviewBuffer();
+
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const targetTitle = lesson.title || lesson.name;
+
+  const matches = cp =>
+    cp && (
+      (targetId != null && (cp.id ?? '') === targetId) ||
+      (targetTitle && (cp.title === targetTitle || cp.name === targetTitle))
+    );
+
+  const twins = [];
+  if (Array.isArray(buffer.learning_nodes)) {
+    twins.push(...buffer.learning_nodes.filter(matches));
+  }
+  (Array.isArray(buffer.modules) ? buffer.modules : []).forEach(mod => {
+    twins.push(...(mod.checkpoints || []).filter(matches));
+  });
+  return twins;
+}
+
+/**
+ * Keeps only the fields a layout record may contain. Anything else the renderer
+ * might send is discarded here, so a stray key can never reach proposal_data.
+ */
+function normalizeLayout(layout) {
+  const src = layout && typeof layout === 'object' ? layout : {};
+  const out = {};
+  if (Number.isFinite(src.width)) out.width = Math.round(src.width);
+  if (Number.isFinite(src.height)) out.height = Math.round(src.height);
+  if (Number.isFinite(src.x)) out.x = Math.min(100, Math.max(0, Math.round(src.x * 10) / 10));
+  if (Number.isFinite(src.y)) out.y = Math.max(0, Math.round(src.y));
+  if (Number.isFinite(src.order)) out.order = Math.round(src.order);
+  return out;
+}
+
+/** Writes one block's layout onto every twin, preserving other metadata. */
+function writeBlockLayout(twins, index, layout) {
+  const empty = Object.keys(layout).length === 0;
+  for (const checkpoint of twins) {
+    const block = (checkpoint.blocks || [])[index];
+    if (!block) continue;
+    const meta = block.metadata && typeof block.metadata === 'object' ? { ...block.metadata } : {};
+    if (empty) delete meta.layout;
+    else meta.layout = { ...layout };
+    if (Object.keys(meta).length > 0) block.metadata = meta;
+    else delete block.metadata;
+  }
+}
+
+function markLayoutDirty() {
+  previewHasUnsavedEdits.value = true;
+  previewSaveError.value = '';
+}
+
+// ── Layout history (Undo / Redo for layout changes only) ───────────────────
+// Snapshots are plain arrays of layout records for the previewed lesson, so
+// they are tiny and can never carry (or restore) lesson content.
+const layoutHistory = ref({ past: [], future: [] });
+const LAYOUT_HISTORY_LIMIT = 50;
+
+/** Current arrangement of the previewed lesson, one layout record per block. */
+function currentLayoutSnapshot() {
+  const twins = lessonTwins();
+  const blocks = (twins[0]?.blocks || []);
+  return blocks.map(block =>
+    block?.metadata?.layout && typeof block.metadata.layout === 'object'
+      ? { ...block.metadata.layout }
+      : null
+  );
+}
+
+function pushLayoutHistory() {
+  const snapshot = currentLayoutSnapshot();
+  const past = [...layoutHistory.value.past, snapshot].slice(-LAYOUT_HISTORY_LIMIT);
+  // Any new change invalidates the redo branch, as in any editor.
+  layoutHistory.value = { past, future: [] };
+}
+
+/** Re-applies a snapshot to every twin of the previewed lesson. */
+function applyLayoutSnapshot(snapshot) {
+  const twins = lessonTwins();
+  if (twins.length === 0) return;
+  twins.forEach(checkpoint => {
+    (checkpoint.blocks || []).forEach((block, i) => {
+      const layout = snapshot[i];
+      const meta = block.metadata && typeof block.metadata === 'object' ? { ...block.metadata } : {};
+      if (!layout) delete meta.layout;
+      else meta.layout = { ...layout };
+      if (Object.keys(meta).length > 0) block.metadata = meta;
+      else delete block.metadata;
+    });
+  });
+  previewingLesson.value = twins[0];
+  markLayoutDirty();
+}
+
+const canUndoLayout = computed(() => layoutHistory.value.past.length > 0);
+const canRedoLayout = computed(() => layoutHistory.value.future.length > 0);
+
+function undoLayout() {
+  const { past, future } = layoutHistory.value;
+  if (past.length === 0) return;
+  const previous = past[past.length - 1];
+  const current = currentLayoutSnapshot();
+  layoutHistory.value = {
+    past: past.slice(0, -1),
+    future: [current, ...future].slice(0, LAYOUT_HISTORY_LIMIT),
+  };
+  applyLayoutSnapshot(previous);
+}
+
+function redoLayout() {
+  const { past, future } = layoutHistory.value;
+  if (future.length === 0) return;
+  const next = future[0];
+  const current = currentLayoutSnapshot();
+  layoutHistory.value = {
+    past: [...past, current].slice(-LAYOUT_HISTORY_LIMIT),
+    future: future.slice(1),
+  };
+  applyLayoutSnapshot(next);
+}
+
+// ── Layout Mode controls ───────────────────────────────────────────────────
+const layoutModeEnabled = ref(false);
+const snapToGridEnabled = ref(false);
+
+/**
+ * Whether the editor previews the lesson with the Risse AI tutor beside it.
+ * Students always have the tutor, so this only controls the teacher's view of
+ * the real student layout. Persisted because it is a workspace preference, not
+ * a per-lesson edit (it changes nothing that gets saved).
+ */
+const TUTOR_PREF_KEY = 'risse_editor_show_tutor';
+const showTutorInEditor = ref(
+  typeof localStorage !== 'undefined' ? localStorage.getItem(TUTOR_PREF_KEY) !== 'false' : true
+);
+
+function toggleTutorInEditor() {
+  showTutorInEditor.value = !showTutorInEditor.value;
+  try {
+    localStorage.setItem(TUTOR_PREF_KEY, String(showTutorInEditor.value));
+  } catch (_) {}
+  previewNotice(
+    showTutorInEditor.value
+      ? 'AI Tutor shown — this is the student layout.'
+      : 'AI Tutor hidden — the lesson uses the full width.'
+  );
+}
+
+/** True when the previewed lesson has any custom layout worth resetting. */
+/** Reads the arrangement from whatever is currently on screen (buffer or saved). */
+const hasLayoutWork = computed(() => {
+  const lesson = previewingLesson.value;
+  if (!lesson) return false;
+
+  const data = previewProposalData.value || {};
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const targetTitle = lesson.title || lesson.name;
+  const matches = cp =>
+    cp && (
+      (targetId != null && (cp.id ?? '') === targetId) ||
+      (targetTitle && (cp.title === targetTitle || cp.name === targetTitle))
+    );
+
+  const candidates = [
+    ...(Array.isArray(data.learning_nodes) ? data.learning_nodes.filter(matches) : []),
+    ...(Array.isArray(data.modules)
+      ? data.modules.flatMap(mod => (mod.checkpoints || []).filter(matches))
+      : []),
+  ];
+
+  return candidates.some(cp =>
+    (cp.blocks || []).some(b => b?.metadata?.layout && typeof b.metadata.layout === 'object')
+  );
+});
+
+/**
+ * Clears size AND position for every block in the lesson, back to flow.
+ * Asks first when the reset would discard a meaningful amount of arrangement,
+ * matching how this file confirms other destructive actions.
+ */
+function resetLessonLayout() {
+  const twins = lessonTwins();
+  if (twins.length === 0) return;
+
+  const positioned = (twins[0]?.blocks || []).filter(
+    b => b?.metadata?.layout && typeof b.metadata.layout === 'object'
+  ).length;
+
+  if (positioned >= 2) {
+    const ok = window.confirm(
+      `Reset the layout of ${positioned} blocks? This returns them to the default document flow (you can undo this).`
+    );
+    if (!ok) return;
+  }
+
+  pushLayoutHistory();
+  twins.forEach(checkpoint => {
+    (checkpoint.blocks || []).forEach(block => {
+      if (!block?.metadata || typeof block.metadata !== 'object') return;
+      const meta = { ...block.metadata };
+      delete meta.layout;
+      if (Object.keys(meta).length > 0) block.metadata = meta;
+      else delete block.metadata;
+    });
+  });
+  previewingLesson.value = twins[0];
+  markLayoutDirty();
+  previewNotice('Lesson layout reset to the default document flow.');
+}
+
+function toggleLayoutMode() {
+  layoutModeEnabled.value = !layoutModeEnabled.value;
+  if (layoutModeEnabled.value) {
+    previewNotice('Layout Mode on — drag a block by its handle to move it.');
+  }
 }
 
 /** Persists buffered preview edits through the existing save-proposal workflow. */
@@ -5306,18 +5734,25 @@ function saveCourseDetails() {
 /* FULL-SCREEN LESSON EDITOR                                                  */
 /* A viewport-filling document surface, not a centered modal card.            */
 /* ═══════════════════════════════════════════════════════════════════════════ */
+/*
+ * The editor is DOCKED, not overlaid: it fills the Studio's main column, which
+ * is a flex sibling of the MentorSidebar. Collapsing the sidebar widens that
+ * column, so the workspace grows with no JavaScript measuring anything. The
+ * `inset: 0` absolute box is scoped to `.risse-main` (position: relative).
+ */
 .lesson-editor-shell {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 2000;
+  z-index: 20;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   background: #f7f8fa;
   color: #0f172a;
   font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
+  border-radius: 18px;
+  overflow: hidden;
 }
 
 /* ── Top bar ─────────────────────────────────────────────────────────────── */
@@ -5460,6 +5895,85 @@ function saveCourseDetails() {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* ── Layout Mode controls (Phase 2) ──────────────────────────────────────────
+   Grouped and visually separated from document actions so the toolbar does not
+   become a wall of buttons. */
+.lesson-editor-layout-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+
+.lesson-editor-layout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.lesson-editor-layout-btn:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #1e293b;
+}
+
+.lesson-editor-layout-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lesson-editor-layout-btn.is-active {
+  background: #fff7ed;
+  border-color: #ffd7a8;
+  color: #c2410c;
+}
+
+.lesson-editor-layout-btn--reset:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+/* Sidebar control: same affordance family as the path toggle, lighter weight so
+   it reads as workspace chrome rather than a document action. */
+.lesson-editor-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px dashed #dbe2ea;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.lesson-editor-sidebar-toggle:hover {
+  border-style: solid;
+  border-color: #ffd7a8;
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .lesson-editor-path-toggle:hover {
@@ -5794,13 +6308,26 @@ function saveCourseDetails() {
   flex-direction: column;
 }
 
+/*
+ * Visible editing workspace: the boundary between the lesson canvas and the
+ * application chrome. It takes all remaining width/height and scrolls
+ * vertically only — horizontal overflow is never allowed at any breakpoint.
+ */
+.lesson-editor-scroll {
+  border: 1px solid #e6eaf0;
+  border-radius: 14px;
+  background: #ffffff;
+  margin: 14px 20px 0;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
 .lesson-editor-scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* Horizontal padding only; the document centres itself in the remaining width. */
-  padding: 34px 40px 12px;
+  padding: 30px 36px 16px;
   scroll-behavior: smooth;
   scroll-padding-top: 16px;
 }
