@@ -932,7 +932,22 @@ const activeLessonData = computed(() => {
   let sourceRef = props.checkpointData?.source_reference || found?.source_reference;
   let topicGroup = props.checkpointData?.topic_group || found?.topic_group;
 
-  if (!blocks || blocks.length === 0) {
+  // The shipped Acamad topics are a SEED for lessons that have no authored
+  // content yet. They must never shadow a lesson the teacher has edited: when
+  // the node carries its own prose, that prose is the source of truth.
+  //
+  // Regression this guards: a node with `node_content.core_lesson` but no
+  // `blocks` array used to be replaced wholesale by the seed blocks, so every
+  // title/paragraph/list formatting the teacher saved disappeared from the
+  // preview and student view.
+  const hasAuthoredProse = Boolean(
+    (nc?.core_lesson || '').trim() ||
+    (nc?.step_by_step_guide || '').trim() ||
+    (nc?.introduction || '').trim() ||
+    (nc?.overview || '').trim()
+  );
+
+  if ((!blocks || blocks.length === 0) && !hasAuthoredProse) {
     const authMatch = ROBOTICS_AUTHENTIC_TOPICS.find(t => {
       const matchT = t.title.toLowerCase();
       const currT = title.toLowerCase();
@@ -1539,6 +1554,59 @@ function formatMessageText(text) {
 .checkpoint-page-container--tutor-hidden .activity-content li::marker {
   color: #ea580c;
   font-weight: 700;
+}
+
+/*
+ * Tiptap stores list items as <li><p>…</p></li>. The paragraph rules above add
+ * 16px under every paragraph, which inside a list item doubles the gap between
+ * items AND drops the wrapped second line below the marker instead of aligning
+ * it with the item text. Let the <li> own item spacing instead.
+ */
+.checkpoint-page-container--tutor-hidden .markdown-body li > p,
+.checkpoint-page-container--tutor-hidden .callout-content li > p,
+.checkpoint-page-container--tutor-hidden .activity-content li > p {
+  margin: 0;
+  max-width: 100%;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body li > p + p,
+.checkpoint-page-container--tutor-hidden .callout-content li > p + p,
+.checkpoint-page-container--tutor-hidden .activity-content li > p + p {
+  margin-top: 10px;
+}
+
+/* Intentional blank lines: keep a visible line instead of collapsing to 0px. */
+.checkpoint-page-container--tutor-hidden .markdown-body p:empty,
+.checkpoint-page-container--tutor-hidden .markdown-body p:has(> br:only-child),
+.checkpoint-page-container--tutor-hidden .callout-content p:empty,
+.checkpoint-page-container--tutor-hidden .activity-content p:empty {
+  min-height: 1.8em;
+  margin: 0 0 16px 0;
+}
+
+/* Ordered lists keep their numbers readable at the larger text scale. */
+.checkpoint-page-container--tutor-hidden .markdown-body ol,
+.checkpoint-page-container--tutor-hidden .callout-content ol,
+.checkpoint-page-container--tutor-hidden .activity-content ol {
+  list-style-position: outside;
+}
+
+.checkpoint-page-container--tutor-hidden .markdown-body ol > li,
+.checkpoint-page-container--tutor-hidden .callout-content ol > li {
+  padding-left: 4px;
+}
+
+/* Nested lists step in and stay visually distinct from their parent. */
+.checkpoint-page-container--tutor-hidden .markdown-body li > ul,
+.checkpoint-page-container--tutor-hidden .markdown-body li > ol {
+  padding-left: 24px;
+}
+
+/* Alignment / size / colour / highlight applied in the editor must survive. */
+.checkpoint-page-container--tutor-hidden .markdown-body [style*="text-align"],
+.checkpoint-page-container--tutor-hidden .callout-content [style*="text-align"],
+.checkpoint-page-container--tutor-hidden .activity-content [style*="text-align"] {
+  max-width: 100%;
 }
 
 .checkpoint-page-container--tutor-hidden .markdown-body li > ul,
@@ -2662,10 +2730,14 @@ function formatMessageText(text) {
   margin: 0 0 10px 0;
 }
 
-.lesson-markdown-content .md-ul {
+.lesson-markdown-content .md-ul,
+.lesson-markdown-content .md-ol {
   margin: 0 0 12px 0;
   padding-left: 20px;
 }
+
+.lesson-markdown-content .md-ul { list-style-type: disc; }
+.lesson-markdown-content .md-ol { list-style-type: decimal; }
 
 .lesson-markdown-content .md-li {
   margin-bottom: 4px;

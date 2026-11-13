@@ -3638,7 +3638,17 @@ function handlePreviewLessonUpdate(payload) {
   for (const checkpoint of twins) {
     if (payload.kind === 'block') {
       const block = (checkpoint.blocks || [])[payload.index];
-      if (block) block.content = cleanContent;
+      if (!block) continue;
+      block.content = cleanContent;
+      // `blocks` and `node_content` are separate copies of the same prose. If
+      // only the block is updated the stale node_content copy survives the save
+      // and reappears wherever that field is read (lesson editor, AI context,
+      // publishing plan). Keep the first editable text block mirrored.
+      const firstTextIdx = (checkpoint.blocks || []).findIndex(b => b && b.type === 'text');
+      if (firstTextIdx === payload.index && checkpoint.node_content) {
+        checkpoint.node_content.core_lesson = cleanContent;
+        checkpoint.node_content.step_by_step_guide = cleanContent;
+      }
     } else if (payload.kind === 'node_content') {
       if (!checkpoint.node_content) checkpoint.node_content = {};
       const field = payload.field;

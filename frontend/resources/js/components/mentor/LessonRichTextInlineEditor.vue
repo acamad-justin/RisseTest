@@ -405,12 +405,20 @@ const editor = useEditor({
 
 // If legacy Markdown was promoted to HTML upon opening, emit normalized HTML only if user edits,
 // while syncing external changes (e.g., switching lessons or reverting) cleanly.
+//
+// Only skip the reset when the incoming value is exactly what THIS editor
+// emitted. The old `prepared === lastEmittedHtml` check was too loose: prepared
+// content is normalized, so a freshly saved draft could normalize onto the same
+// string and the editor would keep showing the pre-save document — the teacher
+// reopened the lesson and their formatting was gone even though the stored HTML
+// was correct.
 watch(
   () => props.modelValue,
   newVal => {
     if (!editor.value) return;
-    const prepared = prepareContentForEditor(newVal);
-    if (newVal === lastEmittedHtml || prepared === lastEmittedHtml) return;
+    const raw = String(newVal ?? '');
+    if (raw === lastEmittedHtml) return;
+    const prepared = prepareContentForEditor(raw);
     lastEmittedHtml = prepared;
     editor.value.commands.setContent(prepared, false);
   }
@@ -826,6 +834,31 @@ onBeforeUnmount(() => {
 .word-editor-surface :deep(.ProseMirror li) {
   margin-bottom: 9px;
   line-height: 1.72;
+}
+
+/*
+ * Tiptap wraps list item text in a paragraph: <li><p>…</p></li>.
+ * Inherited paragraph margins would double the gap between items and push
+ * wrapped lines out of alignment with the marker, so neutralise them here and
+ * let the <li> own the spacing. Nested lists keep a tighter rhythm.
+ */
+.word-editor-surface :deep(.ProseMirror li > p) {
+  margin: 0;
+}
+
+.word-editor-surface :deep(.ProseMirror li > p + p) {
+  margin-top: 10px;
+}
+
+.word-editor-surface :deep(.ProseMirror li > ul),
+.word-editor-surface :deep(.ProseMirror li > ol) {
+  margin: 8px 0 4px;
+}
+
+/* Intentional blank lines must survive as blank lines, not collapsed gaps. */
+.word-editor-surface :deep(.ProseMirror p:empty),
+.word-editor-surface :deep(.ProseMirror p:has(> br:only-child)) {
+  min-height: 1.8em;
 }
 
 .word-editor-surface :deep(.ProseMirror mark) {
