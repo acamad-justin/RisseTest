@@ -18,9 +18,9 @@
       <header class="checkpoint-header">
         <div class="checkpoint-header-left">
           <button 
-            v-if="!previewMode"
             type="button" 
             class="btn-back-nav" 
+            :class="{ 'is-preview-inert': previewMode }" 
             @click="$emit('back')" 
             title="Back to Progression Map" 
             aria-label="Back to Progression Map"
@@ -43,14 +43,11 @@
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
         <div class="checkpoint-header-actions">
-          <span v-if="previewMode" class="preview-mode-pill" id="preview-mode-indicator">
-            👁️ Teacher Preview — edits are not visible to students until you save
-          </span>
-
           <button 
-            v-if="!previewMode"
             type="button" 
             class="btn-complete-checkpoint-action" 
+            :class="{ 'is-preview-inert': previewMode }"
+            :aria-disabled="previewMode" 
             @click="handleCompleteCheckpoint"
             title="Mark this checkpoint complete and advance progression"
             id="btn-complete-checkpoint"
@@ -62,10 +59,10 @@
           </button>
 
           <button 
-            v-if="!previewMode"
             type="button" 
             class="btn-icon-control" 
-            :class="{ 'is-starred': isStarred }"
+            :class="{ 'is-starred': isStarred, 'is-preview-inert': previewMode }"
+            :aria-disabled="previewMode"
             @click="toggleStar"
             :title="isStarred ? 'Remove from favorites' : 'Bookmark this path'"
             aria-label="Bookmark"
@@ -76,7 +73,7 @@
             </svg>
           </button>
 
-          <div v-if="!previewMode" class="kebab-menu-wrapper" @click.stop>
+          <div class="kebab-menu-wrapper" :class="{ 'is-preview-inert': previewMode }" @click.stop>
             <button 
               type="button" 
               class="btn-icon-control" 
@@ -922,6 +919,16 @@ const props = defineProps({
     default: false,
   },
   /**
+   * Read-only student experience. The teacher enters the real module, so the
+   * student actions (Complete Checkpoint, bookmark, kebab menu, assessments)
+   * stay visible in their real positions — removing them would change the
+   * layout the teacher is meant to be inspecting — but they record nothing.
+   */
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
+  /**
    * Phase 2: Layout Mode. When true the teacher can drag blocks by their
    * handles and sees boundaries/selection chrome. Students never receive it.
    */
@@ -1649,7 +1656,7 @@ function submitAssessment() {
   isAssessmentSubmitted.value = true;
   isAssessmentPassed.value = allPassed;
 
-  if (props.previewMode) {
+  if (props.previewMode || props.readOnly) {
     // Local feedback only: preview never records mastery or checkpoint completion.
     emit('notify', allPassed ? 'Preview result: answers correct (nothing was recorded).' : 'Preview result: review the feedback above (nothing was recorded).');
     return;
@@ -1998,13 +2005,17 @@ function getLessonContextText() {
 }
 
 function toggleStar() {
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — bookmarks are not saved.');
+    return;
+  }
   isStarred.value = !isStarred.value;
   emit('notify', isStarred.value ? `Bookmarked "${props.checkpointTitle}"` : `Removed bookmark for "${props.checkpointTitle}"`);
 }
 
 async function handleCompleteCheckpoint() {
   // Mentor preview must never touch student progress, mastery, checkpoint or star records.
-  if (props.previewMode) {
+  if (props.previewMode || props.readOnly) {
     emit('notify', 'Preview mode — checkpoint completion is disabled for teachers.');
     return;
   }
@@ -2079,7 +2090,7 @@ onUnmounted(() => {
 });
 
 async function sendMessage() {
-  if (props.previewMode) {
+  if (props.previewMode || props.readOnly) {
     // Preview keeps the tutor panel for layout parity but never sends lesson
     // context to the model on behalf of the teacher's account.
     emit('notify', 'AI Tutor is available in the student workspace — not in Teacher Preview.');
@@ -2762,6 +2773,19 @@ function formatMessageText(text) {
   align-items: center;
   gap: 10px;
   margin-top: 18px;
+}
+/*
+ * Teacher Preview: student-owned actions keep their exact geometry so the
+ * layout stays identical to the student view, but read as unavailable.
+ * Only opacity/cursor change — never size, padding, margin or display.
+ */
+.is-preview-inert {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.is-preview-inert:hover {
+  opacity: 0.55;
 }
 
 .btn-complete-checkpoint-action {

@@ -650,27 +650,35 @@ async function handleStarSubmit(payload = null) {
 }
 
 /*
- * While the lesson editor is open the editor shell is positioned INSIDE this
- * container (see .lesson-editor-shell in CurriculumDesigner). The sidebar is a
- * flex sibling with a higher z-index than .risse-main, so it stays visible and
- * clickable above the editor. These rules only lift the container above the
- * app's own chrome so the editor paints over the Studio header/breadcrumbs
- * while still leaving the sidebar untouched.
+ * Student module experience (teacher preview).
+ *
+ * While the module is open the container becomes the module's own surface: no
+ * Studio header, no breadcrumb chrome, and the Studio scroller is neutralised so
+ * it cannot impose its `max-width: 1400px` on the lesson. The result is the same
+ * column a student's `.risse-main` gives the module — the preview is not a
+ * narrower or differently-padded version of the student screen.
  */
 .mentor-main-container.is-lesson-editor-open {
   z-index: 30;
   padding: 0;
   /* Height is inherited: the layout root already reserves vertical padding, so
-     forcing 100vh here would overflow it and clip the editor's bottom bar. */
+     forcing 100vh here would overflow it. */
   height: calc(100vh - 36px);
   min-height: 0;
 }
 
-/* The editor owns the scroll region; the Studio's scroller must not fight it. */
+/* The module owns the scroll region; the Studio's scroller must not fight it. */
 .mentor-main-container.is-lesson-editor-open .workspace-view-scroll {
   overflow: visible;
   max-width: none;
   padding-right: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The Studio header is not part of the student experience. */
+.mentor-main-container.is-lesson-editor-open .mentor-workspace-header {
+  display: none;
 }
 
 .mentor-workspace-header {

@@ -73,31 +73,28 @@
 
       <!-- MODULES VIEWS FLOW -->
       <template v-else-if="currentTab === 'Modules'">
-        <!-- View 3: Checkpoint Lesson & AI Chatbot -->
-        <CheckpointContentView 
-          v-if="moduleViewState === 'checkpoint'"
-          :checkpoint-title="selectedCheckpoint"
-          :parent-module-name="selectedModule.title"
+        <!--
+          The student module journey. `ModuleExperience` is the SAME component
+          the mentor's Preview mounts — students and teachers share one
+          renderer, one navigation and one presentation. This view simply adds
+          the live (non read-only) persistence handlers.
+        -->
+        <ModuleExperience
+          v-if="moduleViewState === 'roadmap' || moduleViewState === 'checkpoint'"
+          :key="'module-experience-' + (selectedModule?.id || '')"
           :module-data="selectedModule"
-          :checkpoint-data="selectedCheckpointObject"
-          @back="moduleViewState = 'roadmap'"
-          @notify="showToast"
-          @complete-checkpoint="handleCheckpointCompleted"
-        />
-
-        <!-- View 2: Module Progression Chart / Roadmap Checkpoints -->
-        <ModuleRoadmapView 
-          v-else-if="moduleViewState === 'roadmap'"
-          :module-data="selectedModule"
+          :initial-view="moduleViewState === 'checkpoint' ? 'lesson' : 'roadmap'"
+          :initial-checkpoint="selectedCheckpointObject"
           @back="moduleViewState = 'list'"
-          @select-checkpoint="handleSelectCheckpoint"
-          @award-badge="handleAwardBadge"
           @notify="showToast"
+          @select-checkpoint="handleSelectCheckpoint"
+          @complete-checkpoint="handleCheckpointCompleted"
+          @award-badge="handleAwardBadge"
           @update-module="handleUpdateModule"
         />
 
-        <!-- View 1: Main Modules Page (Currently Enrolled & Scrollable Explore) -->
-        <ModulesPage 
+        <!-- Main Modules Page (Currently Enrolled & Scrollable Explore) -->
+        <ModulesPage
           v-else
           :key="modulesComponentKey"
           @open-module="handleOpenModule"
@@ -234,8 +231,7 @@ import NotebookPromptView from './components/notebooks/NotebookPromptView.vue';
 import { useAuthStore } from './stores/authStore.js';
 import { useNotebooksStore } from './stores/notebooksStore.js';
 import ModulesPage from './components/ModulesPage.vue';
-import ModuleRoadmapView from './components/ModuleRoadmapView.vue';
-import CheckpointContentView from './components/CheckpointContentView.vue';
+import ModuleExperience from './components/ModuleExperience.vue';
 import ProfileCard from './components/ProfileCard.vue';
 import StatsSection from './components/StatsSection.vue';
 import SkillsSection from './components/SkillsSection.vue';
