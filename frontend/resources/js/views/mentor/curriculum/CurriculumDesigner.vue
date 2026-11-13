@@ -1865,6 +1865,80 @@
           </div>
 
           <div class="lesson-editor-topbar-right">
+            <!-- Phase 2 layout controls: only meaningful on a real lesson -->
+            <div v-if="previewingLesson" class="lesson-editor-layout-controls">
+              <button
+                type="button"
+                class="lesson-editor-layout-btn lesson-editor-layout-btn--mode"
+                :class="{ 'is-active': layoutModeEnabled }"
+                :aria-pressed="layoutModeEnabled"
+                @click="toggleLayoutMode"
+                :title="layoutModeEnabled ? 'Turn Layout Mode off and edit text normally' : 'Enable Layout Mode to move blocks'"
+                id="btn-toggle-layout-mode"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  <path d="M10 6.5h5a3 3 0 0 1 3 3V12" />
+                  <path d="M14 17.5h-5a3 3 0 0 1-3-3V10" />
+                </svg>
+                <span>{{ layoutModeEnabled ? 'Layout Mode On' : 'Layout Mode' }}</span>
+              </button>
+
+              <template v-if="layoutModeEnabled">
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn"
+                  :class="{ 'is-active': snapToGridEnabled }"
+                  :aria-pressed="snapToGridEnabled"
+                  @click="snapToGridEnabled = !snapToGridEnabled"
+                  title="Snap dragged blocks to an 8px grid"
+                  id="btn-toggle-snap-grid"
+                >
+                  <span>Snap</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn"
+                  :disabled="!canUndoLayout"
+                  @click="undoLayout"
+                  title="Undo the last layout change"
+                  aria-label="Undo layout change"
+                  id="btn-undo-layout"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn"
+                  :disabled="!canRedoLayout"
+                  @click="redoLayout"
+                  title="Redo the last layout change"
+                  aria-label="Redo layout change"
+                  id="btn-redo-layout"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  class="lesson-editor-layout-btn lesson-editor-layout-btn--reset"
+                  :disabled="!hasLayoutWork"
+                  @click="resetLessonLayout"
+                  title="Return every block to the default document flow"
+                  id="btn-reset-layout"
+                >
+                  <span>Reset Layout</span>
+                </button>
+              </template>
+            </div>
+
             <button
               type="button"
               class="lesson-editor-sidebar-toggle"
@@ -1997,6 +2071,8 @@
                 :checkpoint-data="previewCheckpointData"
                 :editable="true"
                 :preview-mode="true"
+                :layout-mode="layoutModeEnabled"
+                :snap-to-grid="snapToGridEnabled"
                 @notify="previewNotice"
                 @update-lesson-content="handlePreviewLessonUpdate"
                 @update-block-layout="handlePreviewBlockLayout"
@@ -3651,6 +3727,9 @@ function closeStudentPreview() {
   previewHasUnsavedEdits.value = false;
   previewSaveError.value = '';
   previewInlineNotice.value = '';
+  // Layout Mode is an editing session, not a stored preference.
+  layoutModeEnabled.value = false;
+  layoutHistory.value = { past: [], future: [] };
   if (previewInlineNoticeTimer) {
     clearTimeout(previewInlineNoticeTimer);
     previewInlineNoticeTimer = null;
@@ -3738,26 +3817,53 @@ function handlePreviewLessonUpdate(payload) {
 }
 
 /**
- * Phase 1: applies a block's resized dimensions to the buffered preview copy.
+ * Phase 1 + 2: applies a block's layout (size AND position) to the buffered
+ * preview copy.
  *
  * Only `block.metadata.layout` is written — never `content`, `title`, or any
- * rich-text field — so resizing can not alter lesson prose or formatting.
- * The same block can exist in both `learning_nodes[]` and
+ * rich-text field — so resizing or moving a block can not alter lesson prose or
+ * formatting. The same block can exist in both `learning_nodes[]` and
  * `modules[].checkpoints[]`, so every twin is updated by id (falling back to
- * position) to prevent the save from resurrecting the old size.
+ * position) to prevent a save resurrecting the old layout on whichever path
+ * students actually read.
  */
 function handlePreviewBlockLayout(payload) {
   if (!payload || payload.kind !== 'block') return;
   const lesson = previewingLesson.value;
   if (!lesson) return;
 
+  const twins = lessonTwins();
+  if (twins.length === 0) return;
+
+  // Record the pre-change arrangement so Undo can step back to it.
+  pushLayoutHistory();
+
+  writeBlockLayout(twins, payload.index, normalizeLayout(payload.layout));
+
+  previewingLesson.value = twins[0];
+  markLayoutDirty();
+}
+
+/**
+ * Returns the preview edit buffer, creating it from the saved proposal on first
+ * layout change. Without this, layout controls would go dead after a save (the
+ * save nulls the buffer) even though the lesson still has an arrangement.
+ */
+function ensurePreviewBuffer() {
   if (!previewEditBuffer.value) {
     previewEditBuffer.value = JSON.parse(
       JSON.stringify(editableProposal.value?.proposal_data || { modules: [], title: '', summary: '' })
     );
   }
+  return previewEditBuffer.value;
+}
 
-  const buffer = previewEditBuffer.value;
+/** Every copy of the lesson currently being previewed (node list + module list). */
+function lessonTwins() {
+  const lesson = previewingLesson.value;
+  if (!lesson) return [];
+  const buffer = ensurePreviewBuffer();
+
   const targetId = previewedCheckpointId.value ?? lesson.id;
   const targetTitle = lesson.title || lesson.name;
 
@@ -3774,29 +3880,183 @@ function handlePreviewBlockLayout(payload) {
   (Array.isArray(buffer.modules) ? buffer.modules : []).forEach(mod => {
     twins.push(...(mod.checkpoints || []).filter(matches));
   });
-  if (twins.length === 0) return;
+  return twins;
+}
 
-  const layout = payload.layout && typeof payload.layout === 'object' ? payload.layout : {};
-  const cleanLayout = {};
-  if (Number.isFinite(layout.width)) cleanLayout.width = Math.round(layout.width);
-  if (Number.isFinite(layout.height)) cleanLayout.height = Math.round(layout.height);
+/**
+ * Keeps only the fields a layout record may contain. Anything else the renderer
+ * might send is discarded here, so a stray key can never reach proposal_data.
+ */
+function normalizeLayout(layout) {
+  const src = layout && typeof layout === 'object' ? layout : {};
+  const out = {};
+  if (Number.isFinite(src.width)) out.width = Math.round(src.width);
+  if (Number.isFinite(src.height)) out.height = Math.round(src.height);
+  if (Number.isFinite(src.x)) out.x = Math.min(100, Math.max(0, Math.round(src.x * 10) / 10));
+  if (Number.isFinite(src.y)) out.y = Math.max(0, Math.round(src.y));
+  if (Number.isFinite(src.order)) out.order = Math.round(src.order);
+  return out;
+}
 
+/** Writes one block's layout onto every twin, preserving other metadata. */
+function writeBlockLayout(twins, index, layout) {
+  const empty = Object.keys(layout).length === 0;
   for (const checkpoint of twins) {
-    const block = (checkpoint.blocks || [])[payload.index];
+    const block = (checkpoint.blocks || [])[index];
     if (!block) continue;
     const meta = block.metadata && typeof block.metadata === 'object' ? { ...block.metadata } : {};
-    if (cleanLayout.width == null && cleanLayout.height == null) {
-      delete meta.layout;
-    } else {
-      meta.layout = { ...cleanLayout };
-    }
+    if (empty) delete meta.layout;
+    else meta.layout = { ...layout };
     if (Object.keys(meta).length > 0) block.metadata = meta;
     else delete block.metadata;
   }
+}
 
-  previewingLesson.value = twins[0];
+function markLayoutDirty() {
   previewHasUnsavedEdits.value = true;
   previewSaveError.value = '';
+}
+
+// ── Layout history (Undo / Redo for layout changes only) ───────────────────
+// Snapshots are plain arrays of layout records for the previewed lesson, so
+// they are tiny and can never carry (or restore) lesson content.
+const layoutHistory = ref({ past: [], future: [] });
+const LAYOUT_HISTORY_LIMIT = 50;
+
+/** Current arrangement of the previewed lesson, one layout record per block. */
+function currentLayoutSnapshot() {
+  const twins = lessonTwins();
+  const blocks = (twins[0]?.blocks || []);
+  return blocks.map(block =>
+    block?.metadata?.layout && typeof block.metadata.layout === 'object'
+      ? { ...block.metadata.layout }
+      : null
+  );
+}
+
+function pushLayoutHistory() {
+  const snapshot = currentLayoutSnapshot();
+  const past = [...layoutHistory.value.past, snapshot].slice(-LAYOUT_HISTORY_LIMIT);
+  // Any new change invalidates the redo branch, as in any editor.
+  layoutHistory.value = { past, future: [] };
+}
+
+/** Re-applies a snapshot to every twin of the previewed lesson. */
+function applyLayoutSnapshot(snapshot) {
+  const twins = lessonTwins();
+  if (twins.length === 0) return;
+  twins.forEach(checkpoint => {
+    (checkpoint.blocks || []).forEach((block, i) => {
+      const layout = snapshot[i];
+      const meta = block.metadata && typeof block.metadata === 'object' ? { ...block.metadata } : {};
+      if (!layout) delete meta.layout;
+      else meta.layout = { ...layout };
+      if (Object.keys(meta).length > 0) block.metadata = meta;
+      else delete block.metadata;
+    });
+  });
+  previewingLesson.value = twins[0];
+  markLayoutDirty();
+}
+
+const canUndoLayout = computed(() => layoutHistory.value.past.length > 0);
+const canRedoLayout = computed(() => layoutHistory.value.future.length > 0);
+
+function undoLayout() {
+  const { past, future } = layoutHistory.value;
+  if (past.length === 0) return;
+  const previous = past[past.length - 1];
+  const current = currentLayoutSnapshot();
+  layoutHistory.value = {
+    past: past.slice(0, -1),
+    future: [current, ...future].slice(0, LAYOUT_HISTORY_LIMIT),
+  };
+  applyLayoutSnapshot(previous);
+}
+
+function redoLayout() {
+  const { past, future } = layoutHistory.value;
+  if (future.length === 0) return;
+  const next = future[0];
+  const current = currentLayoutSnapshot();
+  layoutHistory.value = {
+    past: [...past, current].slice(-LAYOUT_HISTORY_LIMIT),
+    future: future.slice(1),
+  };
+  applyLayoutSnapshot(next);
+}
+
+// ── Layout Mode controls ───────────────────────────────────────────────────
+const layoutModeEnabled = ref(false);
+const snapToGridEnabled = ref(false);
+
+/** True when the previewed lesson has any custom layout worth resetting. */
+/** Reads the arrangement from whatever is currently on screen (buffer or saved). */
+const hasLayoutWork = computed(() => {
+  const lesson = previewingLesson.value;
+  if (!lesson) return false;
+
+  const data = previewProposalData.value || {};
+  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const targetTitle = lesson.title || lesson.name;
+  const matches = cp =>
+    cp && (
+      (targetId != null && (cp.id ?? '') === targetId) ||
+      (targetTitle && (cp.title === targetTitle || cp.name === targetTitle))
+    );
+
+  const candidates = [
+    ...(Array.isArray(data.learning_nodes) ? data.learning_nodes.filter(matches) : []),
+    ...(Array.isArray(data.modules)
+      ? data.modules.flatMap(mod => (mod.checkpoints || []).filter(matches))
+      : []),
+  ];
+
+  return candidates.some(cp =>
+    (cp.blocks || []).some(b => b?.metadata?.layout && typeof b.metadata.layout === 'object')
+  );
+});
+
+/**
+ * Clears size AND position for every block in the lesson, back to flow.
+ * Asks first when the reset would discard a meaningful amount of arrangement,
+ * matching how this file confirms other destructive actions.
+ */
+function resetLessonLayout() {
+  const twins = lessonTwins();
+  if (twins.length === 0) return;
+
+  const positioned = (twins[0]?.blocks || []).filter(
+    b => b?.metadata?.layout && typeof b.metadata.layout === 'object'
+  ).length;
+
+  if (positioned >= 2) {
+    const ok = window.confirm(
+      `Reset the layout of ${positioned} blocks? This returns them to the default document flow (you can undo this).`
+    );
+    if (!ok) return;
+  }
+
+  pushLayoutHistory();
+  twins.forEach(checkpoint => {
+    (checkpoint.blocks || []).forEach(block => {
+      if (!block?.metadata || typeof block.metadata !== 'object') return;
+      const meta = { ...block.metadata };
+      delete meta.layout;
+      if (Object.keys(meta).length > 0) block.metadata = meta;
+      else delete block.metadata;
+    });
+  });
+  previewingLesson.value = twins[0];
+  markLayoutDirty();
+  previewNotice('Lesson layout reset to the default document flow.');
+}
+
+function toggleLayoutMode() {
+  layoutModeEnabled.value = !layoutModeEnabled.value;
+  if (layoutModeEnabled.value) {
+    previewNotice('Layout Mode on — drag a block by its handle to move it.');
+  }
 }
 
 /** Persists buffered preview edits through the existing save-proposal workflow. */
@@ -5594,6 +5854,59 @@ function saveCourseDetails() {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* ── Layout Mode controls (Phase 2) ──────────────────────────────────────────
+   Grouped and visually separated from document actions so the toolbar does not
+   become a wall of buttons. */
+.lesson-editor-layout-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e6eaf0;
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+
+.lesson-editor-layout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.lesson-editor-layout-btn:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #1e293b;
+}
+
+.lesson-editor-layout-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lesson-editor-layout-btn.is-active {
+  background: #fff7ed;
+  border-color: #ffd7a8;
+  color: #c2410c;
+}
+
+.lesson-editor-layout-btn--reset:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
 }
 
 /* Sidebar control: same affordance family as the path toggle, lighter weight so

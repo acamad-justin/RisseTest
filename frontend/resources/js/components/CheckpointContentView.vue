@@ -5,6 +5,7 @@
       'is-chat-maximized': isChatMaximized,
       'checkpoint-page-container--tutor-hidden': previewMode,
       'is-resizing': Boolean(activeResize),
+      'is-moving': Boolean(activeDrag),
     }"
   >
     <!-- Left Column: Header (Back, Module Tag, Title, Meta) + Star/Kebab (outside chatbox) + Lesson Lecture -->
@@ -111,7 +112,24 @@
       <!-- Educational Lesson Text & Core Concepts (When content is populated) -->
       <section v-else class="lesson-lecture-column">
         <!-- Structured Content Blocks Stream (When blocks exist) -->
-        <div v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0" class="lesson-blocks-stream">
+        <div
+          v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0"
+          ref="canvasRef"
+          class="lesson-blocks-stream"
+          :class="{
+            'is-layout-canvas': layoutModeActive || hasAnyPinnedBlock(),
+            'is-layout-mode': layoutModeActive,
+            'is-dragging-block': Boolean(activeDrag),
+          }"
+          :style="canvasStyle"
+        >
+          <!-- Alignment guides, shown only while a block is being dragged -->
+          <div v-if="activeDrag" class="layout-guides" aria-hidden="true">
+            <span v-if="dragGuides.includes('center')" class="layout-guide layout-guide--center"></span>
+            <span v-if="dragGuides.includes('left')" class="layout-guide layout-guide--left"></span>
+            <span v-if="dragGuides.includes('right')" class="layout-guide layout-guide--right"></span>
+          </div>
+
           <template v-for="(block, bIdx) in activeLessonData.blocks" :key="block.id || bIdx">
             <!-- Text Block -->
             <div
@@ -122,11 +140,16 @@
                 'is-block-resizable': isBlockResizable(block),
                 'is-block-selected': isBlockSelected(bIdx),
                 'has-custom-size': blockHasCustomLayout(block),
+                'is-block-pinned': blockIsPinned(block),
+                'is-block-dragging': activeDrag && activeDrag.index === bIdx,
+                'is-layout-mode': layoutModeActive && isBlockResizable(block),
               }"
-              :style="blockResizeStyle(block)"
+              :style="blockCanvasStyle(block)"
               :data-lesson-block="isBlockResizable(block) ? bIdx : null"
               :data-lesson-block-index="isBlockResizable(block) ? bIdx : null"
+              :tabindex="canMoveBlock(block) ? 0 : null"
               @click="selectBlock(bIdx, $event)"
+              @keydown="onBlockKeydown($event, bIdx)"
             >
               <h3 v-if="block.title" class="block-title">{{ block.title }}</h3>
 
@@ -155,6 +178,32 @@
                   @click="isEditable && startInlineEdit('block', bIdx)"
                 ></div>
               </template>
+
+              <!-- Phase 2: explicit drag handle (Layout Mode only) -->
+              <button
+                v-if="canMoveBlock(block)"
+                type="button"
+                class="block-drag-handle"
+                title="Drag to move this block (arrow keys also move it)"
+                aria-label="Move this block"
+                @pointerdown.stop.prevent="startBlockDrag($event, bIdx)"
+                @click.stop
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="9" cy="6" r="1.7" /><circle cx="15" cy="6" r="1.7" />
+                  <circle cx="9" cy="12" r="1.7" /><circle cx="15" cy="12" r="1.7" />
+                  <circle cx="9" cy="18" r="1.7" /><circle cx="15" cy="18" r="1.7" />
+                </svg>
+              </button>
+              <button
+                v-if="canMoveBlock(block) && blockIsPinned(block)"
+                type="button"
+                class="block-unpin-btn"
+                title="Return this block to normal document flow"
+                @click.stop="unpinBlock(bIdx)"
+              >
+                Unpin
+              </button>
 
               <!-- Phase 1 resize handles (dimensions only; no content change) -->
               <span
@@ -202,11 +251,16 @@
                 'is-block-resizable': isBlockResizable(block),
                 'is-block-selected': isBlockSelected(bIdx),
                 'has-custom-size': blockHasCustomLayout(block),
+                'is-block-pinned': blockIsPinned(block),
+                'is-block-dragging': activeDrag && activeDrag.index === bIdx,
+                'is-layout-mode': layoutModeActive && isBlockResizable(block),
               }"
-              :style="blockResizeStyle(block)"
+              :style="blockCanvasStyle(block)"
               :data-lesson-block="isBlockResizable(block) ? bIdx : null"
               :data-lesson-block-index="isBlockResizable(block) ? bIdx : null"
+              :tabindex="canMoveBlock(block) ? 0 : null"
               @click="selectBlock(bIdx, $event)"
+              @keydown="onBlockKeydown($event, bIdx)"
             >
               <div class="callout-header">
                 <span class="callout-icon">💡</span>
@@ -242,6 +296,32 @@
                 <span class="takeaway-label">Key Takeaway:</span>
                 <span class="takeaway-text">{{ block.analogy }}</span>
               </div>
+
+              <!-- Phase 2: explicit drag handle (Layout Mode only) -->
+              <button
+                v-if="canMoveBlock(block)"
+                type="button"
+                class="block-drag-handle"
+                title="Drag to move this block (arrow keys also move it)"
+                aria-label="Move this block"
+                @pointerdown.stop.prevent="startBlockDrag($event, bIdx)"
+                @click.stop
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="9" cy="6" r="1.7" /><circle cx="15" cy="6" r="1.7" />
+                  <circle cx="9" cy="12" r="1.7" /><circle cx="15" cy="12" r="1.7" />
+                  <circle cx="9" cy="18" r="1.7" /><circle cx="15" cy="18" r="1.7" />
+                </svg>
+              </button>
+              <button
+                v-if="canMoveBlock(block) && blockIsPinned(block)"
+                type="button"
+                class="block-unpin-btn"
+                title="Return this block to normal document flow"
+                @click.stop="unpinBlock(bIdx)"
+              >
+                Unpin
+              </button>
 
               <!-- Phase 1 resize handles (dimensions only; no content change) -->
               <span
@@ -310,11 +390,16 @@
                 'is-block-resizable': isBlockResizable(block),
                 'is-block-selected': isBlockSelected(bIdx),
                 'has-custom-size': blockHasCustomLayout(block),
+                'is-block-pinned': blockIsPinned(block),
+                'is-block-dragging': activeDrag && activeDrag.index === bIdx,
+                'is-layout-mode': layoutModeActive && isBlockResizable(block),
               }"
-              :style="blockResizeStyle(block)"
+              :style="blockCanvasStyle(block)"
               :data-lesson-block="isBlockResizable(block) ? bIdx : null"
               :data-lesson-block-index="isBlockResizable(block) ? bIdx : null"
+              :tabindex="canMoveBlock(block) ? 0 : null"
               @click="selectBlock(bIdx, $event)"
+              @keydown="onBlockKeydown($event, bIdx)"
             >
               <div class="activity-header">
                 <span class="activity-icon">🛠️</span>
@@ -345,6 +430,32 @@
                   @click="isEditable && startInlineEdit('block', bIdx)"
                 ></div>
               </template>
+
+              <!-- Phase 2: explicit drag handle (Layout Mode only) -->
+              <button
+                v-if="canMoveBlock(block)"
+                type="button"
+                class="block-drag-handle"
+                title="Drag to move this block (arrow keys also move it)"
+                aria-label="Move this block"
+                @pointerdown.stop.prevent="startBlockDrag($event, bIdx)"
+                @click.stop
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="9" cy="6" r="1.7" /><circle cx="15" cy="6" r="1.7" />
+                  <circle cx="9" cy="12" r="1.7" /><circle cx="15" cy="12" r="1.7" />
+                  <circle cx="9" cy="18" r="1.7" /><circle cx="15" cy="18" r="1.7" />
+                </svg>
+              </button>
+              <button
+                v-if="canMoveBlock(block) && blockIsPinned(block)"
+                type="button"
+                class="block-unpin-btn"
+                title="Return this block to normal document flow"
+                @click.stop="unpinBlock(bIdx)"
+              >
+                Unpin
+              </button>
 
               <!-- Phase 1 resize handles (dimensions only; no content change) -->
               <span
@@ -751,8 +862,17 @@ import {
   readBlockLayout,
   blockLayoutStyle,
   applyBlockLayout,
+  readBlockPosition,
+  isBlockPinned,
+  blockPositionStyle,
+  snapToGrid,
+  clampOffset,
   MIN_BLOCK_WIDTH,
   MIN_BLOCK_HEIGHT,
+  DRAG_START_THRESHOLD,
+  CANVAS_BOTTOM_PADDING,
+  NUDGE_STEP,
+  NUDGE_STEP_LARGE,
 } from '../../../lib/mentor/lessonBlockLayout.ts';
 import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
 
@@ -789,6 +909,19 @@ const props = defineProps({
    * completion, star and enrollment side effects while editing in preview.
    */
   previewMode: {
+    type: Boolean,
+    default: false,
+  },
+  /**
+   * Phase 2: Layout Mode. When true the teacher can drag blocks by their
+   * handles and sees boundaries/selection chrome. Students never receive it.
+   */
+  layoutMode: {
+    type: Boolean,
+    default: false,
+  },
+  /** Phase 2: snap dragged positions to the layout grid. */
+  snapToGrid: {
     type: Boolean,
     default: false,
   },
@@ -883,9 +1016,11 @@ function startBlockResize(event, index, edge) {
   event.preventDefault();
   event.stopPropagation();
 
+  const block = currentBlocks.value[index];
   const rect = el.getBoundingClientRect();
   activeResize.value = {
     index,
+    block,
     edge,
     startX: event.clientX,
     startY: event.clientY,
@@ -912,8 +1047,17 @@ function onBlockResizeMove(event) {
   const next = {};
   if (wantsWidth) {
     const proposed = drag.startW + (event.clientX - drag.startX);
+    // A pinned block also has to fit between its own left edge and the canvas
+    // edge, otherwise widening it would push it out of the workspace.
+    let room = available;
+    const pinned = readBlockPosition(drag.block);
+    if (pinned && el) {
+      const canvasRect = el.closest('.lesson-blocks-stream')?.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      if (canvasRect) room = available - (elRect.left - canvasRect.left);
+    }
     // Never exceed the workspace: the document must not scroll sideways.
-    next.width = Math.max(MIN_BLOCK_WIDTH, Math.min(proposed, available));
+    next.width = Math.max(MIN_BLOCK_WIDTH, Math.min(proposed, Math.max(MIN_BLOCK_WIDTH, room)));
   }
   if (wantsHeight) {
     const proposed = drag.startH + (event.clientY - drag.startY);
@@ -923,7 +1067,12 @@ function onBlockResizeMove(event) {
   drag.pending = next;
   // Apply live for immediate feedback (no persistence happens here).
   if (el) {
-    if (next.width != null) el.style.maxWidth = `${Math.round(next.width)}px`;
+    if (next.width != null) {
+      el.style.maxWidth = `${Math.round(next.width)}px`;
+      // A pinned (absolutely positioned) block has an explicit `width`, so
+      // maxWidth alone would not visibly resize it.
+      if (readBlockPosition(drag.block)) el.style.width = `${Math.round(next.width)}px`;
+    }
     if (next.height != null) el.style.height = `${Math.round(next.height)}px`;
   }
 }
@@ -943,7 +1092,8 @@ function endBlockResize() {
   const block = currentBlocks.value[drag.index];
   if (!isResizableBlockType(block?.type)) return;
 
-  // Dimensions not touched by this gesture keep whatever the block already had.
+  // Dimensions not touched by this gesture keep whatever the block already had,
+  // and any position is carried through untouched by applyBlockLayout.
   const current = readBlockLayout(block);
   const dims = {
     width: drag.pending.width != null ? Math.round(drag.pending.width) : current.width,
@@ -956,35 +1106,359 @@ function endBlockResize() {
   // and the stored metadata can never disagree if Vue has nothing to patch.
   const el = document.querySelector(`[data-lesson-block-index="${drag.index}"]`);
   if (el) {
-    const finalStyle = blockLayoutStyle(nextBlock);
+    const finalStyle = readBlockPosition(nextBlock)
+      ? blockPositionStyle(nextBlock)
+      : blockLayoutStyle(nextBlock);
     el.style.maxWidth = finalStyle.maxWidth || '';
     el.style.height = finalStyle.height || '';
+    if (finalStyle.width) el.style.width = finalStyle.width;
   }
 
-  // Dimensions only — the parent merges this onto the block in the draft.
+  // Size only — position and content are untouched.
+  emitBlockLayout(drag.index, readBlockLayout(nextBlock));
+}
+
+// ── Phase 2: Layout Mode & free positioning ────────────────────────────────
+// Position is layout metadata only. Dragging writes `metadata.layout.{x,y}`
+// and never touches content, so prose, lists, images and source references are
+// structurally incapable of being rewritten by a move.
+
+/** Layout Mode gate. Owned by the editor, mirrored here for rendering. */
+const layoutModeActive = computed(() => canResizeBlocks.value && Boolean(props.layoutMode));
+const snapToGridEnabled = computed(() => Boolean(props.snapToGrid));
+
+/** The block currently being dragged: pointer bookkeeping + live offsets. */
+const activeDrag = ref(null);
+/** Alignment guides shown while dragging: 'left' | 'center' | 'right' | 'top'. */
+const dragGuides = ref([]);
+
+const canvasRef = ref(null);
+
+/** The canvas element that pinned blocks are positioned against. */
+function canvasEl() {
+  return canvasRef.value || null;
+}
+
+function canMoveBlock(block) {
+  return layoutModeActive.value && isResizableBlockType(block?.type);
+}
+
+/** Style for a block: positioning when pinned, sizing otherwise. */
+function blockCanvasStyle(block) {
+  if (!canResizeBlocks.value) return {};
+  if (!isResizableBlockType(block?.type)) return {};
+  const position = readBlockPosition(block);
+  if (position) return blockPositionStyle(block);
+  return blockLayoutStyle(block);
+}
+
+function blockIsPinned(block) {
+  return canResizeBlocks.value && isResizableBlockType(block?.type) && isBlockPinned(block);
+}
+
+/**
+ * Starts a move. Deliberately bound to an explicit drag handle, never to the
+ * block body, so selecting text can not start a drag.
+ */
+function startBlockDrag(event, index) {
+  if (!canMoveBlock(currentBlocks.value[index])) return;
+  if (event.button != null && event.button !== 0) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const blockEl = event.currentTarget?.closest?.('[data-lesson-block]');
+  const canvas = canvasEl();
+  if (!blockEl || !canvas) return;
+
+  const blockRect = blockEl.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+  const block = currentBlocks.value[index];
+  const position = readBlockPosition(block);
+
+  selectedBlockIndex.value = index;
+  document.body.classList.add('risse-is-dragging');
+
+  activeDrag.value = {
+    index,
+    block,
+    // Where the block sits now, in canvas pixels.
+    originLeft: blockRect.left - canvasRect.left,
+    originTop: blockRect.top - canvasRect.top,
+    // Pointer offset inside the block, so it does not jump on grab.
+    grabX: event.clientX - blockRect.left,
+    grabY: event.clientY - blockRect.top,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    width: blockRect.width,
+    height: blockRect.height,
+    canvasWidth: canvasRect.width,
+    canvasHeight: canvasRect.height,
+    wasPinned: Boolean(position),
+    moved: false,
+  };
+
+  // Dragging an in-flow block pins it immediately at its current spot, so the
+  // pointer and the block stay aligned from the first pixel of movement.
+  if (!position) {
+    const x = (activeDrag.value.originLeft / canvasRect.width) * 100;
+    const y = activeDrag.value.originTop;
+    emitBlockLayout(index, {
+      ...readBlockLayout(block),
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y),
+      ...(readBlockLayout(block).width == null ? { width: Math.round(blockRect.width) } : {}),
+    });
+  }
+
+  window.addEventListener('pointermove', onBlockDragMove);
+  window.addEventListener('pointerup', endBlockDrag);
+  window.addEventListener('pointercancel', endBlockDrag);
+}
+
+function onBlockDragMove(event) {
+  const drag = activeDrag.value;
+  if (!drag) return;
+
+  const dx = event.clientX - drag.startClientX;
+  const dy = event.clientY - drag.startClientY;
+
+  if (!drag.moved && Math.hypot(dx, dy) < DRAG_START_THRESHOLD) return;
+  drag.moved = true;
+
+  let left = drag.originLeft + dx;
+  let top = drag.originTop + dy;
+
+  // ── canvas bounds: the block can never leave the visible workspace ──
+  left = clampOffset(left, drag.width, drag.canvasWidth);
+  top = Math.max(0, top);
+
+  // ── alignment guides against the canvas edges and centre ──
+  const guides = [];
+  const centre = drag.canvasWidth / 2;
+  const blockCentre = left + drag.width / 2;
+  if (Math.abs(blockCentre - centre) < 6) {
+    left = centre - drag.width / 2;
+    guides.push('center');
+  }
+  if (left < 6) {
+    left = 0;
+    guides.push('left');
+  }
+  if (Math.abs(left + drag.width - drag.canvasWidth) < 6) {
+    left = drag.canvasWidth - drag.width;
+    guides.push('right');
+  }
+
+  if (snapToGridEnabled.value) {
+    left = clampOffset(snapToGrid(left), drag.width, drag.canvasWidth);
+    top = snapToGrid(top);
+  }
+
+  dragGuides.value = guides;
+  drag.pendingLeft = left;
+  drag.pendingTop = top;
+
+  // Paint the block at the dragged position immediately (no persistence here).
+  const el = document.querySelector(`[data-lesson-block-index="${drag.index}"]`);
+  if (el) {
+    el.style.left = `${Math.round(left)}px`;
+    el.style.top = `${Math.round(top)}px`;
+  }
+}
+
+function endBlockDrag(event) {
+  const drag = activeDrag.value;
+  window.removeEventListener('pointermove', onBlockDragMove);
+  window.removeEventListener('pointerup', endBlockDrag);
+  window.removeEventListener('pointercancel', endBlockDrag);
+  document.body.classList.remove('risse-is-dragging');
+  dragGuides.value = [];
+  activeDrag.value = null;
+
+  if (!drag) return;
+
+  // A click on the handle without movement is a selection, not a move.
+  if (!drag.moved) return;
+
+  const left = drag.pendingLeft ?? drag.originLeft;
+  const top = drag.pendingTop ?? drag.originTop;
+
+  const block = currentBlocks.value[drag.index];
+  const existing = readBlockLayout(block);
+
+  // x is stored as a percentage of canvas width so the arrangement survives
+  // sidebar collapse and window resizes; y stays in document pixels.
+  emitBlockLayout(drag.index, {
+    ...existing,
+    x: drag.canvasWidth > 0 ? Math.round((left / drag.canvasWidth) * 1000) / 10 : 0,
+    y: Math.max(0, Math.round(top)),
+    ...(existing.width == null ? { width: Math.round(drag.width) } : {}),
+  });
+  // No cleanup needed: :style re-renders from the committed metadata. Clearing
+  // the inline left/top here first would flash the block back to its old spot.
+  if (event?.preventDefault) event.preventDefault();
+}
+
+/** Releases a block back into normal document flow. */
+function unpinBlock(index) {
+  const block = currentBlocks.value[index];
+  if (!canMoveBlock(block)) return;
+  // Keep the block's size, drop only its x/y (applyBlockLayout leaves position
+  // alone, so pass the size fields through explicitly).
+  const { width, height } = readBlockLayout(block);
+  emitBlockLayout(index, { width, height });
+}
+
+/** Single place where a layout payload is emitted, always dimensions+position. */
+function emitBlockLayout(index, layout) {
   emit('update-block-layout', {
     kind: 'block',
-    index: drag.index,
+    index,
     checkpointId: props.checkpointData?.id ?? null,
-    layout: readBlockLayout(nextBlock),
+    layout,
   });
+}
+
+/** Keyboard movement: arrows move, Shift+arrows move further, Escape cancels. */
+function onBlockKeydown(event, index) {
+  if (!canMoveBlock(currentBlocks.value[index])) return;
+  if (!isBlockSelected(index)) return;
+
+  const block = currentBlocks.value[index];
+  const position = readBlockPosition(block);
+  const canvas = canvasEl();
+  if (!canvas) return;
+
+  if (event.key === 'Escape') {
+    selectedBlockIndex.value = null;
+    return;
+  }
+
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    if (position) {
+      event.preventDefault();
+      unpinBlock(index);
+    }
+    return;
+  }
+
+  const step = event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
+  const deltas = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  const delta = deltas[event.key];
+  if (!delta) return;
+
+  event.preventDefault();
+
+  const canvasRect = canvas.getBoundingClientRect();
+  if (!position) {
+    // First nudge also pins the block where it currently sits.
+    const el = document.querySelector(`[data-lesson-block-index="${index}"]`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const left = rect.left - canvasRect.left;
+    const top = rect.top - canvasRect.top;
+    emitBlockLayout(index, {
+      ...readBlockLayout(block),
+      x: Math.round((left / canvasRect.width) * 1000) / 10,
+      y: Math.round(top),
+      ...(readBlockLayout(block).width == null ? { width: Math.round(rect.width) } : {}),
+    });
+    return;
+  }
+
+  const px = (position.x / 100) * canvasRect.width;
+  const width = blockWidthOf(index) ?? readBlockLayout(block).width ?? MIN_BLOCK_WIDTH;
+  const nextLeft = clampOffset(px + delta[0], width, canvasRect.width);
+  const nextTop = Math.max(0, position.y + delta[1]);
+
+  emitBlockLayout(index, {
+    ...readBlockLayout(block),
+    x: Math.round((nextLeft / canvasRect.width) * 1000) / 10,
+    y: Math.round(nextTop),
+  });
+}
+
+/** Measured width of a rendered block, used to bound keyboard nudges. */
+function blockWidthOf(index) {
+  const el = document.querySelector(`[data-lesson-block-index="${index}"]`);
+  return el ? el.getBoundingClientRect().width : null;
+}
+
+/**
+ * Canvas height: the furthest pinned block bottom plus breathing room, so a
+ * block dropped low is never clipped and the page simply grows.
+ *
+ * Measured into a ref rather than computed, because the answer depends on the
+ * rendered height of each pinned block (which a computed property cannot track).
+ */
+const canvasMinHeight = ref(0);
+
+function recomputeCanvasHeight() {
+  const canvas = canvasEl();
+  if (!canvas || !canResizeBlocks.value) {
+    canvasMinHeight.value = 0;
+    return;
+  }
+
+  const canvasRect = canvas.getBoundingClientRect();
+  let lowest = 0;
+
+  currentBlocks.value.forEach(block => {
+    if (!isBlockPinned(block)) return;
+    const el = canvas.querySelector(`[data-lesson-block-index="${currentBlocks.value.indexOf(block)}"]`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    // Position relative to the canvas, not the viewport.
+    lowest = Math.max(lowest, rect.bottom - canvasRect.top);
+  });
+
+  canvasMinHeight.value = lowest > 0 ? Math.round(lowest + CANVAS_BOTTOM_PADDING) : 0;
+}
+
+const canvasStyle = computed(() => {
+  if (!canResizeBlocks.value || canvasMinHeight.value <= 0) return {};
+  // A minimum only: in-flow siblings keep contributing their own height, so
+  // nothing is ever cropped and the canvas simply grows downward.
+  return { minHeight: `${canvasMinHeight.value}px` };
+});
+
+// Re-measure whenever the arrangement, the lesson, or the viewport changes.
+watch(
+  () => currentBlocks.value.map(b => JSON.stringify(b?.metadata?.layout || null)).join('|'),
+  () => nextTick(recomputeCanvasHeight)
+);
+watch(() => activeDrag.value, () => nextTick(recomputeCanvasHeight));
+onMounted(() => {
+  nextTick(recomputeCanvasHeight);
+  window.addEventListener('resize', recomputeCanvasHeight);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', recomputeCanvasHeight);
+});
+
+function hasAnyPinnedBlock() {
+  return canResizeBlocks.value && currentBlocks.value.some(b => isBlockPinned(b) && isResizableBlockType(b.type));
 }
 
 /** Clears a custom size, returning the block to natural flow dimensions. */
 function resetBlockLayout(index) {
   const block = currentBlocks.value[index];
   if (!block || !isResizableBlockType(block.type)) return;
+  // Clearing the size must not move the block: any pinned position survives.
   const cleared = applyBlockLayout(block, { width: null, height: null });
-  emit('update-block-layout', {
-    kind: 'block',
-    index,
-    checkpointId: props.checkpointData?.id ?? null,
-    layout: readBlockLayout(cleared),
-  });
+  emitBlockLayout(index, readBlockLayout(cleared));
 }
 
 function startInlineEdit(kind, index = null, field = null) {
   if (!isEditable.value) return;
+  // Layout Mode is for arranging, not typing: a click on a block selects it
+  // instead of opening the rich-text editor, so dragging and editing never
+  // compete for the same gesture. Turning Layout Mode off restores editing.
+  if (layoutModeActive.value) {
+    if (index != null) selectedBlockIndex.value = index;
+    return;
+  }
   activeEditTarget.value = { kind, index, field };
 }
 
@@ -2242,11 +2716,167 @@ function formatMessageText(text) {
   display: block;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* PHASE 2 — LAYOUT MODE & FREE POSITIONING                                   */
+/* Positioning only ever writes metadata.layout; prose is never rewritten.     */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The canvas is the coordinate space pinned blocks are placed against. */
+.checkpoint-page-container--tutor-hidden .lesson-blocks-stream.is-layout-canvas {
+  position: relative;
+}
+
+/* A pinned block leaves the flow and is placed on the canvas. */
+.checkpoint-page-container--tutor-hidden .is-block-pinned {
+  position: absolute;
+  margin-bottom: 0;
+  z-index: 1;
+}
+
+.checkpoint-page-container--tutor-hidden .is-block-pinned.is-block-selected {
+  z-index: 5;
+}
+
+/* While dragging, lift the block and stop the browser selecting text. */
+.checkpoint-page-container--tutor-hidden .is-block-dragging {
+  z-index: 9 !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  cursor: grabbing;
+}
+
+/* Layout Mode: show a boundary on every movable block. */
+.checkpoint-page-container--tutor-hidden .is-layout-mode {
+  outline: 1px dashed #cbd5e1;
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+.checkpoint-page-container--tutor-hidden .is-layout-mode:hover {
+  outline-color: #94a3b8;
+}
+
+.checkpoint-page-container--tutor-hidden .is-layout-mode.is-block-selected {
+  outline: 2px solid rgba(255, 122, 0, 0.55);
+  outline-offset: 4px;
+}
+
+/* ── Drag handle ─────────────────────────────────────────────────────────── */
+.checkpoint-page-container--tutor-hidden .block-drag-handle {
+  position: absolute;
+  top: -11px;
+  left: -11px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #ffd7a8;
+  border-radius: 6px;
+  background: #fff7ed;
+  color: #c2410c;
+  cursor: grab;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+  touch-action: none;
+}
+
+.checkpoint-page-container--tutor-hidden .block-drag-handle:hover {
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+.checkpoint-page-container--tutor-hidden .block-drag-handle:active {
+  cursor: grabbing;
+}
+
+.checkpoint-page-container--tutor-hidden .is-block-dragging .block-drag-handle {
+  cursor: grabbing;
+}
+
+/* ── Unpin control ───────────────────────────────────────────────────────── */
+.checkpoint-page-container--tutor-hidden .block-unpin-btn {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+  z-index: 8;
+  display: none;
+  padding: 2px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.checkpoint-page-container--tutor-hidden .is-block-selected .block-unpin-btn {
+  display: block;
+}
+
+/* "Reset size" and "Unpin" both live top-right; stack them when both apply. */
+.checkpoint-page-container--tutor-hidden .is-block-selected .block-reset-size {
+  right: 58px;
+}
+
+/* ── Alignment guides ────────────────────────────────────────────────────── */
+.checkpoint-page-container--tutor-hidden .layout-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.checkpoint-page-container--tutor-hidden .layout-guide {
+  position: absolute;
+  background: rgba(255, 122, 0, 0.55);
+}
+
+.checkpoint-page-container--tutor-hidden .layout-guide--center {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+.checkpoint-page-container--tutor-hidden .layout-guide--left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+}
+
+.checkpoint-page-container--tutor-hidden .layout-guide--right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+}
+
 /* A block being dragged must not fight the pointer with text selection. */
 .checkpoint-page-container--tutor-hidden.is-resizing,
 .checkpoint-page-container--tutor-hidden.is-resizing * {
   cursor: inherit;
   user-select: none;
+}
+
+.checkpoint-page-container--tutor-hidden.is-moving,
+.checkpoint-page-container--tutor-hidden.is-moving * {
+  user-select: none;
+}
+
+/* While a block is being moved the pointer must not turn into a text caret.
+   NOTE: this must live in a :global() block — <body> is outside this
+   component's template scope, so a scoped rule would never match it. */
+:global(body.risse-is-dragging) {
+  cursor: grabbing;
+  user-select: none;
+}
+
+:global(body.risse-is-dragging *) {
+  cursor: grabbing !important;
 }
 
 /* The empty state's "return" belongs to the roadmap; in the editor it means
