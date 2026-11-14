@@ -25,6 +25,7 @@
       v-if="viewState === 'roadmap'"
       :module-data="moduleData"
       :read-only="readOnly"
+      :allow-locked-navigation="allowLockedNavigation"
       @back="$emit('back')"
       @select-checkpoint="handleSelectCheckpoint"
       @award-badge="handleAwardBadge"

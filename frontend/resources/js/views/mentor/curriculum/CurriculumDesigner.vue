@@ -1908,6 +1908,7 @@
         :initial-view="previewInitialView"
         :initial-checkpoint="previewingLesson"
         :read-only="true"
+        :allow-locked-navigation="true"
         :editable="editingEnabled"
         :layout-mode="layoutModeEnabled"
         :snap-to-grid="snapToGridEnabled"
