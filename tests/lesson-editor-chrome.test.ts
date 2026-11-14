@@ -142,7 +142,7 @@ const app = createApp({
       courseId: 'course-1',
       'onUpdate:document': doc => emitted.push(doc),
       'onUpdate:flow': flow => emitted.push({ flow }),
-      'onUpdate:float': patch => emitted.push({ float: patch }),
+      'onUpdate-float': patch => emitted.push({ float: patch }),
     });
   },
 });

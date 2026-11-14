@@ -121,6 +121,7 @@
       @focusout="onCanvasFocusout"
       @focus="onFlowFocus"
       @click="onCanvasClick"
+      @dragstart.prevent
       @dragover="onDragOver"
       @drop="onDrop"
     >
@@ -490,7 +491,9 @@ function renderFloat(float) {
         const src = imageSrcOf(float);
         return h('figure', { class: 'lesson-float__figure' }, [
           src
-            ? h('img', { src, alt: float.alt || '', loading: 'lazy' })
+            // draggable=false: the browser's own image drag takes the pointer
+            // stream away from ours (it fires pointercancel, not pointerup).
+            ? h('img', { src, alt: float.alt || '', loading: 'lazy', draggable: 'false' })
             : h('div', { class: 'lesson-float__placeholder' },
                 !float.src ? 'No image'
                 : imageFailures.value[float.src] ? 'Image unavailable'
@@ -1018,17 +1021,66 @@ function startFloatResize(event, float) {
     el.style.minHeight = `${height}px`;
   };
 
-  const onUp = () => {
+  let committed = false;
+
+  const cleanup = () => {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+    if (!committed) resetFloatGestureStyles(float);
+    if (endActiveGesture === onUp) endActiveGesture = null;
+  };
+
+  function onUp() {
+    if (committed) return;
+    committed = true;
+    cleanup();
     if (!moved) return;
     const patchValue = { width: Math.round(width), height: Math.round(height) };
     applyDoc(updateFloat(localDoc.value, float.id, patchValue));
     emit('update-float', { id: float.id, patch: patchValue });
-  };
+  }
 
+  finishActiveGesture();
+  endActiveGesture = onUp;
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  window.addEventListener('blur', onUp);
+}
+
+/**
+ * The gesture that is currently running, if any.
+ *
+ * A pointer stream does not always end with `pointerup`. Dragging a picture used
+ * to hand the gesture to the browser's own image drag, which fires
+ * `pointercancel` instead — and nothing was listening for it. The window
+ * listeners stayed attached for the rest of the session, so every later mouse
+ * move kept dragging the picture: it followed the cursor, sat in front of
+ * whatever button was pressed next, and swallowed every click. Nothing on the
+ * screen responded until the page was reloaded.
+ *
+ * Every gesture now registers how to end itself, and anything that can end a
+ * pointer stream — release, cancel, the window losing focus, unmounting, or
+ * another gesture starting — ends the one in flight.
+ */
+let endActiveGesture = null;
+
+function finishActiveGesture() {
+  const end = endActiveGesture;
+  endActiveGesture = null;
+  if (typeof end === 'function') end();
+}
+
+/** Puts an element back the way it looks when it is not being dragged. */
+function resetFloatGestureStyles(float) {
+  const live = canvasRef.value?.querySelector(`[data-float-id="${float.id}"]`);
+  if (!live) return;
+  live.style.transform = '';
+  live.style.opacity = '';
+  live.style.width = '';
+  live.style.minHeight = '';
 }
 
 /**
@@ -1068,13 +1120,28 @@ function startFloatDrag(event, float) {
     el.style.opacity = '0.92';
   };
 
-  const onUp = upEvent => {
+  let committed = false;
+
+  const cleanup = () => {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
-    el.style.transform = '';
-    el.style.opacity = '';
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+    // Reset whatever element represents this float NOW: a re-render during the
+    // gesture can have replaced the node we started on.
+    resetFloatGestureStyles(float);
     draggingId.value = null;
-    if (!moved) return;
+    if (endActiveGesture === onUp) endActiveGesture = null;
+  };
+
+  const onUp = upEvent => {
+    if (committed) return;
+    committed = true;
+    // A cancel or a window blur has no coordinates to drop at: the gesture is
+    // abandoned rather than committed, and nothing is recorded.
+    const cancelled = !upEvent || upEvent.type !== 'pointerup';
+    cleanup();
+    if (!moved || cancelled) return;
 
     const dx = upEvent.clientX - startX;
     const dy = upEvent.clientY - startY;
@@ -1107,8 +1174,12 @@ function startFloatDrag(event, float) {
     emit('update-float', { id: float.id, patch: { width, ...placement } });
   };
 
+  finishActiveGesture();
+  endActiveGesture = onUp;
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  window.addEventListener('blur', onUp);
 }
 
 // ── External updates ─────────────────────────────────────────────────────
@@ -1139,6 +1210,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  finishActiveGesture();
   draggingId.value = null;
 });
 
@@ -1388,7 +1460,15 @@ defineExpose({ selectedId });
 .lesson-float--code .lesson-float__caption { color: #fbbf24; }
 
 .lesson-float__figure { margin: 0; }
-.lesson-float__figure img { display: block; width: 100%; height: auto; border-radius: 10px; }
+.lesson-float__figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  /* A picture is lesson content: it is not a draggable object. */
+  -webkit-user-drag: none;
+  user-select: none;
+}
 .lesson-float__figure figcaption { margin-top: 6px; font-size: 12.5px; color: #6b7280; }
 
 .lesson-float--overlay { margin: 0; }

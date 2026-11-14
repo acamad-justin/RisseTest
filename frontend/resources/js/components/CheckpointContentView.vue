@@ -1073,6 +1073,9 @@ function startBlockResize(event, index, edge) {
 
   window.addEventListener('mousemove', onBlockResizeMove);
   window.addEventListener('mouseup', endBlockResize);
+  // `mouseup` does not arrive if the button is released outside the window, and
+  // the gesture would then stay live for the rest of the session.
+  window.addEventListener('blur', endBlockResize);
 }
 
 function onBlockResizeMove(event) {
@@ -1128,6 +1131,7 @@ function endBlockResize() {
   const drag = activeResize.value;
   window.removeEventListener('mousemove', onBlockResizeMove);
   window.removeEventListener('mouseup', endBlockResize);
+  window.removeEventListener('blur', endBlockResize);
   activeResize.value = null;
   if (!drag?.pending) return;
 
@@ -1288,6 +1292,8 @@ function startBlockDrag(event, index) {
   window.addEventListener('pointermove', onBlockDragMove);
   window.addEventListener('pointerup', endBlockDrag);
   window.addEventListener('pointercancel', endBlockDrag);
+  // Losing the window ends the gesture too: no pointerup is coming.
+  window.addEventListener('blur', endBlockDrag);
 }
 
 /**
@@ -1574,6 +1580,18 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   window.removeEventListener('resize', recomputeCanvasHeight);
+  // Never leave a gesture (or the body class it set) behind on unmount.
+  window.removeEventListener('pointermove', onBlockDragMove);
+  window.removeEventListener('pointerup', endBlockDrag);
+  window.removeEventListener('pointercancel', endBlockDrag);
+  window.removeEventListener('blur', endBlockDrag);
+  window.removeEventListener('mousemove', onBlockResizeMove);
+  window.removeEventListener('mouseup', endBlockResize);
+  window.removeEventListener('blur', endBlockResize);
+  document.body.classList.remove('risse-is-dragging');
+  activeDrag.value = null;
+  dragLive.value = null;
+  activeResize.value = null;
 });
 
 function hasAnyPinnedBlock() {
