@@ -1841,6 +1841,7 @@
         class="float-cluster"
         :class="previewToolsDocked ? 'float-cluster--beside-checkpoint' : 'float-cluster--top-right'"
         :style="previewToolsStyle"
+        :data-placement="previewToolsDocked ? 'beside-checkpoint' : (previewToolsReason || 'chrome')"
       >
         <button
           type="button"
@@ -2169,7 +2170,10 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
-import { resolvePreviewToolbarPlacement } from '../../../../../lib/mentor/previewToolbarPlacement.ts';
+import {
+  headerInkRect,
+  resolvePreviewToolbarPlacement,
+} from '../../../../../lib/mentor/previewToolbarPlacement.ts';
 import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/mentor/lessonDocument.ts';
 // The shared student module experience. Preview uses this same component the
 // student workspace uses — there is no editor-specific renderer.
@@ -2890,6 +2894,7 @@ watch(isPreviewOpen, open => {
     window.removeEventListener('risse:mentor-sidebar-state', onSidebarState);
     stopPreviewToolTracking();
     previewToolsDocked.value = false;
+    previewToolsReason.value = '';
   }
 });
 
@@ -3664,6 +3669,9 @@ const previewHostRef = ref(null);
 const previewToolsRef = ref(null);
 const previewToolsDocked = ref(false);
 const previewToolsAnchor = ref({ top: 0, left: 0 });
+// Why the toolbar is where it is. Surfaced as a data attribute so "it is still in
+// the corner" is answerable by inspecting the element instead of guessing.
+const previewToolsReason = ref('');
 
 const previewToolsStyle = computed(() =>
   previewToolsDocked.value
@@ -3673,6 +3681,7 @@ const previewToolsStyle = computed(() =>
 
 let previewToolsFrame = 0;
 let previewToolsObserver = null;
+let previewToolsMutationObserver = null;
 
 /**
  * Anchors the toolbar to the checkpoint action row, or declines to.
@@ -3693,25 +3702,30 @@ function measurePreviewTools() {
   }
 
   const action = host.querySelector('#btn-complete-checkpoint');
-  const titleBlock = host.querySelector('.checkpoint-header-left');
-  if (!action || !titleBlock) {
+  if (!action) {
     previewToolsDocked.value = false;
     return;
   }
 
+  const toolbarRect = toolbar.getBoundingClientRect();
   const placement = resolvePreviewToolbarPlacement({
-    toolbarWidth: toolbar.getBoundingClientRect().width || toolbar.offsetWidth || 0,
+    toolbar: {
+      width: toolbarRect.width || toolbar.offsetWidth || 0,
+      height: toolbarRect.height || toolbar.offsetHeight || 0,
+    },
     action: action.getBoundingClientRect(),
-    title: titleBlock.getBoundingClientRect(),
+    title: headerInkRect(host),
     host: host.getBoundingClientRect(),
   });
 
   if (!placement.docked) {
+    previewToolsReason.value = placement.reason;
     previewToolsDocked.value = false;
     return;
   }
 
   previewToolsAnchor.value = { top: placement.top, left: placement.left };
+  previewToolsReason.value = '';
   previewToolsDocked.value = true;
 }
 
@@ -3733,6 +3747,19 @@ function startPreviewToolTracking() {
     previewToolsObserver = new window.ResizeObserver(() => schedulePreviewToolMeasure());
     previewToolsObserver.observe(previewHostRef.value);
   }
+  // The lesson header arrives after the preview host does (data load, checkpoint
+  // switch, editing toggle). None of those resize the host or scroll it, so
+  // without this the toolbar would stay wherever the first measurement left it.
+  // Only child/text changes are observed — never attributes — so the toolbar's own
+  // class and style updates cannot feed back into a measure loop.
+  if (typeof MutationObserver === 'function' && previewHostRef.value) {
+    previewToolsMutationObserver = new MutationObserver(() => schedulePreviewToolMeasure());
+    previewToolsMutationObserver.observe(previewHostRef.value, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }
   window.addEventListener('resize', schedulePreviewToolMeasure);
   if (previewHostRef.value && previewHostRef.value.addEventListener) {
     previewHostRef.value.addEventListener('scroll', schedulePreviewToolMeasure, { passive: true });
@@ -3749,6 +3776,10 @@ function stopPreviewToolTracking() {
   if (previewToolsObserver) {
     previewToolsObserver.disconnect();
     previewToolsObserver = null;
+  }
+  if (previewToolsMutationObserver) {
+    previewToolsMutationObserver.disconnect();
+    previewToolsMutationObserver = null;
   }
   if (previewToolsFrame && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(previewToolsFrame);
