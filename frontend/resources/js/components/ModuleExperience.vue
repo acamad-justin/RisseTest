@@ -39,6 +39,7 @@
       :parent-module-name="moduleData?.title"
       :module-data="moduleData"
       :checkpoint-data="checkpointData"
+      :course-id="resolvedCourseId"
       :editable="editable"
       :preview-mode="editable"
       :read-only="readOnly"
@@ -59,6 +60,9 @@ import ModuleRoadmapView from './ModuleRoadmapView.vue';
 import CheckpointContentView from './CheckpointContentView.vue';
 
 const props = defineProps({
+  /** Course the module belongs to; lesson images are stored under it. */
+  courseId: { type: String, default: '' },
+
   /** Module being experienced (student shape: checkpoints, currentStep, …). */
   moduleData: { type: Object, default: () => ({}) },
 
@@ -93,6 +97,11 @@ const emit = defineEmits([
   'update-lesson-content',
   'update-block-layout',
 ]);
+
+/** Course id for lesson media, from the prop or from the module itself. */
+const resolvedCourseId = computed(() =>
+  String(props.courseId || props.moduleData?.course_id || props.moduleData?.courseId || '')
+);
 
 const viewState = ref(props.initialView === 'lesson' ? 'lesson' : 'roadmap');
 const activeCheckpoint = ref(props.initialCheckpoint);

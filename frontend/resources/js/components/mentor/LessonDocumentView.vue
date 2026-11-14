@@ -91,8 +91,24 @@
         <button type="button" class="doc-format-bar__btn" title="Clear formatting" @mousedown.prevent="exec('removeFormat')">Clear</button>
         <button type="button" class="doc-format-bar__btn doc-format-bar__btn--insert" title="Insert a text box" @mousedown.prevent="insertElement('text')">+ Text box</button>
         <button type="button" class="doc-format-bar__btn doc-format-bar__btn--insert" title="Insert a content box" @mousedown.prevent="insertElement('callout')">+ Content box</button>
+        <button
+          type="button"
+          class="doc-format-bar__btn doc-format-bar__btn--insert"
+          :disabled="uploading"
+          title="Upload a picture and place it in the lesson"
+          @mousedown.prevent="pickImage"
+        >{{ uploading ? 'Uploading…' : '+ Picture' }}</button>
+        <input
+          ref="fileInputRef"
+          type="file"
+          class="doc-format-bar__file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          @change="onFilePicked"
+        />
       </div>
     </div>
+
+    <p v-if="editable && uploadError" class="doc-upload-error" role="alert">{{ uploadError }}</p>
 
     <div
       :key="'canvas-' + canvasRevision"
@@ -104,6 +120,8 @@
       @blur="onFlowBlur"
       @focus="onFlowFocus"
       @click="onCanvasClick"
+      @dragover="onDragOver"
+      @drop="onDrop"
     >
       <template v-for="(segment, index) in segments" :key="segment.type === 'float' ? segment.float.id : 'flow-' + segment.index">
         <div v-if="segment.type === 'flow'" class="lesson-document__node" :data-flow-index="segment.index" v-html="segment.html"></div>
@@ -256,10 +274,17 @@ import {
   updateFloat,
 } from '../../../../lib/mentor/lessonDocument.ts';
 import { sanitizeLessonHtml } from '../../../../lib/mentor/richLessonContent.ts';
+import { isDirectImageSource, resolveLessonMediaUrl, uploadLessonImage } from '../../../../lib/mentor/lessonMedia.ts';
 
 const props = defineProps({
   document: { type: Object, default: () => null },
   editable: { type: Boolean, default: false },
+  /**
+   * Course the lesson belongs to. Lesson images are stored under it so the
+   * storage policy can decide who may read them (the mentor who owns the course,
+   * and its enrolled students once it is published).
+   */
+  courseId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:document', 'update:flow', 'update-float', 'select-float']);
@@ -283,6 +308,13 @@ const selectedId = ref(null);
 const draggingId = ref(null);
 const flowFocused = ref(false);
 const canvasRevision = ref(0);
+/** Signed URLs for lesson images, keyed by storage path. */
+const imageUrls = ref({});
+/** Paths that could not be signed, so the UI can say so instead of spinning. */
+const imageFailures = ref({});
+const uploading = ref(false);
+const uploadError = ref('');
+const fileInputRef = ref(null);
 /** Where the contextual controls sit, relative to the canvas. */
 const controlsPos = ref({ left: 0, top: 0 });
 
@@ -423,10 +455,20 @@ function renderFloat(float) {
   }
   if (float.kind === 'image' || float.kind === 'diagram') {
     return {
-      render: () => h('figure', { class: 'lesson-float__figure' }, [
-        float.src ? h('img', { src: float.src, alt: float.alt || '', loading: 'lazy' }) : null,
-        float.caption ? h('figcaption', null, float.caption) : null,
-      ]),
+      render: () => {
+        // Reading the ref here tracks it, so the <img> re-renders once the
+        // signed URL resolves without re-rendering the editable flow.
+        const src = imageSrcOf(float);
+        return h('figure', { class: 'lesson-float__figure' }, [
+          src
+            ? h('img', { src, alt: float.alt || '', loading: 'lazy' })
+            : h('div', { class: 'lesson-float__placeholder' },
+                !float.src ? 'No image'
+                : imageFailures.value[float.src] ? 'Image unavailable'
+                : 'Loading image…'),
+          float.caption ? h('figcaption', null, float.caption) : null,
+        ]);
+      },
     };
   }
   if (float.kind === 'activity' || float.kind === 'assessment') {
@@ -647,6 +689,113 @@ function removeSelected() {
   deleteFloat(selected.value);
 }
 
+/**
+ * The URL to render for an image float.
+ *
+ * A storage path is only usable through a signed link: rendering the raw path
+ * would produce a broken <img>. So a path renders nothing until it is signed,
+ * while a plain URL is used as-is.
+ */
+function imageSrcOf(float) {
+  const src = float?.src || '';
+  if (!src) return '';
+  if (isDirectImageSource(src)) return src;
+  return imageUrls.value[src] || '';
+}
+
+/** Resolves every image the document references, caching signed links. */
+async function resolveImages() {
+  const sources = new Set(
+    localDoc.value.floats
+      .filter(f => f.kind === 'image' || f.kind === 'diagram')
+      .map(f => f.src)
+      .filter(Boolean)
+  );
+  for (const src of sources) {
+    if (imageUrls.value[src] || isDirectImageSource(src)) continue;
+    const url = await resolveLessonMediaUrl(src);
+    if (url) {
+      imageUrls.value = { ...imageUrls.value, [src]: url };
+    } else {
+      imageFailures.value = { ...imageFailures.value, [src]: true };
+    }
+  }
+}
+
+function pickImage() {
+  if (!props.editable || uploading.value) return;
+  uploadError.value = '';
+  const input = fileInputRef.value;
+  if (input) {
+    input.value = '';
+    input.click();
+  }
+}
+
+function onFilePicked(event) {
+  const file = event?.target?.files?.[0];
+  if (file) insertImageFile(file);
+}
+
+function onDragOver(event) {
+  if (!props.editable) return;
+  // Only claim the drop when the teacher is actually dragging an image in.
+  const types = Array.from(event?.dataTransfer?.types || []);
+  if (types.includes('Files')) event.preventDefault();
+}
+
+function onDrop(event) {
+  if (!props.editable) return;
+  const file = event?.dataTransfer?.files?.[0];
+  if (!file) return;
+  event.preventDefault();
+  insertImageFile(file);
+}
+
+/**
+ * Uploads a picture and places it in the document.
+ *
+ * It lands as an ordinary document element — wrapped to the side by default, so
+ * the prose flows around it, and then it can be dragged, resized, re-wrapped or
+ * deleted like any other box.
+ */
+async function insertImageFile(file) {
+  if (!props.editable) return;
+  uploadError.value = '';
+  uploading.value = true;
+  try {
+    const result = await uploadLessonImage(file, { courseId: props.courseId || undefined });
+    if (!result.success) {
+      uploadError.value = result.error;
+      return;
+    }
+
+    const { path, url } = result.image;
+    if (url) imageUrls.value = { ...imageUrls.value, [path]: url };
+
+    const next = addFloat(localDoc.value, {
+      kind: 'image',
+      src: path,
+      alt: String(file.name || '').replace(/\.[^.]+$/, ''),
+      wrap: 'square',
+      side: 'left',
+      overlap: false,
+      width: 360,
+      anchor: segments.value.filter(s => s.type === 'flow').length,
+    });
+    applyDoc(next);
+    const added = next.floats[next.floats.length - 1];
+    if (added) {
+      selectedId.value = added.id;
+      positionControls(added);
+    }
+  } catch {
+    uploadError.value = 'The image could not be uploaded.';
+  } finally {
+    uploading.value = false;
+  }
+}
+
 function insertElement(kind) {
   const next = addFloat(localDoc.value, {
     kind,
@@ -833,6 +982,12 @@ function startFloatDrag(event, float) {
 // ── External updates ─────────────────────────────────────────────────────
 
 watch(
+  () => localDoc.value.floats.map(f => f.src || '').join('|'),
+  () => { resolveImages(); },
+  { immediate: true }
+);
+
+watch(
   () => props.document,
   next => {
     if (!next) return;
@@ -948,6 +1103,31 @@ defineExpose({ selectedId });
   padding: 0;
 }
 .doc-format-bar__swatch--highlight { border-style: dashed; }
+
+/* The picker is driven by the "+ Picture" button, never shown directly. */
+.doc-format-bar__file { display: none; }
+
+.doc-upload-error {
+  margin: -6px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12.5px;
+}
+
+.lesson-float__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #9ca3af;
+  font-size: 12.5px;
+}
 
 /* ── Floats ─────────────────────────────────────────────────────────────── */
 .lesson-float { box-sizing: border-box; overflow-wrap: break-word; position: relative; }

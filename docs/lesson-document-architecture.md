@@ -139,6 +139,36 @@ object, not document prose.
 
 ---
 
+## Lesson images (media)
+
+A mentor can upload a picture with **+ Picture** in the document toolbar, or drag
+an image file onto the canvas. It lands as an ordinary document element — wrapped
+to the side by default so the prose flows around it — and can then be dragged,
+resized, re-wrapped, layered, locked or deleted like any other box.
+
+**Storage.** Images go to the private `lesson-media` bucket (migration
+`20261115000001_lesson_media_storage.sql`), scoped by course:
+
+```
+lesson-media/{course_id}/{timestamp}-{random}.{ext}
+```
+
+The document stores the **path**, never a URL. At render time the path is resolved
+into a short-lived signed link and cached, which means:
+
+- a published lesson keeps working after a link expires;
+- a draft image is unreadable by students — the policy requires
+  `courses.status = 'published'` and an active enrollment;
+- a mentor can read their own uploads, and admins can read everything.
+
+Plain `http(s):` / `data:` sources pass through untouched, so lessons that
+already contain image URLs keep rendering. A path that cannot be signed shows
+"Image unavailable" rather than a broken image.
+
+Limits: PNG, JPEG, WebP or GIF, 8 MB per image.
+
+---
+
 ## Phase 2 (next)
 
 - Drag-to-position floats directly on the canvas (currently: wrap/side/overlap
@@ -155,7 +185,8 @@ object, not document prose.
 
 | Check | Result |
 |---|---|
-| `tests/lesson-document.test.ts` (model, bridge, anchors, layering, generation) | 15/15 |
+| `tests/lesson-document.test.ts` (model, bridge, anchors, layering, generation) | 18/18 |
+| `tests/lesson-media.test.ts` (validation, course-scoped paths, signed-URL cache, refusal handling) | 8/8 |
 | `LessonDocumentView` render probe (wrapping, overlays, no chrome for students, identical geometry in both modes) | 14/14 |
 | `lesson-rich-text-editor` / `mentor-view` / `module-studio-architecture` / `publish-sync` | 29/4 · 14/2 · 11/9 · 21/21 — unchanged |
 | `npm run build` | exit 0 |

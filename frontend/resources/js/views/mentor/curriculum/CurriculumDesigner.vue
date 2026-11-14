@@ -1988,6 +1988,7 @@
         ref="moduleExperienceRef"
         :key="'experience-' + experienceKey"
         :module-data="previewModuleData"
+        :course-id="activeCourse?.id || ''"
         :initial-view="previewInitialView"
         :initial-checkpoint="previewingLesson"
         :read-only="true"

@@ -118,6 +118,7 @@
         <LessonDocumentView
           v-if="lessonDocument"
           :document="lessonDocument"
+          :course-id="lessonCourseId"
           :editable="isEditable"
           @update:document="onDocumentUpdate"
           @update:flow="onDocumentFlow"
@@ -922,6 +923,11 @@ const props = defineProps({
     type: Object,
     default: () => null,
   },
+  /** Course the lesson belongs to. Scopes uploaded lesson images. */
+  courseId: {
+    type: String,
+    default: '',
+  },
   /**
    * Mentor Module Studio inline editing. When true, lesson prose becomes
    * click-to-edit with the Word-style compact formatting toolbar.
@@ -1009,6 +1015,11 @@ function isEditingTarget(kind, field, index = null) {
 const selectedBlockIndex = ref(null);
 /** The exact array the template renders, so index lookups always resolve. */
 const currentBlocks = computed(() => activeLessonData.value?.blocks || []);
+
+/** Course id for lesson media, from the prop or from the module it belongs to. */
+const lessonCourseId = computed(() =>
+  String(props.courseId || props.moduleData?.course_id || props.moduleData?.courseId || '')
+);
 
 /**
  * The lesson's shared document.
