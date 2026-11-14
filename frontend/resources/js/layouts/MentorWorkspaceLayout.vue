@@ -557,6 +557,14 @@ async function handlePublishProposal(payload) {
   const ok = await mentorStore.publishProposal(proposalId, targetMentorId, proposalData);
   if (ok) {
     emit('notify', 'Curriculum published! Now active for enrolled students.');
+  } else {
+    // Never stay silent here: a refused or unverifiable publish used to look
+    // identical to a successful one, so the teacher assumed students had the
+    // new lesson while the database still held the old one.
+    emit(
+      'notify',
+      'Publishing did not complete — students may still see the previous version. Your edits are saved; please retry.'
+    );
   }
 }
 

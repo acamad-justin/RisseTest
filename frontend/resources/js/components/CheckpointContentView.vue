@@ -40,6 +40,13 @@
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
         <div class="checkpoint-header-actions">
+          <!--
+            Host-provided controls that belong on this line. The mentor's preview
+            toolbar renders here, beside "Complete Checkpoint", so the row itself
+            aligns them. Empty for students: nothing is added to their view.
+          -->
+          <slot name="prepend-actions" />
+
           <button 
             type="button" 
             class="btn-complete-checkpoint-action" 
@@ -110,9 +117,23 @@
 
       <!-- Educational Lesson Text & Core Concepts (When content is populated) -->
       <section v-else class="lesson-lecture-column">
-        <!-- Structured Content Blocks Stream (When blocks exist) -->
+        <!--
+          Shared lesson document — the same component renders for students and for
+          the teacher's preview/editing session, so what a teacher arranges is
+          literally what a student receives.
+        -->
+        <LessonDocumentView
+          v-if="lessonDocument"
+          :document="lessonDocument"
+          :course-id="lessonCourseId"
+          :editable="isEditable"
+          @update:document="onDocumentUpdate"
+          @update:flow="onDocumentFlow"
+        />
+
+        <!-- Structured Content Blocks Stream (legacy lessons without a document) -->
         <div
-          v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0"
+          v-if="!lessonDocument && activeLessonData.blocks && activeLessonData.blocks.length > 0"
           ref="canvasRef"
           class="lesson-blocks-stream"
           :class="{
@@ -120,7 +141,7 @@
             // Previously this was only true once something was already pinned,
             // so the first grab measured against a different containing block
             // and the block landed offset by the stream's top edge.
-            'is-layout-canvas': canResizeBlocks.value,
+            'is-layout-canvas': canResizeBlocks.value || hasAnyPinnedBlock(),
             'is-layout-mode': layoutModeActive,
             'is-dragging-block': Boolean(activeDrag),
           }"
@@ -498,8 +519,17 @@
           </template>
         </div>
 
-        <!-- Fallback Standard 8-Section Layout (When blocks are not present) -->
-        <template v-else>
+        <!--
+          Fallback Standard 8-Section Layout.
+
+          It used to be the plain `v-else` of the block stream, so it rendered
+          underneath the document for any lesson that had no blocks — the
+          "Overview & Introduction" / "Instructional Guide" cards that could not
+          be selected, moved or deleted. Now that every lesson with content is
+          rendered as a document, these cards only remain for demo/test modules,
+          which carry no real lesson content.
+        -->
+        <template v-else-if="!lessonDocument">
           <!-- 1. Introduction & Overview -->
           <div v-if="activeLessonData.introduction" class="lesson-section-box lesson-intro-card" :class="{ 'is-inline-editable': isEditable }">
             <h2 class="section-title">Overview & Introduction</h2>
@@ -877,7 +907,9 @@ import {
   NUDGE_STEP,
   NUDGE_STEP_LARGE,
 } from '../../../lib/mentor/lessonBlockLayout.ts';
+import { documentFromBlocks, documentFromNodeContent, hasLessonDocument, lessonDocumentOf } from '../../../lib/mentor/lessonDocument.ts';
 import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
+import LessonDocumentView from './mentor/LessonDocumentView.vue';
 
 const authStore = useAuthStore();
 
@@ -897,6 +929,11 @@ const props = defineProps({
   checkpointData: {
     type: Object,
     default: () => null,
+  },
+  /** Course the lesson belongs to. Scopes uploaded lesson images. */
+  courseId: {
+    type: String,
+    default: '',
   },
   /**
    * Mentor Module Studio inline editing. When true, lesson prose becomes
@@ -985,6 +1022,68 @@ function isEditingTarget(kind, field, index = null) {
 const selectedBlockIndex = ref(null);
 /** The exact array the template renders, so index lookups always resolve. */
 const currentBlocks = computed(() => activeLessonData.value?.blocks || []);
+
+/** Course id for lesson media, from the prop or from the module it belongs to. */
+const lessonCourseId = computed(() =>
+  String(props.courseId || props.moduleData?.course_id || props.moduleData?.courseId || '')
+);
+
+/**
+ * The lesson's shared document.
+ *
+ * An authored document always wins. A lesson that only has legacy blocks is
+ * bridged on read, so students and the teacher get the document experience with
+ * exactly one renderer — old lessons migrate forward the first time a teacher
+ * saves them, without anyone having to regenerate content.
+ */
+const lessonDocument = computed(() => {
+  const own = props.checkpointData;
+  const siblings = props.moduleData?.checkpoints;
+  let record = own;
+
+  if (!hasLessonDocument(own) && Array.isArray(siblings)) {
+    const title = (props.checkpointTitle || '').trim();
+    const match = siblings.find(c =>
+      (title && (c.name || c.title) === title) ||
+      (own?.id != null && String(c.id) === String(own.id))
+    );
+    if (match) record = match;
+  }
+
+  if (own && hasLessonDocument(own)) return lessonDocumentOf(own);
+  if (record && record !== own && hasLessonDocument(record)) return lessonDocumentOf(record);
+
+  const bridged = lessonDocumentOf(own) || (record && record !== own ? lessonDocumentOf(record) : null);
+  if (bridged) return bridged;
+
+  /*
+   * Last resort: build the document from whatever this lesson actually resolved
+   * to. Lessons whose content lives only in the eight-section shape used to fall
+   * through to the legacy section cards — plain divs with no selection, no move
+   * and no delete. Nothing in the content area may be un-editable, so the
+   * resolved sections become the document instead.
+   */
+  const data = activeLessonData.value;
+  if (!data?.hasContent || data.isTest) return null;
+
+  if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+    return documentFromBlocks(data.blocks);
+  }
+
+  const resolved = documentFromNodeContent({
+    introduction: data.introduction || data.p1 || '',
+    core_lesson: data.coreLesson || '',
+    key_concepts: (data.concepts || []).map(c => ({
+      concept: c.title,
+      explanation: c.text || c.keyIdea || '',
+    })),
+    examples: data.examples || [],
+    activities: data.activities || [],
+    engineering_challenges: data.challenges || [],
+  });
+
+  return resolved.flow.trim() || resolved.floats.length > 0 ? resolved : null;
+});
 /** Live drag state: { index, edge, startX, startY, startW, startH }. */
 const activeResize = ref(null);
 
@@ -1168,9 +1267,19 @@ function canMoveBlock(block) {
   return layoutModeActive.value && isResizableBlockType(block?.type);
 }
 
-/** Style for a block: positioning when pinned, sizing otherwise. */
+/**
+ * Style for a block: positioning when pinned, sizing otherwise.
+ *
+ * Deliberately NOT gated on the editing session. A block's layout was applied
+ * only while editing, which meant the teacher arranged the lesson one way and
+ * students read it another — and toggling Edit visibly re-laid-out the page.
+ * Layout metadata is presentation, so it renders the same in both: the student
+ * view is the reference, and the teacher edits exactly what students see.
+ *
+ * Stale records are filtered out upstream by LAYOUT_VERSION, so this only ever
+ * receives a deliberate choice.
+ */
 function blockCanvasStyle(block) {
-  if (!canResizeBlocks.value) return {};
   if (!isResizableBlockType(block?.type)) return {};
 
   const position = readBlockPosition(block);
@@ -1193,7 +1302,7 @@ function blockCanvasStyle(block) {
 }
 
 function blockIsPinned(block) {
-  return canResizeBlocks.value && isResizableBlockType(block?.type) && isBlockPinned(block);
+  return isResizableBlockType(block?.type) && isBlockPinned(block);
 }
 
 /**
@@ -1493,7 +1602,7 @@ const canvasMinHeight = ref(0);
 
 function recomputeCanvasHeight() {
   const canvas = canvasEl();
-  if (!canvas || !canResizeBlocks.value) {
+  if (!canvas || !(canResizeBlocks.value || hasAnyPinnedBlock())) {
     canvasMinHeight.value = 0;
     return;
   }
@@ -1514,7 +1623,7 @@ function recomputeCanvasHeight() {
 }
 
 const canvasStyle = computed(() => {
-  if (!canResizeBlocks.value || canvasMinHeight.value <= 0) return {};
+  if (!(canResizeBlocks.value || hasAnyPinnedBlock()) || canvasMinHeight.value <= 0) return {};
   // A minimum only: in-flow siblings keep contributing their own height, so
   // nothing is ever cropped and the canvas simply grows downward.
   return { minHeight: `${canvasMinHeight.value}px` };
@@ -1538,7 +1647,7 @@ onBeforeUnmount(() => {
 });
 
 function hasAnyPinnedBlock() {
-  return canResizeBlocks.value && currentBlocks.value.some(b => isBlockPinned(b) && isResizableBlockType(b.type));
+  return currentBlocks.value.some(b => isBlockPinned(b) && isResizableBlockType(b.type));
 }
 
 /** Clears a custom size, returning the block to natural flow dimensions. */
@@ -1581,6 +1690,29 @@ function nodeContentField(field) {
  * Emits buffered (never directly persisted) lesson content updates to the
  * Module Studio preview. The parent stores them in its preview draft only.
  */
+/**
+ * Document edits are buffered exactly like block edits: nothing here persists,
+ * the Module Studio parent keeps them in its preview draft until Save.
+ */
+function onDocumentUpdate(document) {
+  if (!document) return;
+  emit('update-lesson-content', {
+    kind: 'document',
+    checkpointId: props.checkpointData?.id ?? null,
+    document,
+  });
+}
+
+function onDocumentFlow(flowHtml) {
+  const document = lessonDocument.value;
+  if (!document) return;
+  emit('update-lesson-content', {
+    kind: 'document',
+    checkpointId: props.checkpointData?.id ?? null,
+    document: { ...document, flow: flowHtml },
+  });
+}
+
 function onInlineEditUpdate(html, kind, index = null, field = null) {
   const cleanHtml = sanitizeLessonHtml(html || '');
   emit('update-lesson-content', {
@@ -2478,13 +2610,17 @@ function formatMessageText(text) {
 /* Positioning only ever writes metadata.layout; prose is never rewritten.     */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-/* The canvas is the coordinate space pinned blocks are placed against. */
-.checkpoint-page-container--editing .lesson-blocks-stream.is-layout-canvas {
+/*
+ * The canvas is the coordinate space pinned blocks are placed against.
+ * Not scoped to --editing: a published layout positions blocks for students too,
+ * and the two views must resolve to the same rectangle.
+ */
+.lesson-blocks-stream.is-layout-canvas {
   position: relative;
 }
 
 /* A pinned block leaves the flow and is placed on the canvas. */
-.checkpoint-page-container--editing .is-block-pinned {
+.is-block-pinned {
   position: absolute;
   margin-bottom: 0;
   z-index: 1;

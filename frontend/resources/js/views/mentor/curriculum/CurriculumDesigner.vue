@@ -779,11 +779,11 @@
             type="button" 
             id="btn-approve-publish"
             class="btn-footer-action btn-publish"
-            :disabled="isPublishing || (isPublished && !hasStagedDraft)"
+            :disabled="isPublishing || (isPublished && !hasPendingPublish)"
             @click="openPublishModal"
           >
             <span v-if="isPublishing">Publishing...</span>
-            <span v-else-if="isPublished && hasStagedDraft">Publish Staged Draft</span>
+            <span v-else-if="isPublished && hasPendingPublish">Publish Updates</span>
             <span v-else-if="isPublished">✓ Published to Students</span>
             <span v-else>Publish Module</span>
           </button>
@@ -1824,39 +1824,17 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <div v-if="isPreviewOpen" class="student-experience-host" role="region" aria-label="Student module experience">
 
-      <!-- ── Floating: leave preview / enter editing ─────────────────────── -->
-      <div class="float-cluster float-cluster--top-left">
-        <button
-          type="button"
-          class="float-btn float-btn--ghost"
-          @click="closeStudentPreview"
-          title="Leave preview and return to Module Studio (Esc)"
-          id="btn-close-student-experience"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-          <span>Exit Preview</span>
-        </button>
-
-        <button
-          type="button"
-          class="float-btn"
-          :class="{ 'is-active': editingEnabled }"
-          :aria-pressed="editingEnabled"
-          @click="toggleEditingMode"
-          :title="editingEnabled ? 'Stop editing and see the plain student view' : 'Enable editing on this lesson'"
-          id="btn-toggle-editing-mode"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
-          <span>{{ editingEnabled ? 'Editing On' : 'Edit' }}</span>
-        </button>
-      </div>
+      <!--
+        The preview controls are NOT floating chrome any more. They render inside
+        the lesson header's action row, beside the student's "Complete Checkpoint"
+        button (see the ModuleExperience slot below), so the row aligns them and
+        nothing has to be measured, clamped or re-measured. When the module
+        roadmap is showing there is no lesson header to sit in, so the same
+        component is placed in the corner instead — one definition, two positions.
+      -->
 
       <!-- ── Floating: student-environment toggles (only while editing) ──── -->
-      <div v-if="editingEnabled" class="float-cluster float-cluster--top-right">
+      <div v-if="editingEnabled" class="float-cluster float-cluster--bottom-right">
         <span class="float-label">Student view</span>
 
         <button
@@ -1866,8 +1844,12 @@
           :aria-pressed="!mentorSidebarCollapsed"
           @click="toggleMentorSidebar"
           :title="mentorSidebarCollapsed ? 'Show the student sidebar' : 'Hide the student sidebar'"
+          aria-label="Toggle the student sidebar"
           id="btn-toggle-editor-sidebar"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
+          </svg>
           <span>Sidebar</span>
         </button>
 
@@ -1880,8 +1862,12 @@
           :aria-pressed="layoutModeEnabled"
           @click="layoutModeEnabled = !layoutModeEnabled"
           title="Drag blocks by their handle; arrow keys nudge the selected block"
+          aria-label="Toggle layout mode for positioning blocks"
           id="btn-toggle-layout-mode"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />
+          </svg>
           <span>Layout</span>
         </button>
 
@@ -1893,6 +1879,7 @@
             :aria-pressed="snapToGridEnabled"
             @click="snapToGridEnabled = !snapToGridEnabled"
             title="Snap dragged blocks to an 8px grid"
+            aria-label="Snap dragged blocks to an 8px grid"
             id="btn-toggle-snap-grid"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1979,6 +1966,7 @@
         ref="moduleExperienceRef"
         :key="'experience-' + experienceKey"
         :module-data="previewModuleData"
+        :course-id="activeCourse?.id || ''"
         :initial-view="previewInitialView"
         :initial-checkpoint="previewingLesson"
         :read-only="true"
@@ -1990,7 +1978,29 @@
         @select-checkpoint="handlePreviewSelectCheckpoint"
         @update-lesson-content="handlePreviewLessonUpdate"
         @update-block-layout="handlePreviewBlockLayout"
-      />
+        @view-change="previewView = $event"
+      >
+        <!--
+          The controls sit ON the lesson's action line: the header row centres
+          them against "Complete Checkpoint" by layout, so alignment cannot drift.
+        -->
+        <template #prepend-actions>
+          <PreviewToolbar
+            :editing="editingEnabled"
+            @exit="closeStudentPreview"
+            @toggle-edit="toggleEditingMode"
+          />
+        </template>
+      </ModuleExperience>
+
+      <!-- No lesson header to sit in (module roadmap): same component, corner. -->
+      <div v-if="previewView !== 'lesson'" class="preview-toolbar-corner">
+        <PreviewToolbar
+          :editing="editingEnabled"
+          @exit="closeStudentPreview"
+          @toggle-edit="toggleEditingMode"
+        />
+      </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -2139,9 +2149,11 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
+import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/mentor/lessonDocument.ts';
 // The shared student module experience. Preview uses this same component the
 // student workspace uses — there is no editor-specific renderer.
 import ModuleExperience from '../../../components/ModuleExperience.vue';
+import PreviewToolbar from '../../../components/mentor/PreviewToolbar.vue';
 
 const mentorStore = useMentorStore();
 
@@ -2906,6 +2918,24 @@ const isPublished = computed(() => {
   return props.proposal?.status === 'published' || props.activeCourse?.status === 'published';
 });
 
+/**
+ * A published module parks teacher edits in `proposal_data.unpublished_draft`
+ * until they are promoted, so publishing again is a real, distinct action.
+ *
+ * This binding was referenced by the publish button but never declared: Vue
+ * resolves an unknown template identifier to `undefined`, so it was permanently
+ * falsy. That left the button disabled and labelled "Published to Students" even
+ * with edits waiting — the only way to ship them was to unpublish and publish
+ * again, which is exactly what happened.
+ */
+const hasStagedDraft = computed(() => {
+  const staged = props.proposal?.proposal_data?.unpublished_draft;
+  return Boolean(staged && typeof staged === 'object');
+});
+
+/** There is content to publish: a saved staged draft, or unsaved editor changes. */
+const hasPendingPublish = computed(() => hasStagedDraft.value || isDirty.value);
+
 function formatStatus(status) {
   if (status === 'published') return 'Published';
   if (status === 'approved') return 'Approved';
@@ -3597,6 +3627,9 @@ function closeStudentPreview() {
   }
 }
 
+/** Which surface the preview is showing ('roadmap' | 'lesson'). */
+const previewView = ref('lesson');
+
 /**
  * Drops every buffered edit and re-renders the saved proposal, WITHOUT leaving
  * the module. The teacher stays inside the student experience: discarding is
@@ -3655,6 +3688,21 @@ function handlePreviewLessonUpdate(payload) {
   if (twins.length === 0) return;
 
   for (const checkpoint of twins) {
+    if (payload.kind === 'document') {
+      // The document is the source of truth for what students read; `blocks` is
+      // a derived projection that older screens still consult. Both copies of
+      // the lesson (`learning_nodes` and `modules[].checkpoints`) carry the same
+      // document, and both stay a draft until the teacher publishes.
+      const document = normalizeLessonDocument(payload.document);
+      checkpoint.document = document;
+      if (!checkpoint.node_content) checkpoint.node_content = {};
+      checkpoint.node_content.document = document;
+      checkpoint.blocks = documentToBlocks(document);
+      checkpoint.node_content.core_lesson = document.flow;
+      checkpoint.node_content.step_by_step_guide = document.flow;
+      continue;
+    }
+
     if (payload.kind === 'block') {
       const block = (checkpoint.blocks || [])[payload.index];
       if (!block) continue;
@@ -6334,30 +6382,71 @@ function saveCourseDetails() {
   min-height: 0;
 }
 
+/*
+ * One toolbar. Controls are overlays, never layout: every cluster is `fixed`
+ * (out of flow) so showing or hiding it cannot move the lesson by a pixel.
+ */
 .float-cluster {
   position: fixed;
   z-index: 60;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.13);
-  backdrop-filter: blur(10px);
-  
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.9);
+  /* Two-tier shadow: a crisp edge plus a soft lift. Reads as a surface without
+     competing with the lesson content underneath. */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06),
+              0 8px 24px -6px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px) saturate(140%);
+  /* Edge safety: never wider than the workspace, wraps instead of clipping. */
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
   pointer-events: auto;
+  transition: box-shadow 0.18s ease, background 0.18s ease;
 }
 
-.float-cluster--top-left {
-  top: 14px;
-  left: 250px; 
+.float-cluster:hover,
+.float-cluster:focus-within {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08),
+              0 14px 34px -8px rgba(15, 23, 42, 0.22);
 }
 
+/*
+ * Placement rule for the whole preview toolbar: sit over the workspace CHROME,
+ * never over the lesson.
+ *
+ * The preview controls used to be pinned at `left: 250px; top: 14px` — inside
+ * the lesson column, on top of its header, covering the "Module" eyebrow and
+ * clipping the top of the lesson title. Students saw the header intact; the
+ * mentor did not, so preview was not the student presentation.
+ *
+ * Both clusters now hang in the right-hand chrome column (the tutor panel's
+ * header and footer) where nothing is lesson content.
+ */
 .float-cluster--top-right {
   top: 14px;
   right: 18px;
+}
+
+.float-cluster--bottom-right {
+  /* The editing toggles, in the chrome column. The preview controls used to sit
+     above this cluster; they now live on the lesson's action line, so this takes
+     the top slot itself. */
+  top: 14px;
+  right: 18px;
+  bottom: auto;
+}
+
+/* The preview controls when there is no lesson header to sit in (roadmap view). */
+.preview-toolbar-corner {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 60;
 }
 
 .float-cluster--bottom-center {
@@ -6406,23 +6495,28 @@ function saveCourseDetails() {
 .float-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 11px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #334155;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Resting state is quiet; the surface appears on interaction. */
 .float-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #1e293b;
 }
 
 .float-btn.is-active {
@@ -6431,9 +6525,23 @@ function saveCourseDetails() {
   color: #c2410c;
 }
 
+.float-btn.is-active:hover:not(:disabled) {
+  background: #ffedd5;
+}
+
+/* Disabled reads as unavailable, not merely faded: no hover, no pointer. */
 .float-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
+  background: transparent;
+  border-color: transparent;
+  color: #94a3b8;
+}
+
+/* Keyboard focus must be obvious — these controls are the only way to edit. */
+.float-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #f97316;
 }
 
 .float-btn--sm {
@@ -6442,7 +6550,8 @@ function saveCourseDetails() {
 }
 
 .float-btn--icon {
-  padding: 5px 7px;
+  width: 28px;
+  padding: 0;
 }
 
 .float-btn--ghost {
@@ -6485,6 +6594,45 @@ function saveCourseDetails() {
   font-weight: 700;
   color: #b45309;
   white-space: nowrap;
+}
+
+/*
+ * Smaller workspaces: the two top clusters would meet in the middle and cover
+ * the lesson header, so the student-view cluster drops to the bottom edge and
+ * the labels collapse to icons. Nothing is placed inside the lesson flow.
+ */
+@media (max-width: 1180px) {
+  /* Keep both clusters in the chrome column, just tighter to the edges. */
+  .float-cluster--top-right {
+    top: 10px;
+    right: 10px;
+  }
+  .float-cluster--bottom-right {
+    top: 10px;
+    right: 10px;
+    bottom: auto;
+  }
+  .preview-toolbar-corner {
+    top: 10px;
+    right: 10px;
+  }
+  /* Pending-changes bar moves off centre so it cannot meet the bottom-right one. */
+  .float-cluster--bottom-center {
+    left: 10px;
+    transform: none;
+  }
+  .float-label {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .float-btn span {
+    display: none; /* icon-only; every control keeps title + aria-label */
+  }
+  .float-btn {
+    padding: 0 7px;
+  }
 }
 
 .float-unsaved-dot {

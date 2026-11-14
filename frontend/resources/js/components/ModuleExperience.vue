@@ -39,6 +39,7 @@
       :parent-module-name="moduleData?.title"
       :module-data="moduleData"
       :checkpoint-data="checkpointData"
+      :course-id="resolvedCourseId"
       :editable="editable"
       :preview-mode="editable"
       :read-only="readOnly"
@@ -49,7 +50,12 @@
       @complete-checkpoint="handleCheckpointCompleted"
       @update-lesson-content="$emit('update-lesson-content', $event)"
       @update-block-layout="$emit('update-block-layout', $event)"
-    />
+    >
+      <!-- Controls that belong on the lesson's action line (mentor preview). -->
+      <template #prepend-actions>
+        <slot name="prepend-actions" />
+      </template>
+    </CheckpointContentView>
   </div>
 </template>
 
@@ -59,6 +65,9 @@ import ModuleRoadmapView from './ModuleRoadmapView.vue';
 import CheckpointContentView from './CheckpointContentView.vue';
 
 const props = defineProps({
+  /** Course the module belongs to; lesson images are stored under it. */
+  courseId: { type: String, default: '' },
+
   /** Module being experienced (student shape: checkpoints, currentStep, …). */
   moduleData: { type: Object, default: () => ({}) },
 
@@ -92,9 +101,20 @@ const emit = defineEmits([
   'select-checkpoint',
   'update-lesson-content',
   'update-block-layout',
+  /** Which surface is showing ('roadmap' | 'lesson'); preview places its chrome by it. */
+  'view-change',
 ]);
 
+/** Course id for lesson media, from the prop or from the module itself. */
+const resolvedCourseId = computed(() =>
+  String(props.courseId || props.moduleData?.course_id || props.moduleData?.courseId || '')
+);
+
 const viewState = ref(props.initialView === 'lesson' ? 'lesson' : 'roadmap');
+
+// The owner needs to know which surface is showing: the mentor's preview chrome
+// belongs in the lesson header when there is one, and in the corner otherwise.
+watch(viewState, state => emit('view-change', state), { immediate: true });
 const activeCheckpoint = ref(props.initialCheckpoint);
 
 /**
