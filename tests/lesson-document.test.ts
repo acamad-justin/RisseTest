@@ -224,3 +224,49 @@ test('a node with no content is left alone rather than given an empty document',
   attachLessonDocuments(draft);
   assert.equal(draft.learning_nodes[0].document, undefined);
 });
+
+test('an eight-section node_content lesson becomes a document', () => {
+  const doc = lessonDocumentOf({
+    id: 'n1',
+    node_content: {
+      introduction: 'Robotics deals with design and construction.',
+      core_lesson: '<p>An autonomous machine replaces human effort.</p>',
+      key_concepts: [{ concept: 'Autonomy', explanation: 'It performs without a person controlling every move.' }],
+      examples: ['A line-following robot.'],
+      activities: ['Build a bumper switch.'],
+    },
+  });
+  assert.ok(doc, 'a lesson without blocks must still be a document, or its content cannot be edited');
+  assert.match(doc.flow, /Robotics deals/);
+  assert.match(doc.flow, /autonomous machine/);
+  assert.equal(doc.floats.filter(f => f.kind === 'callout').length, 1);
+  assert.equal(doc.floats.filter(f => f.kind === 'example').length, 1);
+  assert.equal(doc.floats.filter(f => f.kind === 'activity').length, 1);
+  assert.equal(doc.floats.every(f => f.overlap === false), true);
+});
+
+test('in-flow offsets survive normalisation and keep the element in the flow', () => {
+  const doc = normalizeLessonDocument({
+    flow: '<p>One.</p><p>Two.</p>',
+    floats: [{
+      id: 'f1', kind: 'callout', html: '<p>Box</p>',
+      wrap: 'square', side: 'right', overlap: false, anchor: 1,
+      offsetX: 36, offsetY: 84, width: 380,
+    }],
+  });
+  const float = doc.floats[0];
+  assert.equal(float.offsetX, 36);
+  assert.equal(float.offsetY, 84);
+  assert.equal(float.overlap, false, 'an offset position must never leave the flow');
+  assert.equal(isOverlay(float), false);
+});
+
+test('a moved box keeps its width instead of collapsing to a default', () => {
+  const doc = normalizeLessonDocument({
+    flow: '<p>One.</p>',
+    floats: [{ id: 'f1', kind: 'callout', html: '<p>Box</p>', wrap: 'square', overlap: true, x: 40, y: 60, width: 420 }],
+  });
+  assert.equal(doc.floats[0].width, 420);
+  const flowAgain = updateFloat(doc, 'f1', { overlap: false, wrap: 'square' });
+  assert.equal(flowAgain.floats[0].width, 420, 'returning to the flow must not lose the size');
+});

@@ -40,6 +40,13 @@
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
         <div class="checkpoint-header-actions">
+          <!--
+            Host-provided controls that belong on this line. The mentor's preview
+            toolbar renders here, beside "Complete Checkpoint", so the row itself
+            aligns them. Empty for students: nothing is added to their view.
+          -->
+          <slot name="prepend-actions" />
+
           <button 
             type="button" 
             class="btn-complete-checkpoint-action" 
@@ -118,6 +125,7 @@
         <LessonDocumentView
           v-if="lessonDocument"
           :document="lessonDocument"
+          :course-id="lessonCourseId"
           :editable="isEditable"
           @update:document="onDocumentUpdate"
           @update:flow="onDocumentFlow"
@@ -511,8 +519,17 @@
           </template>
         </div>
 
-        <!-- Fallback Standard 8-Section Layout (When blocks are not present) -->
-        <template v-else>
+        <!--
+          Fallback Standard 8-Section Layout.
+
+          It used to be the plain `v-else` of the block stream, so it rendered
+          underneath the document for any lesson that had no blocks — the
+          "Overview & Introduction" / "Instructional Guide" cards that could not
+          be selected, moved or deleted. Now that every lesson with content is
+          rendered as a document, these cards only remain for demo/test modules,
+          which carry no real lesson content.
+        -->
+        <template v-else-if="!lessonDocument">
           <!-- 1. Introduction & Overview -->
           <div v-if="activeLessonData.introduction" class="lesson-section-box lesson-intro-card" :class="{ 'is-inline-editable': isEditable }">
             <h2 class="section-title">Overview & Introduction</h2>
@@ -890,7 +907,7 @@ import {
   NUDGE_STEP,
   NUDGE_STEP_LARGE,
 } from '../../../lib/mentor/lessonBlockLayout.ts';
-import { hasLessonDocument, lessonDocumentOf } from '../../../lib/mentor/lessonDocument.ts';
+import { documentFromBlocks, documentFromNodeContent, hasLessonDocument, lessonDocumentOf } from '../../../lib/mentor/lessonDocument.ts';
 import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
 import LessonDocumentView from './mentor/LessonDocumentView.vue';
 
@@ -912,6 +929,11 @@ const props = defineProps({
   checkpointData: {
     type: Object,
     default: () => null,
+  },
+  /** Course the lesson belongs to. Scopes uploaded lesson images. */
+  courseId: {
+    type: String,
+    default: '',
   },
   /**
    * Mentor Module Studio inline editing. When true, lesson prose becomes
@@ -1001,6 +1023,11 @@ const selectedBlockIndex = ref(null);
 /** The exact array the template renders, so index lookups always resolve. */
 const currentBlocks = computed(() => activeLessonData.value?.blocks || []);
 
+/** Course id for lesson media, from the prop or from the module it belongs to. */
+const lessonCourseId = computed(() =>
+  String(props.courseId || props.moduleData?.course_id || props.moduleData?.courseId || '')
+);
+
 /**
  * The lesson's shared document.
  *
@@ -1024,8 +1051,38 @@ const lessonDocument = computed(() => {
   }
 
   if (own && hasLessonDocument(own)) return lessonDocumentOf(own);
-  if (record && hasLessonDocument(record)) return lessonDocumentOf(record);
-  return lessonDocumentOf(own) || (record && record !== own ? lessonDocumentOf(record) : null);
+  if (record && record !== own && hasLessonDocument(record)) return lessonDocumentOf(record);
+
+  const bridged = lessonDocumentOf(own) || (record && record !== own ? lessonDocumentOf(record) : null);
+  if (bridged) return bridged;
+
+  /*
+   * Last resort: build the document from whatever this lesson actually resolved
+   * to. Lessons whose content lives only in the eight-section shape used to fall
+   * through to the legacy section cards — plain divs with no selection, no move
+   * and no delete. Nothing in the content area may be un-editable, so the
+   * resolved sections become the document instead.
+   */
+  const data = activeLessonData.value;
+  if (!data?.hasContent || data.isTest) return null;
+
+  if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+    return documentFromBlocks(data.blocks);
+  }
+
+  const resolved = documentFromNodeContent({
+    introduction: data.introduction || data.p1 || '',
+    core_lesson: data.coreLesson || '',
+    key_concepts: (data.concepts || []).map(c => ({
+      concept: c.title,
+      explanation: c.text || c.keyIdea || '',
+    })),
+    examples: data.examples || [],
+    activities: data.activities || [],
+    engineering_challenges: data.challenges || [],
+  });
+
+  return resolved.flow.trim() || resolved.floats.length > 0 ? resolved : null;
 });
 /** Live drag state: { index, edge, startX, startY, startW, startH }. */
 const activeResize = ref(null);

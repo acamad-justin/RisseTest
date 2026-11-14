@@ -1824,36 +1824,14 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <div v-if="isPreviewOpen" class="student-experience-host" role="region" aria-label="Student module experience">
 
-      <!-- ── Floating: leave preview / enter editing ─────────────────────── -->
-      <div class="float-cluster float-cluster--top-right">
-        <button
-          type="button"
-          class="float-btn float-btn--ghost"
-          @click="closeStudentPreview"
-          title="Leave preview and return to Module Studio (Esc)"
-          id="btn-close-student-experience"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-          <span>Exit Preview</span>
-        </button>
-
-        <button
-          type="button"
-          class="float-btn"
-          :class="{ 'is-active': editingEnabled }"
-          :aria-pressed="editingEnabled"
-          @click="toggleEditingMode"
-          :title="editingEnabled ? 'Stop editing and see the plain student view' : 'Enable editing on this lesson'"
-          id="btn-toggle-editing-mode"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
-          <span>{{ editingEnabled ? 'Editing On' : 'Edit' }}</span>
-        </button>
-      </div>
+      <!--
+        The preview controls are NOT floating chrome any more. They render inside
+        the lesson header's action row, beside the student's "Complete Checkpoint"
+        button (see the ModuleExperience slot below), so the row aligns them and
+        nothing has to be measured, clamped or re-measured. When the module
+        roadmap is showing there is no lesson header to sit in, so the same
+        component is placed in the corner instead — one definition, two positions.
+      -->
 
       <!-- ── Floating: student-environment toggles (only while editing) ──── -->
       <div v-if="editingEnabled" class="float-cluster float-cluster--bottom-right">
@@ -1988,6 +1966,7 @@
         ref="moduleExperienceRef"
         :key="'experience-' + experienceKey"
         :module-data="previewModuleData"
+        :course-id="activeCourse?.id || ''"
         :initial-view="previewInitialView"
         :initial-checkpoint="previewingLesson"
         :read-only="true"
@@ -1999,7 +1978,29 @@
         @select-checkpoint="handlePreviewSelectCheckpoint"
         @update-lesson-content="handlePreviewLessonUpdate"
         @update-block-layout="handlePreviewBlockLayout"
-      />
+        @view-change="previewView = $event"
+      >
+        <!--
+          The controls sit ON the lesson's action line: the header row centres
+          them against "Complete Checkpoint" by layout, so alignment cannot drift.
+        -->
+        <template #prepend-actions>
+          <PreviewToolbar
+            :editing="editingEnabled"
+            @exit="closeStudentPreview"
+            @toggle-edit="toggleEditingMode"
+          />
+        </template>
+      </ModuleExperience>
+
+      <!-- No lesson header to sit in (module roadmap): same component, corner. -->
+      <div v-if="previewView !== 'lesson'" class="preview-toolbar-corner">
+        <PreviewToolbar
+          :editing="editingEnabled"
+          @exit="closeStudentPreview"
+          @toggle-edit="toggleEditingMode"
+        />
+      </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -2152,6 +2153,7 @@ import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/me
 // The shared student module experience. Preview uses this same component the
 // student workspace uses — there is no editor-specific renderer.
 import ModuleExperience from '../../../components/ModuleExperience.vue';
+import PreviewToolbar from '../../../components/mentor/PreviewToolbar.vue';
 
 const mentorStore = useMentorStore();
 
@@ -3624,6 +3626,9 @@ function closeStudentPreview() {
     previewNotice('Preview edits discarded — nothing was saved.');
   }
 }
+
+/** Which surface the preview is showing ('roadmap' | 'lesson'). */
+const previewView = ref('lesson');
 
 /**
  * Drops every buffered edit and re-renders the saved proposal, WITHOUT leaving
@@ -6428,13 +6433,20 @@ function saveCourseDetails() {
 }
 
 .float-cluster--bottom-right {
-  /* Sits directly under the Exit Preview / Edit pair, in the empty chrome band
-     level with the lesson's "Complete Checkpoint" row. It used to hang at the
-     bottom of the tutor column, far from the controls a teacher looks for first;
-     both clusters now read as one toolbar beside the checkpoint action. */
-  top: 58px;
+  /* The editing toggles, in the chrome column. The preview controls used to sit
+     above this cluster; they now live on the lesson's action line, so this takes
+     the top slot itself. */
+  top: 14px;
   right: 18px;
   bottom: auto;
+}
+
+/* The preview controls when there is no lesson header to sit in (roadmap view). */
+.preview-toolbar-corner {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 60;
 }
 
 .float-cluster--bottom-center {
@@ -6596,9 +6608,13 @@ function saveCourseDetails() {
     right: 10px;
   }
   .float-cluster--bottom-right {
-    top: 52px;
+    top: 10px;
     right: 10px;
     bottom: auto;
+  }
+  .preview-toolbar-corner {
+    top: 10px;
+    right: 10px;
   }
   /* Pending-changes bar moves off centre so it cannot meet the bottom-right one. */
   .float-cluster--bottom-center {

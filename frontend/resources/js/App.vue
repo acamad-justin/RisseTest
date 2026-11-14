@@ -83,6 +83,7 @@
           v-if="moduleViewState === 'roadmap' || moduleViewState === 'checkpoint'"
           :key="'module-experience-' + (selectedModule?.id || '')"
           :module-data="selectedModule"
+          :course-id="selectedModule?.course_id || ''"
           :initial-view="moduleViewState === 'checkpoint' ? 'lesson' : 'roadmap'"
           :initial-checkpoint="selectedCheckpointObject"
           @back="moduleViewState = 'list'"
