@@ -655,78 +655,12 @@
           </div>
         </template>
 
-        <!-- Interactive End-of-Topic Assessment (When configured) -->
-        <div v-if="activeLessonData.assessment && activeLessonData.assessment.questions && activeLessonData.assessment.questions.length > 0" class="lesson-section-box interactive-assessment-section" id="topic-assessment-section">
-          <div class="assessment-section-header">
-            <span class="assessment-icon">🎯</span>
-            <div>
-              <h2 class="section-title">End-of-Topic Assessment & Mastery Check</h2>
-              <p class="section-subtitle">Answer the checkpoint question correctly to complete this topic and unlock sequential progression.</p>
-            </div>
-          </div>
-
-          <div v-for="(q, qIdx) in activeLessonData.assessment.questions" :key="q.id || qIdx" class="assessment-question-card">
-            <h4 class="question-header">Question {{ qIdx + 1 }}: {{ q.question }}</h4>
-
-            <!-- Multiple Choice Options -->
-            <div v-if="q.type === 'multiple_choice' && q.options" class="mcq-options-grid">
-              <button 
-                v-for="(opt, optIdx) in q.options" 
-                :key="optIdx"
-                type="button" 
-                class="mcq-option-btn" 
-                :class="{ 
-                  'is-selected': selectedAssessmentAnswer[q.id] === opt.slice(0, 1),
-                  'is-correct': isAssessmentSubmitted && assessmentResults[q.id]?.passed && selectedAssessmentAnswer[q.id] === opt.slice(0, 1),
-                  'is-incorrect': isAssessmentSubmitted && !assessmentResults[q.id]?.passed && selectedAssessmentAnswer[q.id] === opt.slice(0, 1)
-                }"
-                @click="handleSelectOption(q.id, opt.slice(0, 1))"
-              >
-                <span class="opt-key">{{ opt.slice(0, 2) }}</span>
-                <span class="opt-label">{{ opt.slice(3) }}</span>
-              </button>
-            </div>
-
-            <!-- Fill in the blanks -->
-            <div v-else-if="q.type === 'fill_in_the_blanks'" class="fib-input-wrap">
-              <input 
-                type="text" 
-                v-model="selectedAssessmentAnswer[q.id]" 
-                class="assessment-text-input" 
-                placeholder="Type your answer here..."
-              />
-            </div>
-
-            <!-- Short answer -->
-            <div v-else-if="q.type === 'short_answer'" class="sa-input-wrap">
-              <textarea 
-                rows="3" 
-                v-model="selectedAssessmentAnswer[q.id]" 
-                class="assessment-textarea" 
-                placeholder="Explain in your own words..."
-              ></textarea>
-            </div>
-
-            <!-- Evaluation Feedback Result -->
-            <div v-if="isAssessmentSubmitted && assessmentResults[q.id]" class="assessment-feedback-alert" :class="assessmentResults[q.id].passed ? 'alert-success' : 'alert-danger'">
-              <div class="feedback-badge-row">
-                <span class="feedback-status-pill">{{ assessmentResults[q.id].passed ? '✓ Passed (Score: 100%)' : '✗ Needs Revision' }}</span>
-              </div>
-              <p class="feedback-text">{{ assessmentResults[q.id].feedback }}</p>
-            </div>
-          </div>
-
-          <div class="assessment-actions-bar">
-            <button 
-              type="button" 
-              class="btn-submit-assessment" 
-              @click="submitAssessment"
-              id="btn-submit-topic-assessment"
-            >
-              {{ isAssessmentPassed ? '✓ Assessment Satisfied' : 'Submit Answers & Verify Mastery' }}
-            </button>
-          </div>
-        </div>
+        <!--
+          There is no end-of-topic assessment. Completions are self-paced: the
+          student reads the lesson and marks the checkpoint complete from the
+          header. Any `assessment` still present in older stored lessons is
+          ignored here rather than resurrecting a gate.
+        -->
 
         <!-- 8. Grounding Disclosure & References -->
         <footer v-if="activeLessonData.groundingDisclosure || activeLessonData.references" class="lesson-footer-citations">
@@ -996,10 +930,6 @@ const isChatMaximized = ref(false);
 const isKebabOpen = ref(false);
 
 // Interactive End-of-Topic Assessment state
-const selectedAssessmentAnswer = ref({});
-const assessmentResults = ref({});
-const isAssessmentSubmitted = ref(false);
-const isAssessmentPassed = ref(false);
 const codeCopiedIndex = ref(null);
 
 // ── Mentor inline rich-text editing (Module Studio Student Preview only) ──
@@ -1143,6 +1073,9 @@ function startBlockResize(event, index, edge) {
 
   window.addEventListener('mousemove', onBlockResizeMove);
   window.addEventListener('mouseup', endBlockResize);
+  // `mouseup` does not arrive if the button is released outside the window, and
+  // the gesture would then stay live for the rest of the session.
+  window.addEventListener('blur', endBlockResize);
 }
 
 function onBlockResizeMove(event) {
@@ -1198,6 +1131,7 @@ function endBlockResize() {
   const drag = activeResize.value;
   window.removeEventListener('mousemove', onBlockResizeMove);
   window.removeEventListener('mouseup', endBlockResize);
+  window.removeEventListener('blur', endBlockResize);
   activeResize.value = null;
   if (!drag?.pending) return;
 
@@ -1358,6 +1292,8 @@ function startBlockDrag(event, index) {
   window.addEventListener('pointermove', onBlockDragMove);
   window.addEventListener('pointerup', endBlockDrag);
   window.addEventListener('pointercancel', endBlockDrag);
+  // Losing the window ends the gesture too: no pointerup is coming.
+  window.addEventListener('blur', endBlockDrag);
 }
 
 /**
@@ -1644,6 +1580,18 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   window.removeEventListener('resize', recomputeCanvasHeight);
+  // Never leave a gesture (or the body class it set) behind on unmount.
+  window.removeEventListener('pointermove', onBlockDragMove);
+  window.removeEventListener('pointerup', endBlockDrag);
+  window.removeEventListener('pointercancel', endBlockDrag);
+  window.removeEventListener('blur', endBlockDrag);
+  window.removeEventListener('mousemove', onBlockResizeMove);
+  window.removeEventListener('mouseup', endBlockResize);
+  window.removeEventListener('blur', endBlockResize);
+  document.body.classList.remove('risse-is-dragging');
+  activeDrag.value = null;
+  dragLive.value = null;
+  activeResize.value = null;
 });
 
 function hasAnyPinnedBlock() {
@@ -1740,43 +1688,6 @@ function copyCode(code, idx) {
     setTimeout(() => {
       codeCopiedIndex.value = null;
     }, 2000);
-  }
-}
-
-function handleSelectOption(qId, optionPrefix) {
-  selectedAssessmentAnswer.value[qId] = optionPrefix;
-}
-
-function submitAssessment() {
-  const assessment = activeLessonData.value.assessment;
-  if (!assessment || !assessment.questions || assessment.questions.length === 0) return;
-
-  let allPassed = true;
-  const results = {};
-
-  for (const q of assessment.questions) {
-    const studentAns = selectedAssessmentAnswer.value[q.id] || '';
-    const evalRes = evaluateAssessmentAnswer(q, studentAns);
-    results[q.id] = evalRes;
-    if (!evalRes.passed) {
-      allPassed = false;
-    }
-  }
-
-  assessmentResults.value = results;
-  isAssessmentSubmitted.value = true;
-  isAssessmentPassed.value = allPassed;
-
-  if (props.previewMode || props.readOnly) {
-    // Local feedback only: preview never records mastery or checkpoint completion.
-    emit('notify', allPassed ? 'Preview result: answers correct (nothing was recorded).' : 'Preview result: review the feedback above (nothing was recorded).');
-    return;
-  }
-
-  if (allPassed) {
-    emit('notify', 'Assessment passed! You have satisfied the completion requirement for this topic.');
-  } else {
-    emit('notify', 'Review feedback and try again to satisfy the topic requirement.');
   }
 }
 
@@ -1988,7 +1899,7 @@ const activeLessonData = computed(() => {
       subtitle: `${parent} • ${topicGroup || 'Learning Node'}`,
       introGreeting: `Welcome to ${title}! 🎓`,
       p1: introBlock?.content || nc?.introduction || `In this checkpoint, we study ${title} within ${parent}.`,
-      p2: 'Read the source-faithful lesson material, examine circuit blueprints and code, and complete the end-of-topic assessment below.',
+      p2: 'Read the source-faithful lesson material, examine circuit blueprints and code, and mark the checkpoint complete when you are done.',
       question: `What question do you have about ${title}?`,
       introduction: nc?.introduction || introBlock?.content || '',
       coreLesson: nc?.core_lesson || '',
@@ -2128,11 +2039,6 @@ async function handleCompleteCheckpoint() {
   // Mentor preview must never touch student progress, mastery, checkpoint or star records.
   if (props.previewMode || props.readOnly) {
     emit('notify', 'Preview mode — checkpoint completion is disabled for teachers.');
-    return;
-  }
-
-  if (activeLessonData.value.assessment?.required_to_unlock_next && !isAssessmentPassed.value) {
-    emit('notify', 'Please complete and pass the end-of-topic assessment before advancing to the next node.');
     return;
   }
 
@@ -3958,141 +3864,22 @@ function formatMessageText(text) {
   border-top: 1px solid #1e293b;
 }
 
-.interactive-assessment-section {
-  background: #ffffff;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 24px;
-  margin-top: 24px;
-}
 
-.assessment-section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #f1f5f9;
-}
 
-.assessment-icon {
-  font-size: 28px;
-}
 
-.assessment-question-card {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
 
-.question-header {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 14px 0;
-  line-height: 1.45;
-}
 
-.mcq-options-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
-.mcq-option-btn {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  border-radius: 6px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.45;
-  color: #334155;
-}
 
-.mcq-option-btn:hover {
-  border-color: #f97316;
-  background: #fff7ed;
-}
 
-.mcq-option-btn.is-selected {
-  border-color: #ea580c;
-  background: #ffedd5;
-  font-weight: 600;
-  color: #9a3412;
-}
 
-.mcq-option-btn.is-correct {
-  border-color: #16a34a;
-  background: #f0fdf4;
-  color: #15803d;
-}
 
-.mcq-option-btn.is-incorrect {
-  border-color: #dc2626;
-  background: #fef2f2;
-  color: #b91c1c;
-}
 
-.opt-key {
-  font-weight: 700;
-  min-width: 24px;
-}
 
-.assessment-feedback-alert {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1.45;
-}
 
-.assessment-feedback-alert.alert-success {
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  color: #065f46;
-}
 
-.assessment-feedback-alert.alert-danger {
-  background: #fff1f2;
-  border: 1px solid #fecdd3;
-  color: #9f1239;
-}
 
-.feedback-status-pill {
-  font-weight: 700;
-  display: inline-block;
-  margin-bottom: 4px;
-}
 
-.feedback-text {
-  margin: 0;
-}
 
-.btn-submit-assessment {
-  width: 100%;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #f97316, #ea580c);
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.25);
-  transition: all 0.15s ease;
-}
 
-.btn-submit-assessment:hover {
-  background: linear-gradient(135deg, #fb923c, #f97316);
-  transform: translateY(-1px);
-}
 </style>

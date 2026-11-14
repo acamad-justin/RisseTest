@@ -47,7 +47,7 @@
  * source of truth whenever it exists.
  */
 
-import { sanitizeLessonHtml } from './richLessonContent.ts';
+import { normalizeLessonMarkup, sanitizeLessonHtml } from './richLessonContent.ts';
 import { LAYOUT_VERSION, isCurrentLayoutRecord, isResizableBlockType } from './lessonBlockLayout.ts';
 
 export const LESSON_DOCUMENT_VERSION = 1;
@@ -184,7 +184,7 @@ export function normalizeLessonDocument(input: any): LessonDocument {
       overlap,
       side: raw.side === 'right' ? 'right' : raw.side === 'left' ? 'left' : undefined,
     };
-    if (typeof raw.html === 'string' && raw.html.trim()) float.html = sanitizeLessonHtml(raw.html);
+    if (typeof raw.html === 'string' && raw.html.trim()) float.html = normalizeLessonMarkup(raw.html);
     if (typeof raw.src === 'string' && raw.src.trim()) float.src = raw.src.trim();
     if (typeof raw.alt === 'string') float.alt = raw.alt;
     if (typeof raw.caption === 'string' && raw.caption.trim()) float.caption = raw.caption.trim();
@@ -225,7 +225,7 @@ export function normalizeLessonDocument(input: any): LessonDocument {
   const meta = doc.meta && typeof doc.meta === 'object' ? doc.meta : null;
   const out: LessonDocument = {
     version: LESSON_DOCUMENT_VERSION,
-    flow: typeof doc.flow === 'string' ? sanitizeLessonHtml(doc.flow) : '',
+    flow: typeof doc.flow === 'string' ? normalizeLessonMarkup(doc.flow) : '',
     floats: normalized,
   };
   if (meta) {
@@ -238,9 +238,15 @@ export function normalizeLessonDocument(input: any): LessonDocument {
 
 // ── Legacy bridge ──────────────────────────────────────────────────────────
 
+/**
+ * Block content is prose, and generated prose arrives as Markdown. It is
+ * normalisation, not sanitising, that turns `### Heading` into a heading and
+ * `**bold**` into bold — sanitising alone keeps the asterisks and the hashes and
+ * hands them to the student as literal text.
+ */
 function blockHtml(block: any): string {
   const raw = typeof block?.content === 'string' ? block.content : '';
-  return sanitizeLessonHtml(raw);
+  return normalizeLessonMarkup(raw);
 }
 
 /**

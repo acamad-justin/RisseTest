@@ -116,10 +116,12 @@
       class="lesson-document__canvas"
       :contenteditable="editable ? 'true' : 'false'"
       :spellcheck="editable ? 'true' : 'false'"
-      @input="onFlowInput"
+      @input="onCanvasInput"
       @blur="onFlowBlur"
+      @focusout="onCanvasFocusout"
       @focus="onFlowFocus"
       @click="onCanvasClick"
+      @dragstart.prevent
       @dragover="onDragOver"
       @drop="onDrop"
     >
@@ -356,14 +358,22 @@ function exec(command, value = null) {
   if (!props.editable) return;
   const canvas = canvasRef.value;
   if (!canvas) return;
-  canvas.focus();
+  /*
+   * Format where the caret is. Forcing focus onto the canvas moved it out of a
+   * float's body, so Bold/Italic inside a content box applied to nothing (and
+   * could format the flow instead).
+   */
+  const active = document.activeElement;
+  if (!active || !canvas.contains(active)) canvas.focus();
   try {
     document.execCommand('styleWithCSS', false, true);
     document.execCommand(command, false, value);
   } catch {
     /* unsupported command — never break the document over it */
   }
-  commitFlowFromDom();
+  const body = floatBodyOwner(document.activeElement);
+  if (body) commitFloatBody(body);
+  else commitFlowFromDom();
 }
 
 function applyBlockStyle(tag) {
@@ -444,12 +454,32 @@ function overlayStyle(float) {
   };
 }
 
+/**
+ * The body of a text-ish element, as a typing surface.
+ *
+ * Floats render through `innerHTML` and their wrapper is `contenteditable="false"`
+ * (so dragging cannot select the page). That made a content box a picture of
+ * text: its words could be moved and deleted but never edited. A nested editable
+ * region fixes that — the browser allows an editable child inside a
+ * non-editable parent — and `data-float-body` tells the canvas handlers which
+ * element the keystrokes belong to.
+ */
+function floatBodyProps(float, extraClass = '') {
+  return {
+    class: ['lesson-float__body', extraClass].filter(Boolean).join(' '),
+    contenteditable: props.editable ? 'true' : 'false',
+    'data-float-body': float.id,
+    spellcheck: props.editable ? 'true' : 'false',
+    innerHTML: float.html || '',
+  };
+}
+
 function renderFloat(float) {
   if (float.kind === 'code') {
     return {
       render: () => h('div', { class: 'lesson-float__body lesson-float__body--code' }, [
         float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
-        h('div', { innerHTML: float.html || '' }),
+        h('div', floatBodyProps(float, 'lesson-float__code')),
       ]),
     };
   }
@@ -461,7 +491,9 @@ function renderFloat(float) {
         const src = imageSrcOf(float);
         return h('figure', { class: 'lesson-float__figure' }, [
           src
-            ? h('img', { src, alt: float.alt || '', loading: 'lazy' })
+            // draggable=false: the browser's own image drag takes the pointer
+            // stream away from ours (it fires pointercancel, not pointerup).
+            ? h('img', { src, alt: float.alt || '', loading: 'lazy', draggable: 'false' })
             : h('div', { class: 'lesson-float__placeholder' },
                 !float.src ? 'No image'
                 : imageFailures.value[float.src] ? 'Image unavailable'
@@ -475,25 +507,59 @@ function renderFloat(float) {
     return {
       render: () => h('div', { class: `lesson-float__${float.kind}` }, [
         float.caption ? h('h4', null, float.caption) : null,
-        h('div', { innerHTML: float.html || '' }),
+        h('div', floatBodyProps(float)),
       ]),
     };
   }
   return {
     render: () => h('div', { class: 'lesson-float__body' }, [
       float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
-      h('div', { innerHTML: float.html || '' }),
+      h('div', floatBodyProps(float)),
     ]),
   };
 }
 
 // ── Flow editing ─────────────────────────────────────────────────────────
 
+/**
+ * The document's text, as it currently stands in the DOM.
+ *
+ * Every element the canvas holds is flow content EXCEPT the floats, which carry
+ * their own model. Reading only `.lesson-document__node` used to drop anything the
+ * browser inserted beside a node — pressing Enter at the end of a block can
+ * produce a sibling block, and its text would vanish on the next save. Blocks
+ * are joined with a newline so their boundaries survive as separate paragraphs.
+ */
+/**
+ * Chrome the editor paints INSIDE the canvas. It is positioned against the
+ * document, so it has to live in the same element — but it is not lesson text.
+ *
+ * The contextual control bar was the bad case: its labels and its <select>
+ * options ("Content box", "Delete", "Wrap: square", "Overlap", "✓") were being
+ * serialised into the flow, so clicking the control bar's done button wrote
+ * those words into the lesson.
+ */
+const CANVAS_CHROME_SELECTOR = [
+  '.lesson-float',
+  '.float-controls',
+  '.lesson-document__clearfix',
+  '[data-float-id]',
+  '[data-float-body]',
+  '[contenteditable="false"]',
+  '[role="toolbar"]',
+  'script',
+  'style',
+].join(', ');
+
 function readFlowFromDom() {
   const canvas = canvasRef.value;
   if (!canvas) return '';
-  return Array.from(canvas.children)
-    .filter(node => node.classList?.contains('lesson-document__node'))
+  // Read a detached copy: the live canvas is being typed into, and the chrome
+  // above is a sibling of the prose rather than part of it.
+  const clone = canvas.cloneNode(true);
+  clone.querySelectorAll(CANVAS_CHROME_SELECTOR).forEach(el => el.remove());
+  return Array.from(clone.children)
+    .filter(node => String(node.tagName || '').toUpperCase() !== 'BR')
     .map(node => node.innerHTML.trim())
     .filter(Boolean)
     .join('\n');
@@ -542,6 +608,73 @@ function onFlowBlur() {
     if (domNodes !== renderedNodes) nextTick(() => { canvasRevision.value += 1; });
   }
   commitFlowFromDom();
+}
+
+// ── Float body editing (delegated from the canvas) ───────────────────────
+
+/** The editable body a keystroke belongs to, if any. */
+function floatBodyOwner(target) {
+  const el = target && target.closest ? target.closest('[data-float-body]') : null;
+  if (!el) return null;
+  const canvas = canvasRef.value;
+  return canvas && canvas.contains(el) ? el : null;
+}
+
+function readFloatBodyHtml(body) {
+  return sanitizeLessonHtml(body.innerHTML);
+}
+
+function onFloatBodyInput(body) {
+  const id = body.getAttribute('data-float-body');
+  if (!id) return;
+  const html = readFloatBodyHtml(body);
+  // Emitted, never applied locally: writing the model back would re-render the
+  // body under the caret, the same trap the flow editor was built to avoid.
+  // `lastEmittedFlow` marks the echo that comes back as ours, so the watcher
+  // does not replace the snapshot and re-render mid-word.
+  lastEmittedFlow = localDoc.value.flow;
+  emit('update-float', { id, patch: { html } });
+  emit('update:document', {
+    ...localDoc.value,
+    floats: localDoc.value.floats.map(f => (f.id === id ? { ...f, html } : f)),
+  });
+}
+
+/** Blur: fold the body's HTML into the snapshot so the model matches the DOM. */
+function commitFloatBody(body) {
+  const id = body.getAttribute('data-float-body');
+  const float = localDoc.value.floats.find(f => f.id === id);
+  if (!float) return;
+  const html = readFloatBodyHtml(body);
+  if (html === (float.html || '')) return;
+  localDoc.value = {
+    ...localDoc.value,
+    floats: localDoc.value.floats.map(f => (f.id === id ? { ...f, html } : f)),
+  };
+  lastEmittedFlow = localDoc.value.flow;
+  emit('update-float', { id, patch: { html } });
+  emit('update:document', { ...localDoc.value });
+}
+
+function onCanvasInput(event) {
+  if (!props.editable) return;
+  const body = floatBodyOwner(event?.target);
+  if (body) {
+    onFloatBodyInput(body);
+    return;
+  }
+  onFlowInput();
+}
+
+/** `focusout` bubbles, so one handler covers the flow and every float body. */
+function onCanvasFocusout(event) {
+  if (!props.editable) return;
+  const body = floatBodyOwner(event?.target);
+  if (body) {
+    commitFloatBody(body);
+    return;
+  }
+  if (event?.target === canvasRef.value) onFlowBlur();
 }
 
 function onCanvasClick(event) {
@@ -888,17 +1021,66 @@ function startFloatResize(event, float) {
     el.style.minHeight = `${height}px`;
   };
 
-  const onUp = () => {
+  let committed = false;
+
+  const cleanup = () => {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+    if (!committed) resetFloatGestureStyles(float);
+    if (endActiveGesture === onUp) endActiveGesture = null;
+  };
+
+  function onUp() {
+    if (committed) return;
+    committed = true;
+    cleanup();
     if (!moved) return;
     const patchValue = { width: Math.round(width), height: Math.round(height) };
     applyDoc(updateFloat(localDoc.value, float.id, patchValue));
     emit('update-float', { id: float.id, patch: patchValue });
-  };
+  }
 
+  finishActiveGesture();
+  endActiveGesture = onUp;
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  window.addEventListener('blur', onUp);
+}
+
+/**
+ * The gesture that is currently running, if any.
+ *
+ * A pointer stream does not always end with `pointerup`. Dragging a picture used
+ * to hand the gesture to the browser's own image drag, which fires
+ * `pointercancel` instead — and nothing was listening for it. The window
+ * listeners stayed attached for the rest of the session, so every later mouse
+ * move kept dragging the picture: it followed the cursor, sat in front of
+ * whatever button was pressed next, and swallowed every click. Nothing on the
+ * screen responded until the page was reloaded.
+ *
+ * Every gesture now registers how to end itself, and anything that can end a
+ * pointer stream — release, cancel, the window losing focus, unmounting, or
+ * another gesture starting — ends the one in flight.
+ */
+let endActiveGesture = null;
+
+function finishActiveGesture() {
+  const end = endActiveGesture;
+  endActiveGesture = null;
+  if (typeof end === 'function') end();
+}
+
+/** Puts an element back the way it looks when it is not being dragged. */
+function resetFloatGestureStyles(float) {
+  const live = canvasRef.value?.querySelector(`[data-float-id="${float.id}"]`);
+  if (!live) return;
+  live.style.transform = '';
+  live.style.opacity = '';
+  live.style.width = '';
+  live.style.minHeight = '';
 }
 
 /**
@@ -913,6 +1095,8 @@ function startFloatResize(event, float) {
 function startFloatDrag(event, float) {
   if (!props.editable || float.locked) return;
   if (event.button != null && event.button !== 0) return;
+  // The element's own text is editable: a press there places a caret.
+  if (floatBodyOwner(event.target)) return;
   const canvas = canvasRef.value;
   const el = event.currentTarget;
   if (!canvas || !el) return;
@@ -936,13 +1120,28 @@ function startFloatDrag(event, float) {
     el.style.opacity = '0.92';
   };
 
-  const onUp = upEvent => {
+  let committed = false;
+
+  const cleanup = () => {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
-    el.style.transform = '';
-    el.style.opacity = '';
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+    // Reset whatever element represents this float NOW: a re-render during the
+    // gesture can have replaced the node we started on.
+    resetFloatGestureStyles(float);
     draggingId.value = null;
-    if (!moved) return;
+    if (endActiveGesture === onUp) endActiveGesture = null;
+  };
+
+  const onUp = upEvent => {
+    if (committed) return;
+    committed = true;
+    // A cancel or a window blur has no coordinates to drop at: the gesture is
+    // abandoned rather than committed, and nothing is recorded.
+    const cancelled = !upEvent || upEvent.type !== 'pointerup';
+    cleanup();
+    if (!moved || cancelled) return;
 
     const dx = upEvent.clientX - startX;
     const dy = upEvent.clientY - startY;
@@ -975,8 +1174,12 @@ function startFloatDrag(event, float) {
     emit('update-float', { id: float.id, patch: { width, ...placement } });
   };
 
+  finishActiveGesture();
+  endActiveGesture = onUp;
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  window.addEventListener('blur', onUp);
 }
 
 // ── External updates ─────────────────────────────────────────────────────
@@ -1007,6 +1210,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  finishActiveGesture();
   draggingId.value = null;
 });
 
@@ -1229,6 +1433,26 @@ defineExpose({ selectedId });
 
 .lesson-float__caption { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #92400e; }
 
+/* Editable body. The wrapper is non-editable so dragging cannot select the
+   page, so the text has to advertise itself: caret cursor, visible focus, and a
+   prompt when the element is still empty. */
+.lesson-document--editable .lesson-float__body[contenteditable="true"] {
+  cursor: text;
+  min-height: 1.5em;
+  outline: none;
+}
+.lesson-document--editable .lesson-float__body[contenteditable="true"]:focus {
+  outline: 2px solid #fdba74;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.lesson-document--editable .lesson-float__body[contenteditable="true"]:empty::before {
+  content: 'Type here…';
+  color: #9ca3af;
+  font-style: italic;
+  pointer-events: none;
+}
+
 .lesson-float--code .lesson-float__body {
   background: #0f172a; border-color: #1e293b; color: #e2e8f0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; overflow-x: auto;
@@ -1236,7 +1460,15 @@ defineExpose({ selectedId });
 .lesson-float--code .lesson-float__caption { color: #fbbf24; }
 
 .lesson-float__figure { margin: 0; }
-.lesson-float__figure img { display: block; width: 100%; height: auto; border-radius: 10px; }
+.lesson-float__figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  /* A picture is lesson content: it is not a draggable object. */
+  -webkit-user-drag: none;
+  user-select: none;
+}
 .lesson-float__figure figcaption { margin-top: 6px; font-size: 12.5px; color: #6b7280; }
 
 .lesson-float--overlay { margin: 0; }

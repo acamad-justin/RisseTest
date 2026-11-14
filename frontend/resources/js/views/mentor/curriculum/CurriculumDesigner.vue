@@ -1311,74 +1311,12 @@
           </div>
         </section>
 
-        <!-- End-of-Topic Assessment Editor -->
-        <section class="editor-card assessment-editor-card">
-          <div class="blocks-editor-header">
-            <div>
-              <h2 class="card-heading">End-of-Topic Assessment Configuration</h2>
-              <p class="card-sub">Configure question types, correct answers, and passing threshold required to unlock subsequent learning nodes.</p>
-            </div>
-            <button type="button" class="btn-add-block" @click="addAssessmentQuestion">+ Add Question</button>
-          </div>
-
-          <div v-if="activeLesson.assessment" class="assessment-config-body">
-            <div class="form-row">
-              <div class="form-group col-one-third">
-                <label class="form-label">Assessment Format:</label>
-                <select v-model="activeLesson.assessment.format" class="form-input" @change="markDirty">
-                  <option value="multiple_choice">Multiple Choice</option>
-                  <option value="fill_in_the_blanks">Fill in the Blanks</option>
-                  <option value="short_answer">Short Answer</option>
-                  <option value="practical_activity">Practical Activity</option>
-                </select>
-              </div>
-              <div class="form-group col-one-third">
-                <label class="form-label">Passing Score (%):</label>
-                <input type="number" v-model="activeLesson.assessment.passing_score_percentage" class="form-input" min="0" max="100" @input="markDirty" />
-              </div>
-              <div class="form-group col-one-third checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="activeLesson.assessment.required_to_unlock_next" @change="markDirty" />
-                  <span>Required to Unlock Next Node</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Questions list -->
-            <div v-if="activeLesson.assessment.questions && activeLesson.assessment.questions.length > 0" class="questions-edit-list">
-              <div v-for="(q, qIdx) in activeLesson.assessment.questions" :key="q.id || qIdx" class="question-edit-box">
-                <div class="question-edit-header">
-                  <span class="q-num-pill">Q{{ qIdx + 1 }}</span>
-                  <input type="text" v-model="q.question" class="form-input" placeholder="Question prompt..." @input="markDirty" />
-                  <button type="button" class="btn-remove-block text-danger" @click="removeAssessmentQuestion(qIdx)">✕</button>
-                </div>
-
-                <div class="form-row" v-if="q.type === 'multiple_choice'">
-                  <div class="form-group col-full">
-                    <label class="form-label">Options (One per line, e.g. A) ..., B) ...):</label>
-                    <textarea 
-                      :value="(q.options || []).join('\n')" 
-                      @input="q.options = $event.target.value.split('\n'); markDirty()"
-                      rows="4" 
-                      class="form-textarea code-font"
-                    ></textarea>
-                  </div>
-                </div>
-
-                <div class="form-row">
-                  <div class="form-group col-one-third">
-                    <label class="form-label">Correct Answer Key:</label>
-                    <input type="text" v-model="q.correct_answer" class="form-input" placeholder="e.g. B or answer keyword" @input="markDirty" />
-                  </div>
-                  <div class="form-group col-two-thirds">
-                    <label class="form-label">Explanation &amp; Rationale:</label>
-                    <input type="text" v-model="q.explanation" class="form-input" placeholder="Explanation shown upon submission..." @input="markDirty" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        <!--
+          There is no end-of-topic assessment to configure. Checkpoints are
+          completed by the student from the lesson header; nothing at the end of
+          a lesson gates progression, so there is no format, threshold or
+          unlock rule to edit here.
+        -->
 
         <!-- D. Prominent AI Generation Banner -->
         <section class="ai-generation-banner">
@@ -1970,6 +1908,7 @@
         :initial-view="previewInitialView"
         :initial-checkpoint="previewingLesson"
         :read-only="true"
+        :allow-locked-navigation="true"
         :editable="editingEnabled"
         :layout-mode="layoutModeEnabled"
         :snap-to-grid="snapToGridEnabled"
@@ -2281,34 +2220,7 @@ function removeContentBlock(bIdx) {
   markDirty();
 }
 
-function addAssessmentQuestion() {
-  if (!activeLesson.value) return;
-  if (!activeLesson.value.assessment) {
-    activeLesson.value.assessment = {
-      format: 'multiple_choice',
-      questions: [],
-      passing_score_percentage: 70,
-      required_to_unlock_next: true,
-    };
-  }
-  if (!activeLesson.value.assessment.questions) activeLesson.value.assessment.questions = [];
-  const qId = `q-${Date.now()}`;
-  activeLesson.value.assessment.questions.push({
-    id: qId,
-    type: activeLesson.value.assessment.format || 'multiple_choice',
-    question: '',
-    options: ['A) Option 1', 'B) Option 2', 'C) Option 3', 'D) Option 4'],
-    correct_answer: 'A',
-    explanation: '',
-  });
-  markDirty();
-}
 
-function removeAssessmentQuestion(qIdx) {
-  if (!activeLesson.value?.assessment?.questions) return;
-  activeLesson.value.assessment.questions.splice(qIdx, 1);
-  markDirty();
-}
 
 // Operation states
 const isSaving = ref(false);
@@ -5919,9 +5831,6 @@ function saveCourseDetails() {
 }
 
 .content-blocks-editor-card,
-.assessment-editor-card {
-  margin-top: 20px;
-}
 
 .blocks-editor-header {
   display: flex;
@@ -6020,13 +5929,6 @@ function saveCourseDetails() {
   margin-top: 10px;
 }
 
-.question-edit-box {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 14px;
-  margin-top: 12px;
-}
 
 .question-edit-header {
   display: flex;

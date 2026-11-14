@@ -117,8 +117,45 @@ the selection affordances and the contextual controls. Students therefore cannot
 see editor chrome, and teacher/student layouts cannot drift apart by
 construction.
 
-The assessment / mastery card stays where it was: it is a semantic checkpoint
-object, not document prose.
+**No assessment card.** An end-of-topic assessment used to sit after the document
+as a graded mastery check, and passing it gated progression. It is gone: a student
+reads the document and marks the checkpoint complete from the lesson header.
+Stored lessons that still carry an `assessment` object are rendered without it, and
+the lesson generator no longer writes one — including the prompt, the cached seed
+lessons and the mock path. The formative question list (`assessment_questions`) is
+unaffected: those are study aids, not a gate.
+
+---
+
+## 4b. Prose is formatting, not Markdown
+
+One entry point decides what stored content means: `normalizeLessonMarkup`.
+
+| Stored | Result |
+|---|---|
+| rich HTML from the editor | sanitised, formatting kept |
+| Markdown / plain text (generated) | real blocks — `<h3>`, `<p>`, `<ul>`, `<strong>` |
+| HTML with Markdown left inside a text run | the Markdown promoted, the HTML kept |
+
+It is applied where a document is built and where it is read back
+(`documentFromBlocks`, `documentFromNodeContent`, `normalizeLessonDocument`,
+`renderLessonRichHtml`), so a lesson generated before this existed renders
+correctly without being regenerated.
+
+The reason it exists: the generator was asked for a `"markdown string"` per
+block and that string went into the document sanitised but unconverted. A student
+reading lesson 1 saw `### Why it matters` and `**Robotics**`, with the heading
+run together with the paragraph after it — HTML collapses the newlines, and
+nothing had created the elements. The prompt now asks for HTML (requirement 3 in
+`generateLessonContent`), and the normaliser is the safety net for everything
+already stored — including content inside `<pre>`/`<code>`, which stays literal.
+
+**The editor's own chrome is never document content.** The contextual control bar
+has to live inside the canvas to be positioned against the element, so
+`readFlowFromDom` reads a detached clone with `.float-controls`, `[role="toolbar"]`,
+`[data-float-id]`, `[data-float-body]` and every `contenteditable="false"` element
+removed. Without that, closing the bar saved its labels — "Content box", "Delete",
+"Wrap: square", "Overlap", "✓" — into the lesson as prose.
 
 ---
 
@@ -175,8 +212,11 @@ Limits: PNG, JPEG, WebP or GIF, 8 MB per image.
   and layering via the contextual bar; absolute coordinates are supported by the
   model and renderer).
 - Insert-menu UI for new text boxes / content boxes / images.
-- Rich-text editing *inside* a float (today it renders its HTML; the flow is the
-  editable surface).
+- Rich-text editing inside a float: **done.** The wrapper stays
+  `contenteditable="false"` (so dragging cannot select the page) and the body
+  carries its own editable region, marked with `data-float-body`. The canvas
+  handlers delegate by that attribute, so typing in a content box persists that
+  box's HTML and leaves the flow alone.
 - Image upload wiring for `image` / `diagram` floats.
 
 ---

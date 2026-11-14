@@ -178,7 +178,8 @@
             :class="{
               'node-completed': idx < currentStep,
               'active-node': idx === currentStep,
-              'node-locked': idx > currentStep
+              'node-locked': idx > currentStep && !allowLockedNavigation,
+              'node-open': idx > currentStep && allowLockedNavigation
             }"
             :style="{ left: `${cp.x / 10}%`, top: `${cp.y / 10}%` }"
             @click="handleNodeClick(cp, idx)"
@@ -214,7 +215,21 @@
               </div>
             </template>
 
-            <!-- 3. LOCKED FUTURE STATE (idx > currentStep) -->
+            <!-- 3. PREVIEW: remaining nodes are open, not locked -->
+            <template v-else-if="allowLockedNavigation">
+              <div class="bokeh-halo halo-gray"></div>
+              <div class="bokeh-core core-gray core-open">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </div>
+              <div class="label-aside" :class="`label-${cp.labelPos || 'bottom'}`">
+                <span class="step-num-pill open-pill">Step {{ idx + 1 }}</span>
+                <span class="label-title">{{ cp.name }}</span>
+              </div>
+            </template>
+
+            <!-- 4. LOCKED FUTURE STATE (idx > currentStep) -->
             <template v-else>
               <div class="bokeh-halo halo-gray"></div>
               <div class="bokeh-core core-gray">
@@ -290,6 +305,19 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+
+  /**
+   * Preview: every checkpoint is open.
+   *
+   * A mentor reviewing a module must be able to open any lesson in it. Asking
+   * them to complete lessons as a student first, or to fake progress, in order to
+   * read node 4 defeats the purpose of a preview. Students never get this flag,
+   * so their progression is unchanged.
+   */
+  allowLockedNavigation: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['back', 'select-checkpoint', 'award-badge', 'notify', 'update-module']);
@@ -297,6 +325,17 @@ const emit = defineEmits(['back', 'select-checkpoint', 'award-badge', 'notify', 
 const authStore = useAuthStore();
 const isStarred = ref(false);
 const currentStep = ref(props.moduleData.currentStep || 0);
+
+/**
+ * Whether a node can be opened.
+ *
+ * Normally a student may only open what they have reached. In preview every node
+ * is openable, because the mentor is inspecting the module rather than working
+ * through it.
+ */
+function isNodeOpen(idx) {
+  return props.allowLockedNavigation || idx <= currentStep.value;
+}
 
 watch(() => props.moduleData.currentStep, (val) => {
   if (val !== undefined) {
@@ -411,15 +450,16 @@ function toggleStar() {
 function getNodeTooltip(cp, idx) {
   if (idx < currentStep.value) return `${cp.name} (Completed ✓)`;
   if (idx === currentStep.value) return `${cp.name} (Active Target - Click to open lesson)`;
+  if (isNodeOpen(idx)) return `${cp.name} (Preview - Click to open lesson)`;
   return `${cp.name} (Locked 🔒 - Complete previous step first)`;
 }
 
 function handleNodeClick(cp, idx) {
-  if (idx <= currentStep.value) {
+  if (isNodeOpen(idx)) {
     emit('select-checkpoint', cp);
-  } else {
-    emit('notify', `Checkpoint "${cp.name}" is locked. Complete Step ${currentStep.value + 1} first!`);
+    return;
   }
+  emit('notify', `Checkpoint "${cp.name}" is locked. Complete Step ${currentStep.value + 1} first!`);
 }
 
 // Fast-Track Advance Step Handler
@@ -1068,6 +1108,21 @@ function handleBadgeCardClick() {
 
 .node-locked {
   cursor: not-allowed;
+}
+
+/* Preview: openable, so it keeps the pointer affordance and reads as reachable
+   rather than forbidden. */
+.node-open {
+  cursor: pointer;
+}
+
+.open-pill {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.core-open {
+  border-color: #cbd5e1;
 }
 
 /* Learning Objectives Panel */

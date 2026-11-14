@@ -16,7 +16,7 @@
 import DOMPurify from 'dompurify';
 
 const ALLOWED_TAGS = new Set([
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'strong', 'b', 'em', 'i', 'u', 's',
   'ul', 'ol', 'li', 'br', 'hr',
   'span', 'mark', 'code', 'pre', 'blockquote',
@@ -35,6 +35,10 @@ const SAFE_COLOR_VALUE = /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\
 const SAFE_FONT_SIZE_VALUE = /^(?:(?:[89]|[1-4]\d|5[0-6])(?:\.\d+)?(?:px|pt)|(?:0\.(?:75|8|85|875|9)|[12](?:\.\d+)?|3(?:\.0+)?)r?em)$/;
 const SAFE_TEXT_ALIGN_VALUE = /^(?:left|center|right|justify|start|end)$/i;
 const SAFE_CLASS_TOKEN = /^[a-zA-Z0-9_-]{1,48}$/;
+const SAFE_FONT_WEIGHT_VALUE = /^(?:normal|bold|bolder|lighter|[1-9]00)$/i;
+const SAFE_FONT_STYLE_VALUE = /^(?:normal|italic|oblique)$/i;
+const SAFE_TEXT_DECORATION_VALUE = /^(?:none|underline|overline|line-through)(?:\s+(?:underline|overline|line-through))*$/i;
+const SAFE_VERTICAL_ALIGN_VALUE = /^(?:baseline|sub|super)$/i;
 
 function escapeHtml(raw: string): string {
   return raw
@@ -53,12 +57,20 @@ function escapeAttr(raw: string): string {
 }
 
 /**
- * Strictly filters inline CSS style declarations to the 4 formatting properties
- * used by the Module Studio rich-text toolbar:
- *   - color
- *   - background-color
- *   - font-size
- *   - text-align
+ * Strictly filters inline CSS style declarations to the formatting the Module
+ * Studio rich-text toolbar can produce.
+ *
+ * The editor runs `execCommand('styleWithCSS', true)`, so the browser emits
+ * formatting as inline CSS rather than as `<b>`/`<i>`/`<u>`:
+ *
+ *   bold      → <span style="font-weight: bold">
+ *   italic    → <span style="font-style: italic">
+ *   underline → <span style="text-decoration: underline">
+ *
+ * Which means every property the toolbar can produce has to be allowed here.
+ * Allowing only colour/size/alignment silently stripped bold, italic and
+ * underline on the next sanitize pass — that is, on blur (clicking anywhere
+ * outside the text), on save, and on every re-render.
  */
 export function sanitizeInlineStyle(styleValue: string): string {
   if (!styleValue || typeof styleValue !== 'string') return '';
@@ -82,6 +94,17 @@ export function sanitizeInlineStyle(styleValue: string): string {
     } else if (prop === 'font-size' && SAFE_FONT_SIZE_VALUE.test(val)) {
       cleanDecls.push(`${prop}: ${val}`);
     } else if (prop === 'text-align' && SAFE_TEXT_ALIGN_VALUE.test(val)) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (prop === 'font-weight' && SAFE_FONT_WEIGHT_VALUE.test(val)) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (prop === 'font-style' && SAFE_FONT_STYLE_VALUE.test(val)) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (
+      (prop === 'text-decoration' || prop === 'text-decoration-line')
+      && SAFE_TEXT_DECORATION_VALUE.test(val)
+    ) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (prop === 'vertical-align' && SAFE_VERTICAL_ALIGN_VALUE.test(val)) {
       cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
     }
   }
@@ -459,6 +482,85 @@ export function markdownToRichHtml(
   return sanitizeLessonHtml(blocks.join('\n'));
 }
 
+/** Decodes the entities a text run inside existing HTML has already been through. */
+function decodeBasicEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
+/** A line that starts a Markdown block rather than continuing a paragraph. */
+const MARKDOWN_BLOCK_MARKER = /^(?:#{1,6}\s|[-*]\s|\d+[.)]\s|>\s?)/;
+
+/**
+ * Promotes Markdown that is sitting INSIDE an HTML document.
+ *
+ * `markdownToRichHtml` only handles a whole string of Markdown. Generated lessons
+ * did not arrive that way: the model was asked for a "markdown string" per block,
+ * that string was wrapped in a paragraph (or surrounded by a little HTML), and
+ * the result was stored as if it were HTML. Nothing ever converted the Markdown
+ * once it was inside a tag, so students read the source:
+ *
+ *   ### Why it matters
+ *   Two things set a robot apart: - **Autonomy:** ...
+ *
+ * Two passes fix that without touching real formatting:
+ *   1. a <p>/<div> whose whole content is Markdown becomes the blocks it describes;
+ *   2. inline `**bold**` / `*italic*` / `` `code` `` left in text becomes
+ *      <strong> / <em> / <code>.
+ *
+ * Content inside <pre>/<code> is left alone: code is literal by definition, and
+ * `**` in a pointer expression is not emphasis.
+ */
+function promoteMarkdownWithinHtml(html: string): string {
+  // 1. Whole-block promotion.
+  let out = html.replace(/<(p|div)([^>]*)>([^<]*)<\/\1>/gi, (full: string, _tag: string, _attrs: string, inner: string) => {
+    const text = inner.trim();
+    if (!text || !MARKDOWN_BLOCK_MARKER.test(text)) return full;
+    const promoted = markdownToRichHtml(decodeBasicEntities(text), { useStudentMdClasses: false });
+    return promoted || full;
+  });
+
+  // 2. Inline promotion, skipping literal regions.
+  const parts = out.split(/(<[^>]*>)/);
+  let literalDepth = 0;
+  const rebuilt = parts.map(part => {
+    if (part.startsWith('<')) {
+      if (/^<(?:pre|code)\b/i.test(part)) literalDepth += 1;
+      else if (/^<\/(?:pre|code)\s*>/i.test(part)) literalDepth = Math.max(0, literalDepth - 1);
+      return part;
+    }
+    if (literalDepth > 0 || !part.trim()) return part;
+    if (!/\*\*|`|!\[/.test(part)) return part;
+    return formatInlineMarkdown(part, false);
+  });
+
+  return rebuilt.join('');
+}
+
+/**
+ * The one entry point for content entering the lesson pipeline.
+ *
+ * Stored lessons are a mix of three things, and only one of them was ever being
+ * handled:
+ *   • rich HTML from the editor            → sanitize, keep formatting;
+ *   • Markdown or plain text (generated)   → convert to real blocks, not literal ##/**;
+ *   • HTML with Markdown left inside it    → convert the Markdown, keep the HTML.
+ *
+ * Callers must not have to know which one they are holding, so they call this.
+ */
+export function normalizeLessonMarkup(raw: string | null | undefined): string {
+  if (!raw || typeof raw !== 'string' || !raw.trim()) return '';
+  const promoted = isRichHtmlContent(raw)
+    ? promoteMarkdownWithinHtml(raw)
+    : markdownToRichHtml(raw, { useStudentMdClasses: false });
+  return sanitizeLessonHtml(promoted);
+}
+
 /**
  * Prepares stored lesson content (whether rich HTML or legacy Markdown/plain text)
  * for loading into the Tiptap WYSIWYG editor so teachers never see raw Markdown syntax.
@@ -468,7 +570,7 @@ export function prepareContentForEditor(raw: string | null | undefined): string 
     return '<p></p>';
   }
   if (isRichHtmlContent(raw)) {
-    return sanitizeLessonHtml(raw);
+    return sanitizeLessonHtml(promoteMarkdownWithinHtml(raw));
   }
   return markdownToRichHtml(raw, { useStudentMdClasses: false });
 }
@@ -482,7 +584,7 @@ export function renderLessonRichHtml(raw: string | null | undefined): string {
     return '';
   }
   if (isRichHtmlContent(raw)) {
-    return sanitizeLessonHtml(raw);
+    return sanitizeLessonHtml(promoteMarkdownWithinHtml(raw));
   }
   return markdownToRichHtml(raw, { useStudentMdClasses: true });
 }
