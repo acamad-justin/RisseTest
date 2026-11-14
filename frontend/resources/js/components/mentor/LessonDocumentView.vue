@@ -489,11 +489,21 @@ function renderFloat(float) {
 
 // ── Flow editing ─────────────────────────────────────────────────────────
 
+/**
+ * The document's text, as it currently stands in the DOM.
+ *
+ * Every element the canvas holds is flow content EXCEPT the floats, which carry
+ * their own model. Reading only `.lesson-document__node` used to drop anything the
+ * browser inserted beside a node — pressing Enter at the end of a block can
+ * produce a sibling block, and its text would vanish on the next save. Blocks
+ * are joined with a newline so their boundaries survive as separate paragraphs.
+ */
 function readFlowFromDom() {
   const canvas = canvasRef.value;
   if (!canvas) return '';
   return Array.from(canvas.children)
-    .filter(node => node.classList?.contains('lesson-document__node'))
+    .filter(node => !node.classList?.contains('lesson-float'))
+    .filter(node => String(node.tagName || '').toUpperCase() !== 'BR')
     .map(node => node.innerHTML.trim())
     .filter(Boolean)
     .join('\n');

@@ -16,7 +16,7 @@
 import DOMPurify from 'dompurify';
 
 const ALLOWED_TAGS = new Set([
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'strong', 'b', 'em', 'i', 'u', 's',
   'ul', 'ol', 'li', 'br', 'hr',
   'span', 'mark', 'code', 'pre', 'blockquote',
@@ -35,6 +35,10 @@ const SAFE_COLOR_VALUE = /^(?:#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\
 const SAFE_FONT_SIZE_VALUE = /^(?:(?:[89]|[1-4]\d|5[0-6])(?:\.\d+)?(?:px|pt)|(?:0\.(?:75|8|85|875|9)|[12](?:\.\d+)?|3(?:\.0+)?)r?em)$/;
 const SAFE_TEXT_ALIGN_VALUE = /^(?:left|center|right|justify|start|end)$/i;
 const SAFE_CLASS_TOKEN = /^[a-zA-Z0-9_-]{1,48}$/;
+const SAFE_FONT_WEIGHT_VALUE = /^(?:normal|bold|bolder|lighter|[1-9]00)$/i;
+const SAFE_FONT_STYLE_VALUE = /^(?:normal|italic|oblique)$/i;
+const SAFE_TEXT_DECORATION_VALUE = /^(?:none|underline|overline|line-through)(?:\s+(?:underline|overline|line-through))*$/i;
+const SAFE_VERTICAL_ALIGN_VALUE = /^(?:baseline|sub|super)$/i;
 
 function escapeHtml(raw: string): string {
   return raw
@@ -53,12 +57,20 @@ function escapeAttr(raw: string): string {
 }
 
 /**
- * Strictly filters inline CSS style declarations to the 4 formatting properties
- * used by the Module Studio rich-text toolbar:
- *   - color
- *   - background-color
- *   - font-size
- *   - text-align
+ * Strictly filters inline CSS style declarations to the formatting the Module
+ * Studio rich-text toolbar can produce.
+ *
+ * The editor runs `execCommand('styleWithCSS', true)`, so the browser emits
+ * formatting as inline CSS rather than as `<b>`/`<i>`/`<u>`:
+ *
+ *   bold      → <span style="font-weight: bold">
+ *   italic    → <span style="font-style: italic">
+ *   underline → <span style="text-decoration: underline">
+ *
+ * Which means every property the toolbar can produce has to be allowed here.
+ * Allowing only colour/size/alignment silently stripped bold, italic and
+ * underline on the next sanitize pass — that is, on blur (clicking anywhere
+ * outside the text), on save, and on every re-render.
  */
 export function sanitizeInlineStyle(styleValue: string): string {
   if (!styleValue || typeof styleValue !== 'string') return '';
@@ -82,6 +94,17 @@ export function sanitizeInlineStyle(styleValue: string): string {
     } else if (prop === 'font-size' && SAFE_FONT_SIZE_VALUE.test(val)) {
       cleanDecls.push(`${prop}: ${val}`);
     } else if (prop === 'text-align' && SAFE_TEXT_ALIGN_VALUE.test(val)) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (prop === 'font-weight' && SAFE_FONT_WEIGHT_VALUE.test(val)) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (prop === 'font-style' && SAFE_FONT_STYLE_VALUE.test(val)) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (
+      (prop === 'text-decoration' || prop === 'text-decoration-line')
+      && SAFE_TEXT_DECORATION_VALUE.test(val)
+    ) {
+      cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
+    } else if (prop === 'vertical-align' && SAFE_VERTICAL_ALIGN_VALUE.test(val)) {
       cleanDecls.push(`${prop}: ${val.toLowerCase()}`);
     }
   }
