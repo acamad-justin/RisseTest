@@ -179,7 +179,7 @@
       contenteditable="false"
       role="toolbar"
       :aria-label="`Controls for ${selected.kind} element`"
-      @mousedown.stop.prevent
+      @mousedown.stop
       @click.stop
     >
       <span class="float-controls__label">{{ kindLabel(selected.kind) }}</span>
@@ -374,7 +374,8 @@ function floatStyle(float) {
   if (float.wrap === 'square') {
     style.float = float.side === 'right' ? 'right' : 'left';
     if (width) style.width = width;
-    style.maxWidth = '62%';
+    // Full width must be reachable: a 62% cap made wide boxes snap back smaller.
+    style.maxWidth = '100%';
     // Offsets are margins, not coordinates: the element stays IN the flow, so
     // the browser still lays the surrounding line boxes around it.
     if (offsetY) style.marginTop = offsetY;
@@ -718,7 +719,8 @@ function startFloatResize(event, float) {
   const startWidth = float.width || Math.round(startRect.width) || 320;
   const startHeight = float.height || Math.round(startRect.height) || 0;
   const canvas = canvasRef.value;
-  const canvasWidth = canvas?.getBoundingClientRect?.().width || startWidth;
+  const measuredCanvas = canvas?.getBoundingClientRect?.().width || 0;
+  const canvasWidth = measuredCanvas > 0 ? measuredCanvas : 0;
   let width = startWidth;
   let height = startHeight;
   let moved = false;
@@ -728,7 +730,9 @@ function startFloatResize(event, float) {
     const dy = moveEvent.clientY - startY;
     if (!moved && Math.abs(dx) + Math.abs(dy) < 3) return;
     moved = true;
-    width = Math.min(Math.max(140, startWidth + dx), Math.max(160, canvasWidth));
+    const proposed = Math.max(140, startWidth + dx);
+    // Only clamp against a canvas we could actually measure.
+    width = canvasWidth > 0 ? Math.min(proposed, canvasWidth) : proposed;
     height = Math.max(48, startHeight + dy);
     el.style.width = `${width}px`;
     el.style.maxWidth = '100%';
