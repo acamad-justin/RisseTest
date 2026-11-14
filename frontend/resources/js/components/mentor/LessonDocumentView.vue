@@ -116,8 +116,9 @@
       class="lesson-document__canvas"
       :contenteditable="editable ? 'true' : 'false'"
       :spellcheck="editable ? 'true' : 'false'"
-      @input="onFlowInput"
+      @input="onCanvasInput"
       @blur="onFlowBlur"
+      @focusout="onCanvasFocusout"
       @focus="onFlowFocus"
       @click="onCanvasClick"
       @dragover="onDragOver"
@@ -356,14 +357,22 @@ function exec(command, value = null) {
   if (!props.editable) return;
   const canvas = canvasRef.value;
   if (!canvas) return;
-  canvas.focus();
+  /*
+   * Format where the caret is. Forcing focus onto the canvas moved it out of a
+   * float's body, so Bold/Italic inside a content box applied to nothing (and
+   * could format the flow instead).
+   */
+  const active = document.activeElement;
+  if (!active || !canvas.contains(active)) canvas.focus();
   try {
     document.execCommand('styleWithCSS', false, true);
     document.execCommand(command, false, value);
   } catch {
     /* unsupported command — never break the document over it */
   }
-  commitFlowFromDom();
+  const body = floatBodyOwner(document.activeElement);
+  if (body) commitFloatBody(body);
+  else commitFlowFromDom();
 }
 
 function applyBlockStyle(tag) {
@@ -444,12 +453,32 @@ function overlayStyle(float) {
   };
 }
 
+/**
+ * The body of a text-ish element, as a typing surface.
+ *
+ * Floats render through `innerHTML` and their wrapper is `contenteditable="false"`
+ * (so dragging cannot select the page). That made a content box a picture of
+ * text: its words could be moved and deleted but never edited. A nested editable
+ * region fixes that — the browser allows an editable child inside a
+ * non-editable parent — and `data-float-body` tells the canvas handlers which
+ * element the keystrokes belong to.
+ */
+function floatBodyProps(float, extraClass = '') {
+  return {
+    class: ['lesson-float__body', extraClass].filter(Boolean).join(' '),
+    contenteditable: props.editable ? 'true' : 'false',
+    'data-float-body': float.id,
+    spellcheck: props.editable ? 'true' : 'false',
+    innerHTML: float.html || '',
+  };
+}
+
 function renderFloat(float) {
   if (float.kind === 'code') {
     return {
       render: () => h('div', { class: 'lesson-float__body lesson-float__body--code' }, [
         float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
-        h('div', { innerHTML: float.html || '' }),
+        h('div', floatBodyProps(float, 'lesson-float__code')),
       ]),
     };
   }
@@ -475,14 +504,14 @@ function renderFloat(float) {
     return {
       render: () => h('div', { class: `lesson-float__${float.kind}` }, [
         float.caption ? h('h4', null, float.caption) : null,
-        h('div', { innerHTML: float.html || '' }),
+        h('div', floatBodyProps(float)),
       ]),
     };
   }
   return {
     render: () => h('div', { class: 'lesson-float__body' }, [
       float.caption ? h('h4', { class: 'lesson-float__caption' }, float.caption) : null,
-      h('div', { innerHTML: float.html || '' }),
+      h('div', floatBodyProps(float)),
     ]),
   };
 }
@@ -498,11 +527,35 @@ function renderFloat(float) {
  * produce a sibling block, and its text would vanish on the next save. Blocks
  * are joined with a newline so their boundaries survive as separate paragraphs.
  */
+/**
+ * Chrome the editor paints INSIDE the canvas. It is positioned against the
+ * document, so it has to live in the same element — but it is not lesson text.
+ *
+ * The contextual control bar was the bad case: its labels and its <select>
+ * options ("Content box", "Delete", "Wrap: square", "Overlap", "✓") were being
+ * serialised into the flow, so clicking the control bar's done button wrote
+ * those words into the lesson.
+ */
+const CANVAS_CHROME_SELECTOR = [
+  '.lesson-float',
+  '.float-controls',
+  '.lesson-document__clearfix',
+  '[data-float-id]',
+  '[data-float-body]',
+  '[contenteditable="false"]',
+  '[role="toolbar"]',
+  'script',
+  'style',
+].join(', ');
+
 function readFlowFromDom() {
   const canvas = canvasRef.value;
   if (!canvas) return '';
-  return Array.from(canvas.children)
-    .filter(node => !node.classList?.contains('lesson-float'))
+  // Read a detached copy: the live canvas is being typed into, and the chrome
+  // above is a sibling of the prose rather than part of it.
+  const clone = canvas.cloneNode(true);
+  clone.querySelectorAll(CANVAS_CHROME_SELECTOR).forEach(el => el.remove());
+  return Array.from(clone.children)
     .filter(node => String(node.tagName || '').toUpperCase() !== 'BR')
     .map(node => node.innerHTML.trim())
     .filter(Boolean)
@@ -552,6 +605,73 @@ function onFlowBlur() {
     if (domNodes !== renderedNodes) nextTick(() => { canvasRevision.value += 1; });
   }
   commitFlowFromDom();
+}
+
+// ── Float body editing (delegated from the canvas) ───────────────────────
+
+/** The editable body a keystroke belongs to, if any. */
+function floatBodyOwner(target) {
+  const el = target && target.closest ? target.closest('[data-float-body]') : null;
+  if (!el) return null;
+  const canvas = canvasRef.value;
+  return canvas && canvas.contains(el) ? el : null;
+}
+
+function readFloatBodyHtml(body) {
+  return sanitizeLessonHtml(body.innerHTML);
+}
+
+function onFloatBodyInput(body) {
+  const id = body.getAttribute('data-float-body');
+  if (!id) return;
+  const html = readFloatBodyHtml(body);
+  // Emitted, never applied locally: writing the model back would re-render the
+  // body under the caret, the same trap the flow editor was built to avoid.
+  // `lastEmittedFlow` marks the echo that comes back as ours, so the watcher
+  // does not replace the snapshot and re-render mid-word.
+  lastEmittedFlow = localDoc.value.flow;
+  emit('update-float', { id, patch: { html } });
+  emit('update:document', {
+    ...localDoc.value,
+    floats: localDoc.value.floats.map(f => (f.id === id ? { ...f, html } : f)),
+  });
+}
+
+/** Blur: fold the body's HTML into the snapshot so the model matches the DOM. */
+function commitFloatBody(body) {
+  const id = body.getAttribute('data-float-body');
+  const float = localDoc.value.floats.find(f => f.id === id);
+  if (!float) return;
+  const html = readFloatBodyHtml(body);
+  if (html === (float.html || '')) return;
+  localDoc.value = {
+    ...localDoc.value,
+    floats: localDoc.value.floats.map(f => (f.id === id ? { ...f, html } : f)),
+  };
+  lastEmittedFlow = localDoc.value.flow;
+  emit('update-float', { id, patch: { html } });
+  emit('update:document', { ...localDoc.value });
+}
+
+function onCanvasInput(event) {
+  if (!props.editable) return;
+  const body = floatBodyOwner(event?.target);
+  if (body) {
+    onFloatBodyInput(body);
+    return;
+  }
+  onFlowInput();
+}
+
+/** `focusout` bubbles, so one handler covers the flow and every float body. */
+function onCanvasFocusout(event) {
+  if (!props.editable) return;
+  const body = floatBodyOwner(event?.target);
+  if (body) {
+    commitFloatBody(body);
+    return;
+  }
+  if (event?.target === canvasRef.value) onFlowBlur();
 }
 
 function onCanvasClick(event) {
@@ -923,6 +1043,8 @@ function startFloatResize(event, float) {
 function startFloatDrag(event, float) {
   if (!props.editable || float.locked) return;
   if (event.button != null && event.button !== 0) return;
+  // The element's own text is editable: a press there places a caret.
+  if (floatBodyOwner(event.target)) return;
   const canvas = canvasRef.value;
   const el = event.currentTarget;
   if (!canvas || !el) return;
@@ -1238,6 +1360,26 @@ defineExpose({ selectedId });
 }
 
 .lesson-float__caption { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #92400e; }
+
+/* Editable body. The wrapper is non-editable so dragging cannot select the
+   page, so the text has to advertise itself: caret cursor, visible focus, and a
+   prompt when the element is still empty. */
+.lesson-document--editable .lesson-float__body[contenteditable="true"] {
+  cursor: text;
+  min-height: 1.5em;
+  outline: none;
+}
+.lesson-document--editable .lesson-float__body[contenteditable="true"]:focus {
+  outline: 2px solid #fdba74;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.lesson-document--editable .lesson-float__body[contenteditable="true"]:empty::before {
+  content: 'Type here…';
+  color: #9ca3af;
+  font-style: italic;
+  pointer-events: none;
+}
 
 .lesson-float--code .lesson-float__body {
   background: #0f172a; border-color: #1e293b; color: #e2e8f0;

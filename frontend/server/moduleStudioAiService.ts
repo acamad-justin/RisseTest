@@ -847,6 +847,12 @@ REQUIREMENTS:
    - Students finish a lesson by marking it complete themselves, so there is
      nothing to score and no question set to produce.
 
+3. Prose is simple HTML, not Markdown:
+   - Use <p>, <h3>, <h4>, <strong>, <em>, <ul>, <li>, <ol>, <blockquote>, <table>.
+   - Never emit Markdown syntax: no "##", no "**", no leading "- " bullets.
+   - Emphasis is <strong>bold</strong> and <em>italic</em>, never asterisks.
+   - Ordinary paragraphs need no wrapper beyond <p>.
+
 Return ONLY a JSON object:
 {
   "blocks": [
@@ -854,7 +860,7 @@ Return ONLY a JSON object:
       "id": "b-1",
       "type": "text | callout | code | table | activity",
       "title": "string (optional)",
-      "content": "markdown string",
+      "content": "HTML string (see requirement 3)",
       "code_language": "cpp | python | etc (if code)",
       "code_explanation": "string (if code)"
     }
