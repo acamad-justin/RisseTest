@@ -1822,10 +1822,26 @@
     <!-- an overlay that is removed from flow, so it can never move, shrink or -->
     <!-- restyle the module underneath.                                        -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="isPreviewOpen" class="student-experience-host" role="region" aria-label="Student module experience">
+    <div v-if="isPreviewOpen" ref="previewHostRef" class="student-experience-host" role="region" aria-label="Student module experience">
 
       <!-- ── Floating: leave preview / enter editing ─────────────────────── -->
-      <div class="float-cluster float-cluster--top-right">
+      <!--
+        Docked immediately left of the lesson's "Complete Checkpoint" action, so
+        the two controls a mentor uses most sit on the same line as the action
+        they are about to take. This is a position, not a layout: the cluster is
+        a fixed-position overlay and the lesson underneath keeps its exact
+        student geometry.
+
+        When the header row has no room for it — a long lesson title, a narrow
+        workspace, or the header scrolled out of view — it falls back to the
+        right-hand chrome column instead of covering the title.
+      -->
+      <div
+        ref="previewToolsRef"
+        class="float-cluster"
+        :class="previewToolsDocked ? 'float-cluster--beside-checkpoint' : 'float-cluster--top-right'"
+        :style="previewToolsStyle"
+      >
         <button
           type="button"
           class="float-btn float-btn--ghost"
@@ -1856,7 +1872,11 @@
       </div>
 
       <!-- ── Floating: student-environment toggles (only while editing) ──── -->
-      <div v-if="editingEnabled" class="float-cluster float-cluster--bottom-right">
+      <div
+        v-if="editingEnabled"
+        class="float-cluster float-cluster--bottom-right"
+        :class="{ 'is-lifted': previewToolsDocked }"
+      >
         <span class="float-label">Student view</span>
 
         <button
@@ -2149,6 +2169,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
+import { resolvePreviewToolbarPlacement } from '../../../../../lib/mentor/previewToolbarPlacement.ts';
 import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/mentor/lessonDocument.ts';
 // The shared student module experience. Preview uses this same component the
 // student workspace uses — there is no editor-specific renderer.
@@ -2843,6 +2864,7 @@ function returnToIntake() {
 }
 
 onUnmounted(() => {
+  stopPreviewToolTracking();
   window.removeEventListener('keydown', handleKeydown);
   // Never leave the page locked if the Studio unmounts mid-edit.
   document.body.style.overflow = '';
@@ -2859,10 +2881,24 @@ watch(isPreviewOpen, open => {
   if (open) {
     syncSidebarState();
     window.addEventListener('risse:mentor-sidebar-state', onSidebarState);
+    // Place the preview toolbar only once the module has actually rendered.
+    nextTick(() => {
+      measurePreviewTools();
+      startPreviewToolTracking();
+    });
   } else {
     window.removeEventListener('risse:mentor-sidebar-state', onSidebarState);
+    stopPreviewToolTracking();
+    previewToolsDocked.value = false;
   }
 });
+
+// The button labels change with the editing state ("Edit" ⇄ "Editing On"), which
+// changes how much room the cluster needs.
+watch(editingEnabled, () => nextTick(schedulePreviewToolMeasure));
+
+// Collapsing the student sidebar widens the lesson column: re-place the toolbar.
+watch(mentorSidebarCollapsed, () => schedulePreviewToolMeasure());
 
 function handleKeydown(e) {
   if (e.key === 'Escape') {
@@ -3624,6 +3660,107 @@ function closeStudentPreview() {
   if (hadEdits) {
     previewNotice('Preview edits discarded — nothing was saved.');
   }
+}
+
+// ── Preview toolbar placement ──────────────────────────────────────────────
+// The preview toolbar belongs beside the lesson's "Complete Checkpoint" action:
+// that row is where a mentor's attention already is, so the two controls they use
+// most are immediately at hand. It stays an overlay — this decides WHERE the
+// floating cluster sits, never how the lesson underneath is laid out.
+const previewHostRef = ref(null);
+const previewToolsRef = ref(null);
+const previewToolsDocked = ref(false);
+const previewToolsAnchor = ref({ top: 0, left: 0 });
+
+const previewToolsStyle = computed(() =>
+  previewToolsDocked.value
+    ? { top: `${previewToolsAnchor.value.top}px`, left: `${previewToolsAnchor.value.left}px` }
+    : null
+);
+
+let previewToolsFrame = 0;
+let previewToolsObserver = null;
+
+/**
+ * Anchors the toolbar to the checkpoint action row, or declines to.
+ *
+ * Docking is only safe while the space between the lesson title and the action
+ * is genuinely free: the toolbar is an overlay, and an overlay that covers the
+ * title is not a student presentation. Same for a header that has been scrolled
+ * out of view — a pinned toolbar would float over lesson content at a stale
+ * position. Both cases fall back to the chrome column.
+ */
+function measurePreviewTools() {
+  previewToolsFrame = 0;
+  const host = previewHostRef.value;
+  const toolbar = previewToolsRef.value;
+  if (!isPreviewOpen.value || !host || !toolbar || typeof host.querySelector !== 'function') {
+    previewToolsDocked.value = false;
+    return;
+  }
+
+  const action = host.querySelector('#btn-complete-checkpoint');
+  const titleBlock = host.querySelector('.checkpoint-header-left');
+  if (!action || !titleBlock) {
+    previewToolsDocked.value = false;
+    return;
+  }
+
+  const placement = resolvePreviewToolbarPlacement({
+    toolbarWidth: toolbar.getBoundingClientRect().width || toolbar.offsetWidth || 0,
+    action: action.getBoundingClientRect(),
+    title: titleBlock.getBoundingClientRect(),
+    host: host.getBoundingClientRect(),
+  });
+
+  if (!placement.docked) {
+    previewToolsDocked.value = false;
+    return;
+  }
+
+  previewToolsAnchor.value = { top: placement.top, left: placement.left };
+  previewToolsDocked.value = true;
+}
+
+/** Coalesces layout reads to one per frame — scroll and resize arrive in bursts. */
+function schedulePreviewToolMeasure() {
+  if (previewToolsFrame) return;
+  previewToolsFrame = requestAnimationFrame(() => {
+    previewToolsFrame = 0;
+    measurePreviewTools();
+  });
+}
+
+function startPreviewToolTracking() {
+  stopPreviewToolTracking();
+  if (typeof window === 'undefined') return;
+  // The free space beside the action changes with the window, the mentor
+  // sidebar and the lesson title itself, so track the surface rather than guess.
+  if (typeof window.ResizeObserver === 'function' && previewHostRef.value) {
+    previewToolsObserver = new window.ResizeObserver(() => schedulePreviewToolMeasure());
+    previewToolsObserver.observe(previewHostRef.value);
+  }
+  window.addEventListener('resize', schedulePreviewToolMeasure);
+  if (previewHostRef.value && previewHostRef.value.addEventListener) {
+    previewHostRef.value.addEventListener('scroll', schedulePreviewToolMeasure, { passive: true });
+  }
+}
+
+function stopPreviewToolTracking() {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', schedulePreviewToolMeasure);
+  }
+  if (previewHostRef.value && previewHostRef.value.removeEventListener) {
+    previewHostRef.value.removeEventListener('scroll', schedulePreviewToolMeasure);
+  }
+  if (previewToolsObserver) {
+    previewToolsObserver.disconnect();
+    previewToolsObserver = null;
+  }
+  if (previewToolsFrame && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(previewToolsFrame);
+  }
+  previewToolsFrame = 0;
 }
 
 /**
@@ -6436,6 +6573,22 @@ function saveCourseDetails() {
   top: 58px;
   right: 18px;
   bottom: auto;
+}
+
+/*
+ * Docked placement: the preview toolbar floats in the lesson's header row,
+ * immediately left of "Complete Checkpoint" (geometry from measurePreviewTools).
+ * Only the position changes — the cluster is still out of flow, so the lesson
+ * never moves and the student header stays exactly where it was.
+ */
+.float-cluster--beside-checkpoint {
+  transform: translateY(-50%);
+}
+
+/* While the pair is docked up top the corner is free, so the student-view
+   cluster takes it rather than floating below an empty slot. */
+.float-cluster--bottom-right.is-lifted {
+  top: 14px;
 }
 
 .float-cluster--bottom-center {
