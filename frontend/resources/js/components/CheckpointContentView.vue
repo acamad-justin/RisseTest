@@ -40,6 +40,13 @@
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
         <div class="checkpoint-header-actions">
+          <!--
+            Host-provided controls that belong on this line. The mentor's preview
+            toolbar renders here, beside "Complete Checkpoint", so the row itself
+            aligns them. Empty for students: nothing is added to their view.
+          -->
+          <slot name="prepend-actions" />
+
           <button 
             type="button" 
             class="btn-complete-checkpoint-action" 

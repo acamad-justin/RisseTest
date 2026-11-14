@@ -1,265 +1,264 @@
 /*
- * Preview toolbar placement — where the mentor's "Exit Preview / Edit" cluster
- * floats while previewing a lesson.
+ * Preview toolbar placement — where the mentor's "Exit Preview / Edit" controls sit.
+ *
+ * After two rounds of measured overlays, the placement is structural: the controls
+ * render INSIDE the lesson header's action row, immediately before the student's
+ * "Complete Checkpoint" action. The row centres them against that button by
+ * layout, so alignment cannot drift with the title length, the window width, or
+ * the order in which the lesson's data arrives.
  *
  * The contract these lock down:
- *   1. The toolbar docks immediately LEFT of the lesson's "Complete Checkpoint"
- *      action, vertically centred on it, so a mentor sees both controls at once.
- *   2. It docks whenever the space is visually free — measured against the
- *      header's INK, not its box. A block-level heading's box can stretch almost
- *      to the action while the text ends far to the left; judging by the box
- *      refuses exactly the header the toolbar is meant for.
- *   3. It never covers the header text, and never docks for a header that has
- *      scrolled out of view or a placement outside the workspace.
- *   4. Declining is always the safe answer: the caller keeps the toolbar in the
- *      right-hand chrome column.
- *   5. The component is wired to that decision, re-measures when the lesson
- *      header appears, and keeps everything out of the lesson's flow.
+ *   1. The lesson header offers a slot on its action line, before the checkpoint
+ *      action, and forwards it through ModuleExperience.
+ *   2. The preview passes the toolbar into that slot, and uses the same component
+ *      in the corner when the module roadmap is showing (no header to sit in).
+ *   3. The toolbar keeps the Studio's control ids and emits exit / toggle-edit.
+ *   4. Students see nothing new: the slot is empty in the student app.
+ *   5. No measurement machinery survives — the alignment is the row's job.
+ *   6. At runtime the controls really do render on that line, in order, beside the
+ *      checkpoint button.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-const {
-  PREVIEW_TOOLBAR_GAP,
-  PREVIEW_TOOLBAR_TITLE_CLEARANCE,
-  resolvePreviewToolbarPlacement,
-} = await import('../frontend/lib/mentor/previewToolbarPlacement.ts');
+const frontendDir = new URL('../frontend', import.meta.url).pathname;
+const read = path => readFileSync(join(frontendDir, path), 'utf8');
 
-const TOOLBAR = { width: 196, height: 34 };
+test('the lesson header offers a slot on its action line, before the checkpoint action', () => {
+  const source = read('resources/js/components/CheckpointContentView.vue');
 
-// The user's actual case: a roomy desktop header. The title's BOX runs to x=888
-// (a block heading inside a flex item), but the glyphs end at x=480. The
-// checkpoint action starts at x=900.
-const roomy = () => ({
-  toolbar: { ...TOOLBAR },
-  action: { top: 120, bottom: 152, left: 900, right: 1080 },
-  title: { top: 96, bottom: 150, left: 120, right: 480 },
-  host: { top: 0, bottom: 640, left: 0, right: 1200 },
+  const slotAt = source.indexOf('<slot name="prepend-actions" />');
+  assert.ok(slotAt > 0, 'the header must offer a prepend-actions slot');
+
+  const actionsAt = source.indexOf('<div class="checkpoint-header-actions">');
+  const checkpointAt = source.indexOf('id="btn-complete-checkpoint"', actionsAt);
+
+  assert.ok(actionsAt > 0, 'the action row must exist');
+  assert.ok(slotAt > actionsAt, 'the slot belongs inside the action row');
+  assert.ok(slotAt < checkpointAt, 'the slot comes before "Complete Checkpoint"');
+
+  // The row is what aligns the two controls.
+  const rowRule = source.slice(source.indexOf('.checkpoint-header-actions {'));
+  assert.match(rowRule.slice(0, 200), /align-items: center/);
 });
 
-test('the toolbar docks immediately left of the checkpoint action', () => {
-  const placement = resolvePreviewToolbarPlacement(roomy());
-  assert.equal(placement.docked, true);
-  assert.equal(placement.left, 900 - 196 - PREVIEW_TOOLBAR_GAP);
+test('ModuleExperience forwards that slot from its owner', () => {
+  const source = read('resources/js/components/ModuleExperience.vue');
+  assert.match(source, /<template #prepend-actions>/);
+  assert.match(source, /<slot name="prepend-actions" \/>/);
 });
 
-test('the toolbar is vertically centred on the checkpoint action', () => {
-  const placement = resolvePreviewToolbarPlacement(roomy());
-  assert.equal(placement.docked, true);
-  const centre = 120 + (152 - 120) / 2;
-  assert.equal(placement.top + TOOLBAR.height / 2, centre);
+test('the preview puts the toolbar on the action line, and in the corner only off-lesson', () => {
+  const source = read('resources/js/views/mentor/curriculum/CurriculumDesigner.vue');
+
+  assert.match(source, /import PreviewToolbar from '\.\.\/\.\.\/\.\.\/components\/mentor\/PreviewToolbar\.vue';/);
+  assert.match(source, /<template #prepend-actions>/);
+  assert.match(source, /<PreviewToolbar\s+:editing="editingEnabled"\s+@exit="closeStudentPreview"\s+@toggle-edit="toggleEditingMode"\s+\/>/);
+
+  // The roadmap has no lesson header; the same component is used again there.
+  assert.match(source, /v-if="previewView !== 'lesson'"/);
+  assert.match(source, /class="preview-toolbar-corner"/);
+  assert.match(source, /@view-change="previewView = \$event"/);
+  assert.match(source, /\.preview-toolbar-corner \{/);
+
+  // One definition, two positions: exactly two usages, no duplicated markup.
+  assert.equal((source.match(/<PreviewToolbar/g) || []).length, 2);
+  assert.doesNotMatch(source, /id="btn-close-student-experience"/);
+  assert.doesNotMatch(source, /id="btn-toggle-editing-mode"/);
 });
 
-test('the same header docks on its ink but not on its box — the reported bug', () => {
-  // The mentor's lesson title is a block heading inside a flex item: its BOX ends
-  // 12px from the checkpoint action, while the glyphs end at x=480. Judging by the
-  // box refused to dock in a header that was visually wide open, so the toolbar
-  // sat in the corner instead of beside the button.
-  const box = { top: 96, bottom: 150, left: 120, right: 888 };
-  const ink = { top: 96, bottom: 150, left: 120, right: 480 };
-
-  assert.equal(resolvePreviewToolbarPlacement({ ...roomy(), title: box }).docked, false);
-  assert.equal(resolvePreviewToolbarPlacement({ ...roomy(), title: ink }).docked, true);
+test('the toolbar keeps its control ids and its two actions', () => {
+  const source = read('resources/js/components/mentor/PreviewToolbar.vue');
+  assert.match(source, /id="btn-close-student-experience"/);
+  assert.match(source, /id="btn-toggle-editing-mode"/);
+  assert.match(source, /defineEmits\(\['exit', 'toggle-edit'\]\)/);
+  assert.match(source, /\$emit\('exit'\)/);
+  assert.match(source, /\$emit\('toggle-edit'\)/);
+  // The pressed state is exposed to assistive tech, not just colour.
+  assert.match(source, /:aria-pressed="editing"/);
 });
 
-test('a title whose text reaches the action refuses the dock', () => {
-  const longTitle = roomy();
-  longTitle.title = { top: 96, bottom: 150, left: 120, right: 820 };
-  const placement = resolvePreviewToolbarPlacement(longTitle);
-  assert.equal(placement.docked, false);
-  assert.equal(placement.reason, 'would-cover-title');
+test('nothing is added to the student view', () => {
+  // The slot is only filled by the mentor's preview: the student app renders
+  // ModuleExperience with no slot content, so the row is unchanged for students.
+  const app = read('resources/js/App.vue');
+  assert.match(app, /<ModuleExperience/);
+  assert.doesNotMatch(app, /#prepend-actions/);
 });
 
-test('the clearance margin is respected on both sides of the boundary', () => {
-  const dockLeft = 900 - 196 - PREVIEW_TOOLBAR_GAP;
-
-  const justClear = roomy();
-  justClear.title = {
-    top: 96, bottom: 150, left: 120,
-    right: dockLeft - PREVIEW_TOOLBAR_TITLE_CLEARANCE - 1,
-  };
-  assert.equal(resolvePreviewToolbarPlacement(justClear).docked, true);
-
-  const justTouching = roomy();
-  justTouching.title = {
-    top: 96, bottom: 150, left: 120,
-    right: dockLeft - PREVIEW_TOOLBAR_TITLE_CLEARANCE,
-  };
-  // Touching the padded edge is still clear; one pixel further is not.
-  assert.equal(resolvePreviewToolbarPlacement(justTouching).docked, true);
-
-  const oneInside = roomy();
-  oneInside.title = {
-    top: 96, bottom: 150, left: 120,
-    right: dockLeft - PREVIEW_TOOLBAR_TITLE_CLEARANCE + 1,
-  };
-  assert.equal(resolvePreviewToolbarPlacement(oneInside).docked, false);
+test('the measured-overlay machinery is gone', () => {
+  const designer = read('resources/js/views/mentor/curriculum/CurriculumDesigner.vue');
+  assert.doesNotMatch(designer, /previewToolsDocked/);
+  assert.doesNotMatch(designer, /measurePreviewTools/);
+  assert.doesNotMatch(designer, /data-placement/);
+  assert.doesNotMatch(designer, /previewToolbarPlacement/);
+  assert.doesNotMatch(designer, /float-cluster--beside-checkpoint/);
+  assert.equal(existsSync(join(frontendDir, 'lib/mentor/previewToolbarPlacement.ts')), false);
 });
 
-test('a header that has scrolled out of view does not keep the toolbar pinned', () => {
-  const scrolledPast = roomy();
-  scrolledPast.action = { top: -40, bottom: -8, left: 900, right: 1080 };
-  assert.equal(resolvePreviewToolbarPlacement(scrolledPast).docked, false);
-
-  const scrolledBelow = roomy();
-  scrolledBelow.action = { top: 700, bottom: 732, left: 900, right: 1080 };
-  assert.equal(resolvePreviewToolbarPlacement(scrolledBelow).docked, false);
-});
-
-test('a partially visible header still docks', () => {
-  const partly = roomy();
-  partly.host.top = 130; // action straddles the top edge of the viewport band
-  assert.equal(resolvePreviewToolbarPlacement(partly).docked, true);
-});
-
-test('unmeasured inputs decline rather than guess', () => {
-  assert.equal(
-    resolvePreviewToolbarPlacement({ ...roomy(), toolbar: { width: 0, height: 34 } }).docked,
-    false,
-  );
-  assert.equal(
-    resolvePreviewToolbarPlacement({ ...roomy(), toolbar: { width: 196, height: 0 } }).docked,
-    false,
-  );
-  assert.equal(resolvePreviewToolbarPlacement({ ...roomy(), toolbar: null }).docked, false);
-  assert.equal(resolvePreviewToolbarPlacement({ ...roomy(), action: null }).docked, false);
-  assert.equal(resolvePreviewToolbarPlacement({ ...roomy(), host: null }).docked, false);
-
-  const noHeight = roomy();
-  noHeight.action = { top: 120, bottom: 120, left: 900, right: 1080 };
-  assert.equal(resolvePreviewToolbarPlacement(noHeight).docked, false);
-});
-
-test('a placement that would leave the workspace declines', () => {
-  const offLeft = roomy();
-  offLeft.action = { top: 120, bottom: 152, left: 120, right: 300 };
-  offLeft.title = { top: 96, bottom: 150, left: 20, right: 40 };
-  // 120 - 196 - 10 < 0 → cannot fit, so stay in the chrome column.
-  const placement = resolvePreviewToolbarPlacement(offLeft);
-  assert.equal(placement.docked, false);
-  assert.equal(placement.reason, 'off-workspace');
-});
-
-test('a missing title measurement does not block docking', () => {
-  const noTitle = roomy();
-  noTitle.title = null;
-  assert.equal(resolvePreviewToolbarPlacement(noTitle).docked, true);
-});
-
-test('the preview host is wired to the placement decision', () => {
-  const source = readFileSync(
-    new URL('../frontend/resources/js/views/mentor/curriculum/CurriculumDesigner.vue', import.meta.url),
-    'utf8',
-  );
-
-  // The cluster carries both the fallback and the docked placements, driven by
-  // the decision, with fixed-position coordinates supplied inline.
-  assert.match(source, /ref="previewToolsRef"/);
-  assert.match(source, /previewToolsDocked \? 'float-cluster--beside-checkpoint' : 'float-cluster--top-right'/);
-  assert.match(source, /:style="previewToolsStyle"/);
-  // The decision is inspectable in the browser: the cluster says why it is where
-  // it is, so "why is it still in the corner?" is answerable from DevTools.
-  assert.match(source, /:data-placement=/);
-  assert.match(source, /\.float-cluster--beside-checkpoint \{/);
-
-  // Anchored to the real student action, and measured from the rendered DOM.
-  assert.match(source, /querySelector\('#btn-complete-checkpoint'\)/);
-  assert.match(source, /resolvePreviewToolbarPlacement\(/);
-
-  // Measured against the header's INK, not the heading's box. The measurement
-  // itself lives in the tested module (see the DOM check below).
-  assert.match(source, /headerInkRect,/);
-  assert.match(source, /title: headerInkRect\(host\)/);
-
-  // Converges when the lesson header appears: DOM mutations inside the preview
-  // host re-measure, alongside the surface's own resize and scroll.
-  assert.match(source, /new MutationObserver\(\(\) => schedulePreviewToolMeasure\(\)\)/);
-  assert.match(source, /characterData: true/);
-  assert.match(source, /new window\.ResizeObserver\(\(\) => schedulePreviewToolMeasure\(\)\)/);
-  assert.match(source, /addEventListener\('scroll', schedulePreviewToolMeasure/);
-  assert.match(source, /addEventListener\('resize', schedulePreviewToolMeasure\)/);
-
-  // Both observers are torn down with the preview.
-  assert.match(source, /previewToolsMutationObserver\.disconnect\(\)/);
-  assert.match(source, /previewToolsObserver\.disconnect\(\)/);
-
-  // Attributes are deliberately NOT observed: the toolbar's own class/style
-  // updates would otherwise feed a measure loop back into itself.
-  assert.doesNotMatch(source, /attributes: true/);
-
-  // No timers: placement is layout-driven, never a settle-after-a-while guess.
-  assert.doesNotMatch(source, /setTimeout\([^)]*measurePreviewTools/);
-});
-
-test('against real DOM nodes: the header is measured by its ink', async () => {
-  let Window;
-  try {
-    ({ Window } = await import(
-      new URL('../frontend/node_modules/happy-dom/lib/index.js', import.meta.url).href
-    ));
-  } catch {
+test('at runtime the controls render on the checkpoint action line, in order', async () => {
+  if (!existsSync(join(frontendDir, 'node_modules', 'happy-dom'))) {
     console.log('skipped: happy-dom is not installed in frontend/node_modules');
     return;
   }
 
-  const { headerInkRect } = await import('../frontend/lib/mentor/previewToolbarPlacement.ts');
+  const entryFile = join(frontendDir, '.toolbar-mount-entry.js');
+  const configFile = join(frontendDir, '.toolbar-mount-vite.config.mjs');
+  const runnerFile = join(frontendDir, '.toolbar-mount-run.mjs');
+  const outDirName = '.toolbar-mount-dist';
+  const outDir = join(frontendDir, outDirName);
 
-  const win = new Window({ url: 'https://localhost/mentor' });
-  const doc = win.document;
+  writeFileSync(entryFile, [
+    "export { default as ModuleExperience } from './resources/js/components/ModuleExperience.vue';",
+    "export { default as PreviewToolbar } from './resources/js/components/mentor/PreviewToolbar.vue';",
+    '',
+  ].join('\n'));
 
-  // The real header shape: a flex row, a title block whose box is stretched by a
-  // block-level heading, and the checkpoint action on the right.
-  doc.body.innerHTML = `
-    <div class="student-experience-host">
-      <header class="checkpoint-header">
-        <div class="checkpoint-header-left">
-          <span class="sub-category-tag">Module</span>
-          <h1 class="checkpoint-title">What is Robotics?</h1>
-        </div>
-        <div class="checkpoint-header-actions">
-          <button id="btn-complete-checkpoint">Complete Checkpoint</button>
-        </div>
-      </header>
-    </div>`;
+  writeFileSync(configFile, [
+    "import { defineConfig } from 'vite';",
+    "import vue from '@vitejs/plugin-vue';",
+    "import { resolve } from 'node:path';",
+    'export default defineConfig({',
+    '  plugins: [vue()],',
+    '  logLevel: "silent",',
+    '  build: {',
+    "    lib: { entry: resolve(process.cwd(), '.toolbar-mount-entry.js'), formats: ['es'], fileName: 'entry' },",
+    `    outDir: '${outDirName}',`,
+    '    cssCodeSplit: false,',
+    '    minify: false,',
+    "    rollupOptions: { external: ['vue'], preserveEntrySignatures: 'strict' },",
+    '  },',
+    '});',
+    '',
+  ].join('\n'));
 
-  const host = doc.querySelector('.student-experience-host');
-  const titleBlock = doc.querySelector('.checkpoint-header-left');
-  const action = doc.querySelector('#btn-complete-checkpoint');
+  writeFileSync(runnerFile, String.raw`
+import { Window } from 'happy-dom';
 
-  // happy-dom has no layout engine, so geometry is supplied the way a browser
-  // would report it: the heading's box stretches to x=888, the glyphs end at 480.
-  const BOX = { top: 96, bottom: 150, left: 120, right: 888, width: 768, height: 54 };
-  const INK = { top: 96, bottom: 150, left: 120, right: 480, width: 360, height: 54 };
-  titleBlock.getBoundingClientRect = () => BOX;
+const win = new Window({ url: 'https://localhost/mentor' });
+for (const key of ['window', 'document', 'DOMParser', 'Node', 'HTMLElement', 'Element', 'SVGElement',
+  'MouseEvent', 'Event', 'CustomEvent', 'MutationObserver', 'customElements', 'localStorage',
+  'sessionStorage', 'FormData', 'File', 'Blob']) {
+  if (win[key] !== undefined) globalThis[key] = win[key];
+}
+Object.defineProperty(globalThis, 'navigator', { value: win.navigator, configurable: true });
+globalThis.getComputedStyle = win.getComputedStyle.bind(win);
 
-  const original = doc.createRange.bind(doc);
-  doc.createRange = () => {
-    const range = original();
-    range.selectNodeContents = () => {};
-    range.getBoundingClientRect = () => INK;
-    return range;
-  };
+const { createApp, h, nextTick } = await import('vue');
+const { ModuleExperience, PreviewToolbar } = await import('./OUT_DIR/entry.js');
 
-  const ink = headerInkRect(host);
-  assert.equal(ink.right, 480, 'the ink rect must win over the heading box');
+const root = document.createElement('div');
+document.body.appendChild(root);
 
-  const placement = resolvePreviewToolbarPlacement({
-    toolbar: TOOLBAR,
-    action: { top: 120, bottom: 152, left: 900, right: 1080 },
-    title: ink,
-    host: { top: 0, bottom: 640, left: 0, right: 1200 },
-  });
-  assert.equal(placement.docked, true);
-  assert.equal(placement.left, 900 - TOOLBAR.width - PREVIEW_TOOLBAR_GAP);
+const errors = [];
+const app = createApp({
+  setup() {
+    return () => h(ModuleExperience, {
+      moduleData: {
+        title: 'Robotics Foundations',
+        checkpoints: [{ id: 'c1', title: 'What is Robotics?', hasContent: true }],
+        currentStep: 0,
+        totalSteps: 1,
+      },
+      initialView: 'lesson',
+      initialCheckpoint: { id: 'c1', title: 'What is Robotics?' },
+      readOnly: true,
+      editable: false,
+      'onView-change': () => {},
+    }, {
+      'prepend-actions': () => h(PreviewToolbar, { editing: false }),
+    });
+  },
+});
+app.config.errorHandler = error => errors.push(error && error.message ? error.message : String(error));
 
-  // And the action really is inside the host it is measured from.
-  assert.equal(host.querySelector('#btn-complete-checkpoint'), action);
-  assert.ok(action);
+try {
+  app.mount(root);
+  await nextTick();
+  await new Promise(resolve => setTimeout(resolve, 150));
+} catch (error) {
+  errors.push(error && error.message ? error.message : String(error));
+}
 
-  // Without a Range (an engine that cannot measure ink) it degrades to the box,
-  // which is conservative: it may refuse to dock, but it can never cover text.
-  doc.createRange = undefined;
-  assert.equal(headerInkRect(host).right, 888);
+const row = root.querySelector('.checkpoint-header-actions');
+if (errors.length) {
+  console.error('MOUNT_ERRORS ' + JSON.stringify(errors));
+  process.exit(1);
+}
+if (!row) {
+  console.error('MOUNT_NO_HEADER ' + root.innerHTML.slice(0, 400));
+  process.exit(1);
+}
+
+const ids = Array.from(row.children).map(child => child.id || child.getAttribute('data-testid') || child.className);
+const toolbar = row.querySelector('.preview-toolbar');
+const checkpoint = row.querySelector('#btn-complete-checkpoint');
+
+if (!toolbar) {
+  console.error('MOUNT_NO_TOOLBAR ' + JSON.stringify(ids));
+  process.exit(1);
+}
+if (!checkpoint) {
+  console.error('MOUNT_NO_CHECKPOINT ' + JSON.stringify(ids));
+  process.exit(1);
+}
+if (row.firstElementChild !== toolbar) {
+  console.error('MOUNT_ORDER ' + JSON.stringify(ids));
+  process.exit(1);
+}
+if (toolbar.parentElement !== checkpoint.parentElement) {
+  console.error('MOUNT_NOT_SIBLINGS');
+  process.exit(1);
+}
+// The toolbar precedes the checkpoint action in document order.
+if (!(toolbar.compareDocumentPosition(checkpoint) & 4)) {
+  console.error('MOUNT_DOCUMENT_ORDER');
+  process.exit(1);
+}
+
+console.log('MOUNT_OK ' + JSON.stringify({
+  children: ids.length,
+  exit: Boolean(toolbar.querySelector('#btn-close-student-experience')),
+  edit: Boolean(toolbar.querySelector('#btn-toggle-editing-mode')),
+}));
+process.exit(0);
+`.replace('OUT_DIR', outDirName));
+
+  try {
+    execFileSync('npx', ['vite', 'build', '--config', '.toolbar-mount-vite.config.mjs'], {
+      cwd: frontendDir,
+      stdio: 'pipe',
+      timeout: 180_000,
+    });
+
+    let output = '';
+    try {
+      output = execFileSync('node', [runnerFile], {
+        cwd: frontendDir,
+        encoding: 'utf8',
+        stdio: 'pipe',
+        timeout: 120_000,
+      });
+    } catch (error) {
+      const failure = error as { stdout?: string; stderr?: string };
+      assert.fail(
+        'the preview toolbar did not render on the checkpoint action line.\n'
+        + `${failure.stderr || ''}${failure.stdout || ''}`,
+      );
+    }
+
+    assert.match(output, /MOUNT_OK /, `unexpected output: ${output}`);
+    const report = JSON.parse(output.slice(output.indexOf('MOUNT_OK ') + 'MOUNT_OK '.length));
+    assert.equal(report.exit, true, 'the exit control must be present');
+    assert.equal(report.edit, true, 'the edit control must be present');
+  } finally {
+    for (const path of [entryFile, configFile, runnerFile]) {
+      if (existsSync(path)) unlinkSync(path);
+    }
+    rmSync(outDir, { recursive: true, force: true });
+  }
 });

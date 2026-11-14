@@ -50,7 +50,12 @@
       @complete-checkpoint="handleCheckpointCompleted"
       @update-lesson-content="$emit('update-lesson-content', $event)"
       @update-block-layout="$emit('update-block-layout', $event)"
-    />
+    >
+      <!-- Controls that belong on the lesson's action line (mentor preview). -->
+      <template #prepend-actions>
+        <slot name="prepend-actions" />
+      </template>
+    </CheckpointContentView>
   </div>
 </template>
 
@@ -96,6 +101,8 @@ const emit = defineEmits([
   'select-checkpoint',
   'update-lesson-content',
   'update-block-layout',
+  /** Which surface is showing ('roadmap' | 'lesson'); preview places its chrome by it. */
+  'view-change',
 ]);
 
 /** Course id for lesson media, from the prop or from the module itself. */
@@ -104,6 +111,10 @@ const resolvedCourseId = computed(() =>
 );
 
 const viewState = ref(props.initialView === 'lesson' ? 'lesson' : 'roadmap');
+
+// The owner needs to know which surface is showing: the mentor's preview chrome
+// belongs in the lesson header when there is one, and in the corner otherwise.
+watch(viewState, state => emit('view-change', state), { immediate: true });
 const activeCheckpoint = ref(props.initialCheckpoint);
 
 /**

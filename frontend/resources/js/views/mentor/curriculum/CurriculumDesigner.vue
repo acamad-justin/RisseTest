@@ -1822,62 +1822,19 @@
     <!-- an overlay that is removed from flow, so it can never move, shrink or -->
     <!-- restyle the module underneath.                                        -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="isPreviewOpen" ref="previewHostRef" class="student-experience-host" role="region" aria-label="Student module experience">
+    <div v-if="isPreviewOpen" class="student-experience-host" role="region" aria-label="Student module experience">
 
-      <!-- ── Floating: leave preview / enter editing ─────────────────────── -->
       <!--
-        Docked immediately left of the lesson's "Complete Checkpoint" action, so
-        the two controls a mentor uses most sit on the same line as the action
-        they are about to take. This is a position, not a layout: the cluster is
-        a fixed-position overlay and the lesson underneath keeps its exact
-        student geometry.
-
-        When the header row has no room for it — a long lesson title, a narrow
-        workspace, or the header scrolled out of view — it falls back to the
-        right-hand chrome column instead of covering the title.
+        The preview controls are NOT floating chrome any more. They render inside
+        the lesson header's action row, beside the student's "Complete Checkpoint"
+        button (see the ModuleExperience slot below), so the row aligns them and
+        nothing has to be measured, clamped or re-measured. When the module
+        roadmap is showing there is no lesson header to sit in, so the same
+        component is placed in the corner instead — one definition, two positions.
       -->
-      <div
-        ref="previewToolsRef"
-        class="float-cluster"
-        :class="previewToolsDocked ? 'float-cluster--beside-checkpoint' : 'float-cluster--top-right'"
-        :style="previewToolsStyle"
-        :data-placement="previewToolsDocked ? 'beside-checkpoint' : (previewToolsReason || 'chrome')"
-      >
-        <button
-          type="button"
-          class="float-btn float-btn--ghost"
-          @click="closeStudentPreview"
-          title="Leave preview and return to Module Studio (Esc)"
-          id="btn-close-student-experience"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-          <span>Exit Preview</span>
-        </button>
-
-        <button
-          type="button"
-          class="float-btn"
-          :class="{ 'is-active': editingEnabled }"
-          :aria-pressed="editingEnabled"
-          @click="toggleEditingMode"
-          :title="editingEnabled ? 'Stop editing and see the plain student view' : 'Enable editing on this lesson'"
-          id="btn-toggle-editing-mode"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
-          <span>{{ editingEnabled ? 'Editing On' : 'Edit' }}</span>
-        </button>
-      </div>
 
       <!-- ── Floating: student-environment toggles (only while editing) ──── -->
-      <div
-        v-if="editingEnabled"
-        class="float-cluster float-cluster--bottom-right"
-        :class="{ 'is-lifted': previewToolsDocked }"
-      >
+      <div v-if="editingEnabled" class="float-cluster float-cluster--bottom-right">
         <span class="float-label">Student view</span>
 
         <button
@@ -2021,7 +1978,29 @@
         @select-checkpoint="handlePreviewSelectCheckpoint"
         @update-lesson-content="handlePreviewLessonUpdate"
         @update-block-layout="handlePreviewBlockLayout"
-      />
+        @view-change="previewView = $event"
+      >
+        <!--
+          The controls sit ON the lesson's action line: the header row centres
+          them against "Complete Checkpoint" by layout, so alignment cannot drift.
+        -->
+        <template #prepend-actions>
+          <PreviewToolbar
+            :editing="editingEnabled"
+            @exit="closeStudentPreview"
+            @toggle-edit="toggleEditingMode"
+          />
+        </template>
+      </ModuleExperience>
+
+      <!-- No lesson header to sit in (module roadmap): same component, corner. -->
+      <div v-if="previewView !== 'lesson'" class="preview-toolbar-corner">
+        <PreviewToolbar
+          :editing="editingEnabled"
+          @exit="closeStudentPreview"
+          @toggle-edit="toggleEditingMode"
+        />
+      </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -2170,14 +2149,11 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
-import {
-  headerInkRect,
-  resolvePreviewToolbarPlacement,
-} from '../../../../../lib/mentor/previewToolbarPlacement.ts';
 import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/mentor/lessonDocument.ts';
 // The shared student module experience. Preview uses this same component the
 // student workspace uses — there is no editor-specific renderer.
 import ModuleExperience from '../../../components/ModuleExperience.vue';
+import PreviewToolbar from '../../../components/mentor/PreviewToolbar.vue';
 
 const mentorStore = useMentorStore();
 
@@ -2868,7 +2844,6 @@ function returnToIntake() {
 }
 
 onUnmounted(() => {
-  stopPreviewToolTracking();
   window.removeEventListener('keydown', handleKeydown);
   // Never leave the page locked if the Studio unmounts mid-edit.
   document.body.style.overflow = '';
@@ -2885,16 +2860,8 @@ watch(isPreviewOpen, open => {
   if (open) {
     syncSidebarState();
     window.addEventListener('risse:mentor-sidebar-state', onSidebarState);
-    // Place the preview toolbar only once the module has actually rendered.
-    nextTick(() => {
-      measurePreviewTools();
-      startPreviewToolTracking();
-    });
   } else {
     window.removeEventListener('risse:mentor-sidebar-state', onSidebarState);
-    stopPreviewToolTracking();
-    previewToolsDocked.value = false;
-    previewToolsReason.value = '';
   }
 });
 
@@ -3660,144 +3627,8 @@ function closeStudentPreview() {
   }
 }
 
-// ── Preview toolbar placement ──────────────────────────────────────────────
-// The preview toolbar belongs beside the lesson's "Complete Checkpoint" action:
-// that row is where a mentor's attention already is, so the two controls they use
-// most are immediately at hand. It stays an overlay — this decides WHERE the
-// floating cluster sits, never how the lesson underneath is laid out.
-const previewHostRef = ref(null);
-const previewToolsRef = ref(null);
-const previewToolsDocked = ref(false);
-const previewToolsAnchor = ref({ top: 0, left: 0 });
-// Why the toolbar is where it is. Surfaced as a data attribute so "it is still in
-// the corner" is answerable by inspecting the element instead of guessing.
-const previewToolsReason = ref('');
-
-const previewToolsStyle = computed(() =>
-  previewToolsDocked.value
-    ? { top: `${previewToolsAnchor.value.top}px`, left: `${previewToolsAnchor.value.left}px` }
-    : null
-);
-
-let previewToolsFrame = 0;
-let previewToolsObserver = null;
-let previewToolsMutationObserver = null;
-
-/**
- * Anchors the toolbar to the checkpoint action row, or declines to.
- *
- * Docking is only safe while the space between the lesson title and the action
- * is genuinely free: the toolbar is an overlay, and an overlay that covers the
- * title is not a student presentation. Same for a header that has been scrolled
- * out of view — a pinned toolbar would float over lesson content at a stale
- * position. Both cases fall back to the chrome column.
- */
-function measurePreviewTools() {
-  previewToolsFrame = 0;
-  const host = previewHostRef.value;
-  const toolbar = previewToolsRef.value;
-  if (!isPreviewOpen.value || !host || !toolbar || typeof host.querySelector !== 'function') {
-    previewToolsDocked.value = false;
-    return;
-  }
-
-  const action = host.querySelector('#btn-complete-checkpoint');
-  if (!action) {
-    previewToolsDocked.value = false;
-    return;
-  }
-
-  const toolbarRect = toolbar.getBoundingClientRect();
-  const placement = resolvePreviewToolbarPlacement({
-    toolbar: {
-      width: toolbarRect.width || toolbar.offsetWidth || 0,
-      height: toolbarRect.height || toolbar.offsetHeight || 0,
-    },
-    action: action.getBoundingClientRect(),
-    title: headerInkRect(host),
-    host: host.getBoundingClientRect(),
-  });
-
-  if (!placement.docked) {
-    previewToolsReason.value = placement.reason;
-    previewToolsDocked.value = false;
-    return;
-  }
-
-  previewToolsAnchor.value = { top: placement.top, left: placement.left };
-  previewToolsReason.value = '';
-  previewToolsDocked.value = true;
-}
-
-/** Coalesces layout reads to one per frame — scroll and resize arrive in bursts. */
-function schedulePreviewToolMeasure() {
-  if (previewToolsFrame) return;
-  previewToolsFrame = requestAnimationFrame(() => {
-    previewToolsFrame = 0;
-    measurePreviewTools();
-  });
-}
-
-function startPreviewToolTracking() {
-  stopPreviewToolTracking();
-  if (typeof window === 'undefined') return;
-  // The free space beside the action changes with the window, the mentor
-  // sidebar and the lesson title itself, so track the surface rather than guess.
-  if (typeof window.ResizeObserver === 'function' && previewHostRef.value) {
-    previewToolsObserver = new window.ResizeObserver(() => schedulePreviewToolMeasure());
-    previewToolsObserver.observe(previewHostRef.value);
-  }
-  // The lesson header arrives after the preview host does (data load, checkpoint
-  // switch, editing toggle). None of those resize the host or scroll it, so
-  // without this the toolbar would stay wherever the first measurement left it.
-  // Only child/text changes are observed — never attributes — so the toolbar's own
-  // class and style updates cannot feed back into a measure loop.
-  if (typeof MutationObserver === 'function' && previewHostRef.value) {
-    previewToolsMutationObserver = new MutationObserver(() => schedulePreviewToolMeasure());
-    previewToolsMutationObserver.observe(previewHostRef.value, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-  }
-  window.addEventListener('resize', schedulePreviewToolMeasure);
-  if (previewHostRef.value && previewHostRef.value.addEventListener) {
-    previewHostRef.value.addEventListener('scroll', schedulePreviewToolMeasure, { passive: true });
-  }
-}
-
-function stopPreviewToolTracking() {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', schedulePreviewToolMeasure);
-  }
-  if (previewHostRef.value && previewHostRef.value.removeEventListener) {
-    previewHostRef.value.removeEventListener('scroll', schedulePreviewToolMeasure);
-  }
-  if (previewToolsObserver) {
-    previewToolsObserver.disconnect();
-    previewToolsObserver = null;
-  }
-  if (previewToolsMutationObserver) {
-    previewToolsMutationObserver.disconnect();
-    previewToolsMutationObserver = null;
-  }
-  if (previewToolsFrame && typeof cancelAnimationFrame === 'function') {
-    cancelAnimationFrame(previewToolsFrame);
-  }
-  previewToolsFrame = 0;
-}
-
-// Re-place the toolbar when anything it was measured against moves. These
-// watchers must sit below `editingEnabled` and `mentorSidebarCollapsed`: `watch`
-// reads its source immediately, so declaring it above them would touch a `const`
-// before initialisation and take the whole Studio down.
-//
-// The button labels change with the editing state ("Edit" ⇄ "Editing On"), which
-// changes how much room the cluster needs.
-watch(editingEnabled, () => nextTick(schedulePreviewToolMeasure));
-
-// Collapsing the student sidebar widens the lesson column.
-watch(mentorSidebarCollapsed, () => schedulePreviewToolMeasure());
+/** Which surface the preview is showing ('roadmap' | 'lesson'). */
+const previewView = ref('lesson');
 
 /**
  * Drops every buffered edit and re-renders the saved proposal, WITHOUT leaving
@@ -6602,29 +6433,20 @@ function saveCourseDetails() {
 }
 
 .float-cluster--bottom-right {
-  /* Sits directly under the Exit Preview / Edit pair, in the empty chrome band
-     level with the lesson's "Complete Checkpoint" row. It used to hang at the
-     bottom of the tutor column, far from the controls a teacher looks for first;
-     both clusters now read as one toolbar beside the checkpoint action. */
-  top: 58px;
+  /* The editing toggles, in the chrome column. The preview controls used to sit
+     above this cluster; they now live on the lesson's action line, so this takes
+     the top slot itself. */
+  top: 14px;
   right: 18px;
   bottom: auto;
 }
 
-/*
- * Docked placement: the preview toolbar floats in the lesson's header row,
- * immediately left of "Complete Checkpoint" (geometry from measurePreviewTools).
- * Only the position changes — the cluster is still out of flow, so the lesson
- * never moves and the student header stays exactly where it was.
- */
-.float-cluster--beside-checkpoint {
-  transform: translateY(-50%);
-}
-
-/* While the pair is docked up top the corner is free, so the student-view
-   cluster takes it rather than floating below an empty slot. */
-.float-cluster--bottom-right.is-lifted {
+/* The preview controls when there is no lesson header to sit in (roadmap view). */
+.preview-toolbar-corner {
+  position: fixed;
   top: 14px;
+  right: 18px;
+  z-index: 60;
 }
 
 .float-cluster--bottom-center {
@@ -6786,9 +6608,13 @@ function saveCourseDetails() {
     right: 10px;
   }
   .float-cluster--bottom-right {
-    top: 52px;
+    top: 10px;
     right: 10px;
     bottom: auto;
+  }
+  .preview-toolbar-corner {
+    top: 10px;
+    right: 10px;
   }
   /* Pending-changes bar moves off centre so it cannot meet the bottom-right one. */
   .float-cluster--bottom-center {
