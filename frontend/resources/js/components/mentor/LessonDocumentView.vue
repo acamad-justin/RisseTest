@@ -116,9 +116,18 @@
           :data-float-id="segment.float.id"
           contenteditable="false"
           @pointerdown="startFloatDrag($event, segment.float)"
-          @click.stop="selectFloat(segment.float)"
+          @click.stop="selectFloat(segment.float, $event)"
         >
           <span v-if="editable" class="lesson-float__handle" aria-hidden="true">⠿</span>
+          <button
+            v-if="editable"
+            type="button"
+            class="lesson-float__delete"
+            title="Delete this element"
+            aria-label="Delete this element"
+            @mousedown.stop.prevent
+            @click.stop="deleteFloat(segment.float)"
+          >×</button>
           <component :is="renderFloat(segment.float)" />
         </div>
       </template>
@@ -133,19 +142,27 @@
         :data-float-id="float.id"
         contenteditable="false"
         @pointerdown="startFloatDrag($event, float)"
-        @click.stop="selectFloat(float)"
+        @click.stop="selectFloat(float, $event)"
       >
         <span v-if="editable" class="lesson-float__handle" aria-hidden="true">⠿</span>
+        <button
+          v-if="editable"
+          type="button"
+          class="lesson-float__delete"
+          title="Delete this element"
+          aria-label="Delete this element"
+          @mousedown.stop.prevent
+          @click.stop="deleteFloat(float)"
+        >×</button>
         <component :is="renderFloat(float)" />
       </div>
-
-      <div class="lesson-document__clearfix" aria-hidden="true"></div>
-    </div>
 
     <!-- Compact contextual controls: only for the element in hand. -->
     <div
       v-if="editable && selected"
       class="float-controls"
+      :style="controlsStyle"
+      contenteditable="false"
       role="toolbar"
       :aria-label="`Controls for ${selected.kind} element`"
       @mousedown.stop.prevent
@@ -153,17 +170,20 @@
     >
       <span class="float-controls__label">{{ kindLabel(selected.kind) }}</span>
 
+      <button type="button" class="float-controls__btn float-controls__btn--danger" title="Delete this element" aria-label="Delete this element" @click="deleteFloat(selected)">Delete</button>
+
+      <span class="float-controls__divider" aria-hidden="true"></span>
+
       <select
         class="float-controls__select"
         :value="selected.wrap"
         aria-label="Text wrapping"
-        :disabled="selected.overlap"
-        @change="patch({ wrap: $event.target.value })"
+        @change="applyWrap($event.target.value)"
       >
         <option value="square">Wrap: square</option>
         <option value="top-bottom">Wrap: top &amp; bottom</option>
         <option value="inline">Inline</option>
-        <option value="none">No wrap</option>
+        <option value="none" :disabled="!selected.overlap">No wrap</option>
       </select>
 
       <button
@@ -203,6 +223,10 @@
       <button type="button" class="float-controls__btn float-controls__btn--danger" title="Delete element" @click="removeSelected">🗑</button>
       <button type="button" class="float-controls__btn" title="Done" @click="selectedId = null">✓</button>
     </div>
+
+      <div class="lesson-document__clearfix" aria-hidden="true"></div>
+    </div>
+
   </div>
 </template>
 
@@ -245,6 +269,8 @@ const selectedId = ref(null);
 const draggingId = ref(null);
 const flowFocused = ref(false);
 const canvasRevision = ref(0);
+/** Where the contextual controls sit, relative to the canvas. */
+const controlsPos = ref({ left: 0, top: 0 });
 
 /**
  * LOCAL SNAPSHOT — the reason the caret no longer jumps.
@@ -456,10 +482,108 @@ function onCanvasClick(event) {
 
 // ── Floats: selection, drag, controls ────────────────────────────────────
 
-function selectFloat(float) {
+function selectFloat(float, event = null) {
   if (!props.editable) return;
   selectedId.value = float.id;
+  positionControls(float, event);
   emit('select-float', float);
+}
+
+/**
+ * Anchors the contextual controls just above the element.
+ *
+ * They used to be `position: fixed` at the bottom of the viewport. A transformed
+ * ancestor (the preview host) turns `fixed` into an absolute box measured from
+ * that ancestor, so the bar — and the Delete button inside it — could render
+ * hundreds of pixels away, off-screen. Measuring the element and placing the bar
+ * inside the document keeps it attached to whatever the teacher selected.
+ */
+function positionControls(float, event = null) {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  const el = event?.currentTarget || canvas.querySelector(`[data-float-id="${float.id}"]`);
+
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    controlsPos.value = {
+      left: Math.max(0, Math.round(rect.left - canvasRect.left)),
+      top: Math.max(44, Math.round(rect.top - canvasRect.top)),
+    };
+    return;
+  }
+  controlsPos.value = { left: Math.max(0, float.x ?? 0), top: Math.max(44, float.y ?? 0) };
+}
+
+const controlsStyle = computed(() => ({
+  position: 'absolute',
+  left: `${controlsPos.value.left}px`,
+  top: `${controlsPos.value.top}px`,
+  transform: 'translate(0, calc(-100% - 10px))',
+}));
+
+/**
+ * Chooses how the element sits in the document.
+ *
+ * The picker used to be disabled whenever the element was overlapping — which is
+ * exactly the state dragging produces, so "top & bottom" could never be chosen.
+ * Picking a flow wrap now releases the position and returns the element to the
+ * text, taking the side and the paragraph it was dropped nearest to.
+ */
+function applyWrap(wrap) {
+  const float = selected.value;
+  if (!float) return;
+
+  if (wrap === 'none') {
+    patch({ wrap: 'none', overlap: true, x: float.x ?? 0, y: float.y ?? 0, z: float.z ?? 1 });
+    return;
+  }
+
+  if (!float.overlap) {
+    patch({ wrap });
+    return;
+  }
+
+  const side = nearestSide(float);
+  patch({
+    wrap,
+    overlap: false,
+    ...(wrap === 'square' ? { side } : {}),
+    anchor: nearestAnchor(float) ?? float.anchor,
+  });
+}
+
+function nearestSide(float) {
+  const canvas = canvasRef.value;
+  if (!canvas) return float.side || 'left';
+  const width = canvas.getBoundingClientRect().width || 0;
+  if (!width) return float.side || 'left';
+  return (float.x ?? 0) + (float.width ?? 0) / 2 > width / 2 ? 'right' : 'left';
+}
+
+/** The flow paragraph a dropped element sits closest to. */
+function nearestAnchor(float) {
+  const canvas = canvasRef.value;
+  if (!canvas) return null;
+  const nodes = Array.from(canvas.querySelectorAll('.lesson-document__node'));
+  if (nodes.length === 0) return null;
+  const canvasRect = canvas.getBoundingClientRect();
+  const y = canvasRect.top + (float.y ?? 0);
+  let best = 0;
+  let bestDistance = Infinity;
+  nodes.forEach((node, index) => {
+    const rect = node.getBoundingClientRect();
+    const distance = Math.abs(rect.top - y);
+    if (distance < bestDistance) { bestDistance = distance; best = index; }
+  });
+  return best;
+}
+
+function deleteFloat(float) {
+  if (!float) return;
+  if (selectedId.value === float.id) selectedId.value = null;
+  applyDoc(removeFloat(localDoc.value, float.id));
+  emit('update-float', { id: float.id, removed: true });
 }
 
 function applyDoc(next) {
@@ -486,10 +610,7 @@ function layer(action) {
 }
 
 function removeSelected() {
-  if (!selected.value) return;
-  const id = selected.value.id;
-  selectedId.value = null;
-  applyDoc(removeFloat(localDoc.value, id));
+  deleteFloat(selected.value);
 }
 
 function insertElement(kind) {
@@ -523,7 +644,7 @@ function startFloatDrag(event, float) {
   if (!canvas || !el) return;
 
   event.preventDefault();
-  selectFloat(float);
+  selectFloat(float, event);
 
   const canvasRect = canvas.getBoundingClientRect();
   const startRect = el.getBoundingClientRect();
@@ -597,6 +718,8 @@ defineExpose({ selectedId });
 
 .lesson-document__canvas {
   position: relative;
+  /* Room to drop an element below the final paragraph without it being clipped. */
+  padding-bottom: 24px;
   font-size: 16px;
   line-height: 1.75;
   color: #1f2937;
@@ -705,6 +828,36 @@ defineExpose({ selectedId });
 }
 .lesson-document--editable .lesson-float:hover .lesson-float__handle { opacity: 1; }
 
+/*
+ * Delete lives on the element, so removing a text box never depends on finding a
+ * toolbar first. Hidden until the element is hovered or selected, and never
+ * rendered for students.
+ */
+.lesson-float__delete {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  color: #b91c1c;
+  background: #fff;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.lesson-document--editable .lesson-float:hover .lesson-float__delete,
+.lesson-document--editable .lesson-float.is-selected .lesson-float__delete { opacity: 1; }
+.lesson-float__delete:hover { background: #fef2f2; }
+.lesson-float__delete:focus-visible { opacity: 1; outline: 2px solid #f59e0b; outline-offset: 1px; }
+
 .lesson-float--wrap-square { margin: 4px 18px 14px 0; }
 .lesson-float--wrap-square.lesson-float--side-right { margin: 4px 0 14px 18px; }
 .lesson-float--wrap-top-bottom { margin: 16px 0; width: 100%; }
@@ -754,12 +907,13 @@ defineExpose({ selectedId });
 .lesson-document--editable .lesson-float.is-dragging * { user-select: none; }
 
 /* ── Contextual controls ────────────────────────────────────────────────── */
+/*
+ * Anchored to the element, not to the viewport: position/left/top/transform come
+ * from `controlsStyle` so the bar always sits directly above what was selected.
+ */
 .float-controls {
-  position: fixed;
-  left: 50%;
-  bottom: 96px;
-  transform: translateX(-50%);
   z-index: 60;
+  max-width: min(100%, 640px);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -794,6 +948,6 @@ defineExpose({ selectedId });
 
 @media (max-width: 720px) {
   .doc-format-bar { position: static; }
-  .float-controls { left: 8px; right: 8px; bottom: 88px; transform: none; flex-wrap: wrap; justify-content: center; }
+  .float-controls { flex-wrap: wrap; }
 }
 </style>
