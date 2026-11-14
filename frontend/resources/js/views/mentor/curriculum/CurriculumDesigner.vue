@@ -5,7 +5,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- TOP NAVIGATION & BREADCRUMBS                                           -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <header class="studio-top-nav">
+    <header v-if="!isPreviewOpen" class="studio-top-nav">
       <div class="nav-left">
         <!-- Breadcrumb Hierarchy -->
         <nav class="studio-breadcrumbs" aria-label="Breadcrumb">
@@ -85,7 +85,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- STUDIO ENTRY: UPLOAD LEARNING MATERIALS (creates/updates a DRAFT only)  -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-if="studioStage === 'intake'" class="level-container studio-intake" aria-labelledby="intake-title">
+    <main v-if="studioStage === 'intake' && !isPreviewOpen" class="level-container studio-intake" aria-labelledby="intake-title">
       <section class="intake-card">
         <span class="badge-studio-ai">MODULE STUDIO • START WITH YOUR MATERIALS</span>
         <h1 id="intake-title" class="intake-title">Upload learning materials</h1>
@@ -188,7 +188,7 @@
       </section>
     </main>
 
-    <main v-if="studioStage === 'editor' && currentLevel === 'overview'" class="level-container level-course-overview">
+    <main v-if="studioStage === 'editor' && currentLevel === 'overview' && !isPreviewOpen" class="level-container level-course-overview">
       
       <!-- A. Course Header Banner -->
       <section class="course-studio-banner" aria-labelledby="banner-course-title">
@@ -779,11 +779,11 @@
             type="button" 
             id="btn-approve-publish"
             class="btn-footer-action btn-publish"
-            :disabled="isPublishing || (isPublished && !hasStagedDraft)"
+            :disabled="isPublishing || (isPublished && !hasPendingPublish)"
             @click="openPublishModal"
           >
             <span v-if="isPublishing">Publishing...</span>
-            <span v-else-if="isPublished && hasStagedDraft">Publish Staged Draft</span>
+            <span v-else-if="isPublished && hasPendingPublish">Publish Updates</span>
             <span v-else-if="isPublished">✓ Published to Students</span>
             <span v-else>Publish Module</span>
           </button>
@@ -805,7 +805,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- LEVEL 2: MODULE EDITOR                                                 -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-else-if="currentLevel === 'module'" class="level-container level-module-editor">
+    <main v-else-if="currentLevel === 'module' && !isPreviewOpen" class="level-container level-module-editor">
       <div class="level-top-header">
         <div class="header-titles">
           <button type="button" class="btn-back-link" @click="navigateToLevel('overview')">
@@ -1110,7 +1110,7 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- LEVEL 3: LESSON EDITOR                                                 -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <main v-else-if="currentLevel === 'lesson'" class="level-container level-lesson-editor">
+    <main v-else-if="currentLevel === 'lesson' && !isPreviewOpen" class="level-container level-lesson-editor">
       <div class="level-top-header">
         <div class="header-titles">
           <div class="back-links-row">
@@ -1814,327 +1814,195 @@
     </main>
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <!-- LESSON EDITOR WORKSPACE (real student renderer + inline editing)       -->
-    <!-- Docked into the Studio's main column rather than teleported to <body>, -->
-    <!-- so the single existing MentorSidebar stays visible and collapsible.    -->
-    <!-- The layout lifts its main column above app chrome while this is open.  -->
+    <!-- STUDENT MODULE EXPERIENCE (teacher preview)                            -->
+    <!--                                                                        -->
+    <!-- This is NOT an editor shell. It is the real student module: the same   -->
+    <!-- ModuleRoadmapView → CheckpointContentView tree a student navigates,    -->
+    <!-- mounted in the same place, at the same width. Every editing control is -->
+    <!-- an overlay that is removed from flow, so it can never move, shrink or -->
+    <!-- restyle the module underneath.                                        -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
-    <div
-        v-if="isPreviewOpen"
-        class="lesson-editor-shell"
-        role="region"
-        aria-label="Lesson editor workspace"
-      >
-        <!-- Top bar: breadcrumb + path toggle + unsaved state + close -->
-        <header class="lesson-editor-topbar">
-          <div class="lesson-editor-topbar-left">
-            <button
-              type="button"
-              class="lesson-editor-icon-btn"
-              @click="closeStudentPreview"
-              title="Close the lesson editor (Esc)"
-              aria-label="Close the lesson editor"
-              id="btn-close-lesson-editor"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+    <div v-if="isPreviewOpen" class="student-experience-host" role="region" aria-label="Student module experience">
 
-            <nav class="lesson-editor-crumbs" aria-label="Lesson editor breadcrumb">
-              <span class="lesson-editor-crumb lesson-editor-crumb--root">{{ previewCourseTitle }}</span>
-              <span class="lesson-editor-crumb-sep">/</span>
-              <button
-                type="button"
-                class="lesson-editor-crumb"
-                :class="{ 'lesson-editor-crumb--current': !previewingLesson }"
-                @click="backToPreviewRoadmap"
-                :disabled="!previewingLesson"
-                title="All lessons in this module"
-              >
-                {{ previewParentModuleTitle }}
-              </button>
-              <template v-if="previewingLesson">
-                <span class="lesson-editor-crumb-sep">/</span>
-                <span class="lesson-editor-crumb lesson-editor-crumb--current">
-                  {{ previewingLesson.title || previewingLesson.name }}
-                </span>
-              </template>
-            </nav>
-          </div>
+      <!--
+        The preview controls are NOT floating chrome any more. They render inside
+        the lesson header's action row, beside the student's "Complete Checkpoint"
+        button (see the ModuleExperience slot below), so the row aligns them and
+        nothing has to be measured, clamped or re-measured. When the module
+        roadmap is showing there is no lesson header to sit in, so the same
+        component is placed in the corner instead — one definition, two positions.
+      -->
 
-          <div class="lesson-editor-topbar-right">
-            <!-- Phase 2 layout controls: only meaningful on a real lesson -->
-            <div v-if="previewingLesson" class="lesson-editor-layout-controls">
-              <button
-                type="button"
-                class="lesson-editor-layout-btn lesson-editor-layout-btn--mode"
-                :class="{ 'is-active': layoutModeEnabled }"
-                :aria-pressed="layoutModeEnabled"
-                @click="toggleLayoutMode"
-                :title="layoutModeEnabled ? 'Turn Layout Mode off and edit text normally' : 'Enable Layout Mode to move blocks'"
-                id="btn-toggle-layout-mode"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                  <path d="M10 6.5h5a3 3 0 0 1 3 3V12" />
-                  <path d="M14 17.5h-5a3 3 0 0 1-3-3V10" />
-                </svg>
-                <span>{{ layoutModeEnabled ? 'Layout Mode On' : 'Layout Mode' }}</span>
-              </button>
+      <!-- ── Floating: student-environment toggles (only while editing) ──── -->
+      <div v-if="editingEnabled" class="float-cluster float-cluster--bottom-right">
+        <span class="float-label">Student view</span>
 
-              <template v-if="layoutModeEnabled">
-                <button
-                  type="button"
-                  class="lesson-editor-layout-btn"
-                  :class="{ 'is-active': snapToGridEnabled }"
-                  :aria-pressed="snapToGridEnabled"
-                  @click="snapToGridEnabled = !snapToGridEnabled"
-                  title="Snap dragged blocks to an 8px grid"
-                  id="btn-toggle-snap-grid"
-                >
-                  <span>Snap</span>
-                </button>
+        <button
+          type="button"
+          class="float-btn float-btn--sm"
+          :class="{ 'is-active': !mentorSidebarCollapsed }"
+          :aria-pressed="!mentorSidebarCollapsed"
+          @click="toggleMentorSidebar"
+          :title="mentorSidebarCollapsed ? 'Show the student sidebar' : 'Hide the student sidebar'"
+          aria-label="Toggle the student sidebar"
+          id="btn-toggle-editor-sidebar"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
+          </svg>
+          <span>Sidebar</span>
+        </button>
 
-                <button
-                  type="button"
-                  class="lesson-editor-layout-btn"
-                  :disabled="!canUndoLayout"
-                  @click="undoLayout"
-                  title="Undo the last layout change"
-                  aria-label="Undo layout change"
-                  id="btn-undo-layout"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-                  </svg>
-                </button>
+        <span class="float-divider" aria-hidden="true"></span>
 
-                <button
-                  type="button"
-                  class="lesson-editor-layout-btn"
-                  :disabled="!canRedoLayout"
-                  @click="redoLayout"
-                  title="Redo the last layout change"
-                  aria-label="Redo layout change"
-                  id="btn-redo-layout"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
-                  </svg>
-                </button>
+        <button
+          type="button"
+          class="float-btn float-btn--sm"
+          :class="{ 'is-active': layoutModeEnabled }"
+          :aria-pressed="layoutModeEnabled"
+          @click="layoutModeEnabled = !layoutModeEnabled"
+          title="Drag blocks by their handle; arrow keys nudge the selected block"
+          aria-label="Toggle layout mode for positioning blocks"
+          id="btn-toggle-layout-mode"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />
+          </svg>
+          <span>Layout</span>
+        </button>
 
-                <button
-                  type="button"
-                  class="lesson-editor-layout-btn lesson-editor-layout-btn--reset"
-                  :disabled="!hasLayoutWork"
-                  @click="resetLessonLayout"
-                  title="Return every block to the default document flow"
-                  id="btn-reset-layout"
-                >
-                  <span>Reset Layout</span>
-                </button>
-              </template>
-            </div>
-
-            <!--
-              Student View simulation. These mirror how the lesson is presented
-              to a STUDENT; they never change student settings for real, and
-              they never touch saved lesson content or layout metadata.
-            -->
-            <div v-if="previewingLesson" class="lesson-editor-view-group" role="group" aria-label="Student view simulation">
-              <span class="lesson-editor-view-label">Student view</span>
-
-              <button
-                type="button"
-                class="lesson-editor-layout-btn"
-                :class="{ 'is-active': !mentorSidebarCollapsed }"
-                :aria-pressed="!mentorSidebarCollapsed"
-                @click="toggleMentorSidebar"
-                :title="mentorSidebarCollapsed ? 'Show the student sidebar' : 'Hide the student sidebar'"
-                id="btn-toggle-editor-sidebar"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="4" width="18" height="16" rx="2" />
-                  <line x1="9" y1="4" x2="9" y2="20" />
-                </svg>
-                <span>Sidebar</span>
-              </button>
-
-              <button
-                type="button"
-                class="lesson-editor-layout-btn"
-                :class="{ 'is-active': showTutorInEditor }"
-                :aria-pressed="showTutorInEditor"
-                @click="toggleTutorInEditor"
-                :title="showTutorInEditor ? 'Hide the AI Tutor and give the lesson the full width' : 'Show the AI Tutor as students see it'"
-                id="btn-toggle-editor-tutor"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span>AI Tutor</span>
-              </button>
-            </div>
-
-            <span v-if="previewHasUnsavedEdits" class="lesson-editor-unsaved" role="status">
-              <span class="lesson-editor-unsaved-dot"></span> Unsaved changes
-            </span>
-            <span v-else-if="hasStagedDraft" class="lesson-editor-staged">
-              Staged draft — students still see the published version
-            </span>
-
-            <button
-              type="button"
-              class="lesson-editor-path-toggle"
-              :class="{ 'is-active': isPreviewPathOpen }"
-              @click="isPreviewPathOpen = !isPreviewPathOpen"
-              :aria-expanded="isPreviewPathOpen"
-              id="btn-toggle-lesson-path"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
-              </svg>
-              <span>{{ isPreviewPathOpen ? 'Hide Path' : 'Show Path' }}</span>
-            </button>
-
-            <button
-              type="button"
-              class="lesson-editor-btn lesson-editor-btn--ghost"
-              @click="closeStudentPreview"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              class="lesson-editor-btn lesson-editor-btn--primary"
-              :disabled="isSavingPreviewEdits || !previewHasUnsavedEdits"
-              @click="saveStudentPreviewEdits"
-            >
-              {{ isSavingPreviewEdits ? 'Saving...' : 'Save Draft' }}
-            </button>
-          </div>
-        </header>
-
-        <!-- Inline status line (save confirmation / errors) -->
-        <p v-if="previewSaveError || previewInlineNotice" class="lesson-editor-status" :class="{ 'is-error': previewSaveError }" role="status">
-          {{ previewSaveError || previewInlineNotice }}
-        </p>
-
-        <div class="lesson-editor-body">
-          <!-- Optional node rail: the lesson path for this module -->
-          <aside v-if="isPreviewPathOpen" class="lesson-editor-rail" aria-label="Lesson path">
-            <div class="lesson-editor-rail-head">
-              <span class="lesson-editor-rail-title">Lesson Path</span>
-              <span class="lesson-editor-rail-count">{{ previewAllCheckpoints.length }} nodes</span>
-            </div>
-            <div class="lesson-editor-rail-list">
-              <section v-for="grp in previewPathGroups" :key="grp.key" class="lesson-editor-rail-group">
-                <h3 class="lesson-editor-rail-group-title">{{ grp.title }}</h3>
-                <ol class="lesson-editor-rail-items">
-                  <li v-for="cp in grp.lessons" :key="cp.id || cp.title">
-                    <button
-                      type="button"
-                      class="lesson-editor-rail-item"
-                      :class="{ 'is-current': isPreviewingCheckpoint(cp) }"
-                      @click="openStudentPreview(cp)"
-                    >
-                      <span class="lesson-editor-rail-index">{{ previewCheckpointNumber(cp) }}</span>
-                      <span class="lesson-editor-rail-label">{{ cp.title || cp.name }}</span>
-                    </button>
-                  </li>
-                </ol>
-              </section>
-            </div>
-          </aside>
-
-          <!-- Module outline (no lesson selected yet) -->
-          <!-- `sim-modules-catalog` is the established Studio preview contract. -->
-          <div v-if="!previewingLesson" class="lesson-editor-outline sim-modules-catalog">
-            <h2 class="lesson-editor-outline-title">{{ previewCourseTitle }}</h2>
-            <p class="lesson-editor-outline-sub">
-              Choose a lesson to read and edit in place. Formatting uses the same
-              renderer students see.
-            </p>
-            <div class="lesson-editor-outline-grid">
-              <section v-for="(mod, mIdx) in previewModules" :key="mod.id || mIdx" class="lesson-editor-outline-card">
-                <div class="lesson-editor-outline-card-head">
-                  <h3 class="lesson-editor-outline-card-title">{{ mod.title }}</h3>
-                  <span class="lesson-editor-outline-card-count">{{ (mod.checkpoints || []).length }} steps</span>
-                </div>
-                <p v-if="mod.description" class="lesson-editor-outline-card-desc">{{ mod.description }}</p>
-                <ul class="lesson-editor-outline-lessons">
-                  <li v-for="cp in (mod.checkpoints || [])" :key="cp.id || cp.title">
-                    <button type="button" class="lesson-editor-outline-lesson" @click="openStudentPreview(cp)">
-                      <span class="lesson-editor-outline-lesson-icon">
-                        {{ cp.type === 'lab' ? '🧪' : cp.type === 'challenge' ? '🏆' : '📖' }}
-                      </span>
-                      <span class="lesson-editor-outline-lesson-title">{{ cp.title || cp.name }}</span>
-                      <span class="lesson-editor-outline-lesson-go">Edit →</span>
-                    </button>
-                  </li>
-                </ul>
-              </section>
-            </div>
-          </div>
-
-          <!-- The lesson itself: the SAME renderer students use -->
-          <div v-else class="lesson-editor-document">
-            <div class="lesson-editor-scroll" ref="previewScrollRef">
-              <CheckpointContentView
-                :key="'studio-preview-' + (previewingLesson.id || previewingLesson.title)"
-                :checkpoint-title="previewingLesson.title || previewingLesson.name"
-                :parent-module-name="previewParentModuleTitle"
-                :module-data="previewModuleData"
-                :checkpoint-data="previewCheckpointData"
-                :editable="true"
-                :preview-mode="true"
-                :layout-mode="layoutModeEnabled"
-                :snap-to-grid="snapToGridEnabled"
-                :show-tutor="showTutorInEditor"
-                @notify="previewNotice"
-                @update-lesson-content="handlePreviewLessonUpdate"
-                @update-block-layout="handlePreviewBlockLayout"
-              />
-            </div>
-
-            <!-- Previous / Next lesson controls -->
-            <footer class="lesson-editor-lesson-nav">
-              <button
-                type="button"
-                class="lesson-editor-btn lesson-editor-btn--nav"
-                :disabled="!previewPrevCheckpoint"
-                @click="previewPrevCheckpoint && goToPreviewCheckpoint(previewPrevCheckpoint)"
-              >
-                <span class="lesson-editor-nav-dir">← Previous</span>
-                <span class="lesson-editor-nav-name">{{ previewPrevCheckpoint ? (previewPrevCheckpoint.title || previewPrevCheckpoint.name) : 'Start of path' }}</span>
-              </button>
-
-              <span class="lesson-editor-nav-position">
-                {{ previewCheckpointPosition }} of {{ previewAllCheckpoints.length }}
-              </span>
-
-              <button
-                type="button"
-                class="lesson-editor-btn lesson-editor-btn--nav lesson-editor-btn--nav-next"
-                :disabled="!previewNextCheckpoint"
-                @click="previewNextCheckpoint && goToPreviewCheckpoint(previewNextCheckpoint)"
-              >
-                <span class="lesson-editor-nav-dir">Next →</span>
-                <span class="lesson-editor-nav-name">{{ previewNextCheckpoint ? (previewNextCheckpoint.title || previewNextCheckpoint.name) : 'End of path' }}</span>
-              </button>
-            </footer>
-          </div>
-        </div>
+        <template v-if="layoutModeEnabled">
+          <button
+            type="button"
+            class="float-btn float-btn--icon"
+            :class="{ 'is-active': snapToGridEnabled }"
+            :aria-pressed="snapToGridEnabled"
+            @click="snapToGridEnabled = !snapToGridEnabled"
+            title="Snap dragged blocks to an 8px grid"
+            aria-label="Snap dragged blocks to an 8px grid"
+            id="btn-toggle-snap-grid"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3h18v18H3z" /><path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="float-btn float-btn--icon"
+            :disabled="!canUndoLayout"
+            @click="undoLayout"
+            title="Undo the last layout change"
+            aria-label="Undo layout change"
+            id="btn-undo-layout"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="float-btn float-btn--icon"
+            :disabled="!canRedoLayout"
+            @click="redoLayout"
+            title="Redo the last layout change"
+            aria-label="Redo layout change"
+            id="btn-redo-layout"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="float-btn float-btn--sm float-btn--danger"
+            :disabled="!hasLayoutWork"
+            @click="resetLessonLayout"
+            title="Return every block to the default document flow"
+            id="btn-reset-layout"
+          >
+            <span>Reset</span>
+          </button>
+        </template>
       </div>
-    
+
+      <!-- ── Floating: pending changes (appears only when there are edits) ── -->
+      <div v-if="previewHasUnsavedEdits" class="float-cluster float-cluster--bottom-center" role="status">
+        <span class="float-unsaved">
+          <span class="float-unsaved-dot"></span>
+          Unsaved changes
+        </span>
+        <button
+          type="button"
+          class="float-btn float-btn--ghost"
+          @click="discardPreviewEdits"
+          :disabled="isSavingPreviewEdits"
+          id="btn-cancel-preview-edits"
+        >
+          <span>Discard</span>
+        </button>
+        <button
+          type="button"
+          class="float-btn float-btn--primary"
+          :disabled="isSavingPreviewEdits"
+          @click="saveStudentPreviewEdits"
+          id="btn-save-preview-edits"
+        >
+          <span>{{ isSavingPreviewEdits ? 'Saving…' : 'Save Draft' }}</span>
+        </button>
+      </div>
+
+      <!-- ── Floating: transient save/error notice ───────────────────────── -->
+      <p
+        v-if="previewSaveError || previewInlineNotice"
+        class="float-cluster float-cluster--notice"
+        :class="{ 'is-error': previewSaveError }"
+        role="status"
+      >
+        {{ previewSaveError || previewInlineNotice }}
+      </p>
+
+      <!-- The module itself — untouched student rendering. -->
+      <ModuleExperience
+        ref="moduleExperienceRef"
+        :key="'experience-' + experienceKey"
+        :module-data="previewModuleData"
+        :course-id="activeCourse?.id || ''"
+        :initial-view="previewInitialView"
+        :initial-checkpoint="previewingLesson"
+        :read-only="true"
+        :editable="editingEnabled"
+        :layout-mode="layoutModeEnabled"
+        :snap-to-grid="snapToGridEnabled"
+        @notify="previewNotice"
+        @back="closeStudentPreview"
+        @select-checkpoint="handlePreviewSelectCheckpoint"
+        @update-lesson-content="handlePreviewLessonUpdate"
+        @update-block-layout="handlePreviewBlockLayout"
+        @view-change="previewView = $event"
+      >
+        <!--
+          The controls sit ON the lesson's action line: the header row centres
+          them against "Complete Checkpoint" by layout, so alignment cannot drift.
+        -->
+        <template #prepend-actions>
+          <PreviewToolbar
+            :editing="editingEnabled"
+            @exit="closeStudentPreview"
+            @toggle-edit="toggleEditingMode"
+          />
+        </template>
+      </ModuleExperience>
+
+      <!-- No lesson header to sit in (module roadmap): same component, corner. -->
+      <div v-if="previewView !== 'lesson'" class="preview-toolbar-corner">
+        <PreviewToolbar
+          :editing="editingEnabled"
+          @exit="closeStudentPreview"
+          @toggle-edit="toggleEditingMode"
+        />
+      </div>
+    </div>
+
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- MODALS: PUBLISH & EDIT COURSE                                          -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -2281,7 +2149,11 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useMentorStore } from '../../../stores/mentorStore.js';
 import { buildPublishingPlan } from '../../../../../lib/mentor/publishingPlan.ts';
-import CheckpointContentView from '../../../components/CheckpointContentView.vue';
+import { documentToBlocks, normalizeLessonDocument } from '../../../../../lib/mentor/lessonDocument.ts';
+// The shared student module experience. Preview uses this same component the
+// student workspace uses — there is no editor-specific renderer.
+import ModuleExperience from '../../../components/ModuleExperience.vue';
+import PreviewToolbar from '../../../components/mentor/PreviewToolbar.vue';
 
 const mentorStore = useMentorStore();
 
@@ -3047,13 +2919,22 @@ const isPublished = computed(() => {
 });
 
 /**
- * True when a published proposal has teacher edits parked in
- * proposal_data.unpublished_draft (students still see the live published copy).
+ * A published module parks teacher edits in `proposal_data.unpublished_draft`
+ * until they are promoted, so publishing again is a real, distinct action.
+ *
+ * This binding was referenced by the publish button but never declared: Vue
+ * resolves an unknown template identifier to `undefined`, so it was permanently
+ * falsy. That left the button disabled and labelled "Published to Students" even
+ * with edits waiting — the only way to ship them was to unpublish and publish
+ * again, which is exactly what happened.
  */
 const hasStagedDraft = computed(() => {
-  const pData = props.proposal?.proposal_data;
-  return Boolean(pData && pData.unpublished_draft && typeof pData.unpublished_draft === 'object');
+  const staged = props.proposal?.proposal_data?.unpublished_draft;
+  return Boolean(staged && typeof staged === 'object');
 });
+
+/** There is content to publish: a saved staged draft, or unsaved editor changes. */
+const hasPendingPublish = computed(() => hasStagedDraft.value || isDirty.value);
 
 function formatStatus(status) {
   if (status === 'published') return 'Published';
@@ -3465,11 +3346,28 @@ const previewHasUnsavedEdits = ref(false);
 const isSavingPreviewEdits = ref(false);
 const previewSaveError = ref('');
 const previewedCheckpointId = ref(null);
-const isPreviewPathOpen = ref(false);
 
-// ── Mentor sidebar (Phase 1) ───────────────────────────────────────────────
-// There is exactly one sidebar, owned by MentorSidebar itself. The editor only
-// reflects and toggles that shared state so the workspace can reclaim width.
+/**
+ * Editing is an explicit, toggleable capability layered on the real module —
+ * never the default. Preview opens as the plain student experience so the
+ * teacher sees exactly what a student sees; editing is then switched on from
+ * the floating controls.
+ */
+const editingEnabled = ref(false);
+
+/**
+ * Remount key for the experience. Bumped when the teacher jumps between
+ * lessons so the shared component restarts at the new checkpoint without the
+ * designer reaching inside it.
+ */
+const experienceKey = ref(0);
+
+/** Preview lands on the roadmap (student navigation), not straight on a lesson. */
+const previewInitialView = computed(() => (previewingLesson.value ? 'lesson' : 'roadmap'));
+
+// ── Mentor sidebar ────────────────────────────────────────────────────────
+// There is exactly one sidebar, owned by MentorSidebar itself. The experience
+// only reflects and toggles that shared state so the lesson can reclaim width.
 const SIDEBAR_STORAGE_KEY = 'risse_mentor_sidebar_collapsed';
 const mentorSidebarCollapsed = ref(
   typeof localStorage !== 'undefined'
@@ -3505,7 +3403,6 @@ function onSidebarState(event) {
   }
 }
 
-const previewScrollRef = ref(null);
 
 /** Course/module title shown in the editor top bar. */
 const previewCourseTitle = computed(
@@ -3523,29 +3420,7 @@ const previewCheckpointIndex = computed(() => {
   );
 });
 
-const previewPrevCheckpoint = computed(() => {
-  const idx = previewCheckpointIndex.value;
-  return idx > 0 ? previewAllCheckpoints.value[idx - 1] : null;
-});
 
-const previewNextCheckpoint = computed(() => {
-  const idx = previewCheckpointIndex.value;
-  return idx >= 0 && idx < previewAllCheckpoints.value.length - 1
-    ? previewAllCheckpoints.value[idx + 1]
-    : null;
-});
-
-const previewCheckpointPosition = computed(() =>
-  previewCheckpointIndex.value >= 0 ? previewCheckpointIndex.value + 1 : 0
-);
-
-/** 1-based position of a lesson in the full path (0 when not found). */
-function previewCheckpointNumber(cp) {
-  const idx = previewAllCheckpoints.value.findIndex(
-    item => item === cp || (item.id ?? item.title) === (cp.id ?? cp.title)
-  );
-  return idx >= 0 ? idx + 1 : '';
-}
 
 function isPreviewingCheckpoint(cp) {
   if (!cp) return false;
@@ -3561,11 +3436,9 @@ function goToPreviewCheckpoint(cp) {
   if (!cp) return;
   previewedCheckpointId.value = cp.id ?? null;
   previewingLesson.value = cp;
-  // New lesson starts at the top of the document.
-  nextTick(() => {
-    const scroller = previewScrollRef.value;
-    if (scroller && scroller.scrollTo) scroller.scrollTo({ top: 0, behavior: 'auto' });
-  });
+  // Remounting the experience re-seeds it to the new checkpoint; the module
+  // itself (roadmap, sidebar, tutor) is unaffected.
+  experienceKey.value++;
 }
 
 const previewModules = computed(() => {
@@ -3676,39 +3549,6 @@ const previewCheckpointData = computed(() => {
  * module (falling back to the flat learning_nodes list), each with its lessons.
  * Used by the editor's node rail.
  */
-const previewPathGroups = computed(() => {
-  const data = previewProposalData.value;
-  const seen = new Set();
-  const take = list => {
-    const out = [];
-    for (const cp of list || []) {
-      if (!cp) continue;
-      const key = String(cp.id ?? cp.title ?? cp.name ?? '');
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(cp);
-    }
-    return out;
-  };
-
-  const groups = [];
-  const modules = Array.isArray(data?.modules) ? data.modules : [];
-  for (const mod of modules) {
-    const lessons = take(mod.checkpoints);
-    if (lessons.length > 0) groups.push({ key: mod.id || mod.title, title: mod.title, lessons });
-  }
-  // Any learning_nodes the modules list did not cover (legacy proposals).
-  const leftovers = take(data?.learning_nodes);
-  if (leftovers.length > 0) {
-    groups.push({
-      key: 'preview-path-learning-nodes',
-      title: groups.length > 0 ? (data?.title || 'Additional lessons') : (data?.title || 'Lesson path'),
-      lessons: leftovers,
-    });
-  }
-  return groups;
-});
-
 // The renderer's toast channel belongs to the student workspace shell; in the
 // Studio preview we surface the same message inline instead.
 const previewInlineNotice = ref('');
@@ -3723,23 +3563,45 @@ function previewNotice(message) {
   }, 4000);
 }
 
+/**
+ * The teacher opened a lesson from the module's own roadmap.
+ *
+ * The module owns navigation (that is the point of previewing the real thing),
+ * so the designer has to follow it: it keeps `previewingLesson` pointing at the
+ * lesson actually on screen. Every content/layout edit is written through that
+ * reference, so leaving it null silently discarded each resize and drag.
+ */
+function handlePreviewSelectCheckpoint(cp) {
+  if (!cp) return;
+  previewedCheckpointId.value = cp.id ?? null;
+  // Adopt the buffered copy when one exists so pending edits are never replaced
+  // by the saved proposal's version of the same lesson.
+  previewingLesson.value = lessonTwins(cp)[0] || cp;
+}
+
 function openStudentPreview(lesson = null) {
   if (!isPreviewOpen.value) {
-    // A fresh editor session always starts from the saved proposal (no stale edits).
+    // A fresh session always starts from the saved proposal (no stale edits).
     previewEditBuffer.value = null;
     previewHasUnsavedEdits.value = false;
-    isPreviewPathOpen.value = false;
+    editingEnabled.value = false;
   }
   isPreviewOpen.value = true;
   previewSaveError.value = '';
   previewInlineNotice.value = '';
   previewedCheckpointId.value = lesson?.id ?? null;
   previewingLesson.value = lesson;
+  experienceKey.value++;
 }
 
-function backToPreviewRoadmap() {
-  previewingLesson.value = null;
-  previewedCheckpointId.value = null;
+/** Turns editing on/off without leaving the student experience. */
+function toggleEditingMode() {
+  editingEnabled.value = !editingEnabled.value;
+  if (!editingEnabled.value) {
+    // Leaving editing ends Layout Mode too: it is an editing session flag, not
+    // a stored presentation preference.
+    layoutModeEnabled.value = false;
+  }
 }
 
 /** Discards every buffered preview edit — nothing was persisted, so nothing to undo. */
@@ -3748,7 +3610,7 @@ function closeStudentPreview() {
   isPreviewOpen.value = false;
   previewingLesson.value = null;
   previewedCheckpointId.value = null;
-  isPreviewPathOpen.value = false;
+  editingEnabled.value = false;
   previewEditBuffer.value = null;
   previewHasUnsavedEdits.value = false;
   previewSaveError.value = '';
@@ -3763,6 +3625,26 @@ function closeStudentPreview() {
   if (hadEdits) {
     previewNotice('Preview edits discarded — nothing was saved.');
   }
+}
+
+/** Which surface the preview is showing ('roadmap' | 'lesson'). */
+const previewView = ref('lesson');
+
+/**
+ * Drops every buffered edit and re-renders the saved proposal, WITHOUT leaving
+ * the module. The teacher stays inside the student experience: discarding is
+ * not navigation.
+ */
+function discardPreviewEdits() {
+  const hadEdits = previewHasUnsavedEdits.value;
+  previewEditBuffer.value = null;
+  previewHasUnsavedEdits.value = false;
+  previewSaveError.value = '';
+  layoutHistory.value = { past: [], future: [] };
+  // Remount so the renderer re-reads the saved proposal rather than diffing
+  // against the discarded buffer.
+  experienceKey.value++;
+  if (hadEdits) previewNotice('Edits discarded — nothing was saved.');
 }
 
 /**
@@ -3806,6 +3688,21 @@ function handlePreviewLessonUpdate(payload) {
   if (twins.length === 0) return;
 
   for (const checkpoint of twins) {
+    if (payload.kind === 'document') {
+      // The document is the source of truth for what students read; `blocks` is
+      // a derived projection that older screens still consult. Both copies of
+      // the lesson (`learning_nodes` and `modules[].checkpoints`) carry the same
+      // document, and both stay a draft until the teacher publishes.
+      const document = normalizeLessonDocument(payload.document);
+      checkpoint.document = document;
+      if (!checkpoint.node_content) checkpoint.node_content = {};
+      checkpoint.node_content.document = document;
+      checkpoint.blocks = documentToBlocks(document);
+      checkpoint.node_content.core_lesson = document.flow;
+      checkpoint.node_content.step_by_step_guide = document.flow;
+      continue;
+    }
+
     if (payload.kind === 'block') {
       const block = (checkpoint.blocks || [])[payload.index];
       if (!block) continue;
@@ -3885,12 +3782,19 @@ function ensurePreviewBuffer() {
 }
 
 /** Every copy of the lesson currently being previewed (node list + module list). */
-function lessonTwins() {
-  const lesson = previewingLesson.value;
+/**
+ * Every copy of a lesson in the buffered draft (the canonical `learning_nodes`
+ * list plus the legacy `modules[].checkpoints[]` mirror).
+ *
+ * Pass a lesson to look up a specific one; omit it to resolve the lesson that is
+ * currently being previewed. Layout/content writes must hit every twin, or a
+ * save resurrects the old arrangement on whichever path students read.
+ */
+function lessonTwins(lesson = previewingLesson.value) {
   if (!lesson) return [];
   const buffer = ensurePreviewBuffer();
 
-  const targetId = previewedCheckpointId.value ?? lesson.id;
+  const targetId = (lesson === previewingLesson.value ? previewedCheckpointId.value : null) ?? lesson.id;
   const targetTitle = lesson.title || lesson.name;
 
   const matches = cp =>
@@ -4016,29 +3920,6 @@ function redoLayout() {
 const layoutModeEnabled = ref(false);
 const snapToGridEnabled = ref(false);
 
-/**
- * Whether the editor previews the lesson with the Risse AI tutor beside it.
- * Students always have the tutor, so this only controls the teacher's view of
- * the real student layout. Persisted because it is a workspace preference, not
- * a per-lesson edit (it changes nothing that gets saved).
- */
-const TUTOR_PREF_KEY = 'risse_editor_show_tutor';
-const showTutorInEditor = ref(
-  typeof localStorage !== 'undefined' ? localStorage.getItem(TUTOR_PREF_KEY) !== 'false' : true
-);
-
-function toggleTutorInEditor() {
-  showTutorInEditor.value = !showTutorInEditor.value;
-  try {
-    localStorage.setItem(TUTOR_PREF_KEY, String(showTutorInEditor.value));
-  } catch (_) {}
-  previewNotice(
-    showTutorInEditor.value
-      ? 'AI Tutor shown — this is the student layout.'
-      : 'AI Tutor hidden — the lesson uses the full width.'
-  );
-}
-
 /** True when the previewed lesson has any custom layout worth resetting. */
 /** Reads the arrangement from whatever is currently on screen (buffer or saved). */
 const hasLayoutWork = computed(() => {
@@ -4155,9 +4036,7 @@ function saveCourseDetails() {
 </script>
 
 <style scoped>
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* PROFESSIONAL LMS THEME SURFACES & FOUNDATIONS                              */
-/* ═══════════════════════════════════════════════════════════════════════════ */
+
 .curriculum-designer-page {
   padding: 24px 32px 64px;
   max-width: 1400px;
@@ -4166,7 +4045,6 @@ function saveCourseDetails() {
   color: #0f172a;
 }
 
-/* ── Top Navigation & Breadcrumbs ────────────────────────────────────────── */
 .studio-top-nav {
   display: flex;
   align-items: center;
@@ -4254,9 +4132,6 @@ function saveCourseDetails() {
   outline: none;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* LEVEL 1: COURSE OVERVIEW BANNER                                            */
-/* ═══════════════════════════════════════════════════════════════════════════ */
 .course-studio-banner {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -4406,7 +4281,6 @@ function saveCourseDetails() {
   font-size: 13px;
 }
 
-/* ── Learning Path Summary Card ──────────────────────────────────────────── */
 .learning-path-summary-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -4452,7 +4326,6 @@ function saveCourseDetails() {
   margin-top: 2px;
 }
 
-/* Collapsible AI Drawer */
 .ai-source-drawer {
   margin-top: 16px;
   border-top: 1px solid #f1f5f9;
@@ -4578,7 +4451,6 @@ function saveCourseDetails() {
   background: #0f172a;
 }
 
-/* ── Learning Path Modules Accordion ─────────────────────────────────────── */
 .section-title-bar {
   display: flex;
   justify-content: space-between;
@@ -4909,7 +4781,6 @@ function saveCourseDetails() {
   cursor: pointer;
 }
 
-/* Expanded Lessons Body */
 .module-card-body {
   padding: 16px 20px 20px;
   background: #ffffff;
@@ -5074,7 +4945,6 @@ function saveCourseDetails() {
   color: #ffffff;
 }
 
-/* ── Course Actions Footer ───────────────────────────────────────────────── */
 .course-actions-footer {
   display: flex;
   justify-content: space-between;
@@ -5149,9 +5019,6 @@ function saveCourseDetails() {
   border: 1px solid #fecaca;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* LEVEL 2 & 3: SUB-EDITORS COMMON HEADER                                     */
-/* ═══════════════════════════════════════════════════════════════════════════ */
 .level-top-header {
   display: flex;
   justify-content: space-between;
@@ -5193,7 +5060,6 @@ function saveCourseDetails() {
   gap: 10px;
 }
 
-/* ── Editor Card Container ───────────────────────────────────────────────── */
 .editor-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -5223,7 +5089,6 @@ function saveCourseDetails() {
   margin-bottom: 16px;
 }
 
-/* Form Controls */
 .form-group {
   margin-bottom: 16px;
 }
@@ -5273,7 +5138,6 @@ function saveCourseDetails() {
   flex: 1;
 }
 
-/* ── Level 2: Objectives Checklist ────────────────────────────────────────── */
 .objectives-checklist {
   display: flex;
   flex-direction: column;
@@ -5323,7 +5187,6 @@ function saveCourseDetails() {
   border-color: #fca5a5;
 }
 
-/* ── Level 2: Sequence List ──────────────────────────────────────────────── */
 .sequence-list {
   display: flex;
   flex-direction: column;
@@ -5461,9 +5324,6 @@ function saveCourseDetails() {
   align-items: center;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* LEVEL 3: LESSON EDITOR & 9 SECTIONS                                        */
-/* ═══════════════════════════════════════════════════════════════════════════ */
 .back-links-row {
   display: flex;
   align-items: center;
@@ -5475,7 +5335,6 @@ function saveCourseDetails() {
   color: #cbd5e1;
 }
 
-/* AI Generation Banner */
 .ai-generation-banner {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   color: #ffffff;
@@ -5527,7 +5386,6 @@ function saveCourseDetails() {
   background: #e65c00;
 }
 
-/* 9 Collapsible Sections */
 .lesson-content-sections-container {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -5664,9 +5522,6 @@ function saveCourseDetails() {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* MODALS STYLING (PREVIEW & PUBLISH)                                         */
-/* ═══════════════════════════════════════════════════════════════════════════ */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -5738,770 +5593,9 @@ function saveCourseDetails() {
   background: #f8fafc;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* FULL-SCREEN LESSON EDITOR                                                  */
-/* A viewport-filling document surface, not a centered modal card.            */
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/*
- * The editor is DOCKED, not overlaid: it fills the Studio's main column, which
- * is a flex sibling of the MentorSidebar. Collapsing the sidebar widens that
- * column, so the workspace grows with no JavaScript measuring anything. The
- * `inset: 0` absolute box is scoped to `.risse-main` (position: relative).
- */
-.lesson-editor-shell {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  background: #f7f8fa;
-  color: #0f172a;
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
-  border-radius: 18px;
-  overflow: hidden;
-}
-
-/* ── Top bar ─────────────────────────────────────────────────────────────── */
-.lesson-editor-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
-  padding: 10px 18px;
-  background: #ffffff;
-  border-bottom: 1px solid #e6eaf0;
-}
-
-.lesson-editor-topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.lesson-editor-topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.lesson-editor-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  border: 1px solid #e6eaf0;
-  background: #ffffff;
-  color: #475569;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.lesson-editor-icon-btn:hover {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: var(--risse-orange-active, #c2410c);
-}
-
-.lesson-editor-crumbs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.lesson-editor-crumb {
-  border: none;
-  background: transparent;
-  padding: 2px 0;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 34vw;
-}
-
-.lesson-editor-crumb:hover {
-  color: var(--risse-orange-hover, #ea580c);
-}
-
-.lesson-editor-crumb-sep {
-  color: #cbd5e1;
-  font-size: 13px;
-}
-
-.lesson-editor-crumb--root {
-  color: #94a3b8;
-  font-weight: 600;
-  cursor: default;
-  max-width: 22vw;
-}
-
-.lesson-editor-crumb--current {
-  color: #0f172a;
-  font-weight: 700;
-  cursor: default;
-  max-width: 34vw;
-}
-
-.lesson-editor-crumb:disabled {
-  cursor: default;
-}
-
-.lesson-editor-unsaved {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #b45309;
-  white-space: nowrap;
-}
-
-.lesson-editor-unsaved-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #f59e0b;
-  animation: lessonEditorPulse 1.8s ease-in-out infinite;
-}
-
 @keyframes lessonEditorPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
-}
-
-.lesson-editor-staged {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-.lesson-editor-path-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 11px;
-  border: 1px solid #e6eaf0;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #475569;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-/* ── Student view simulation group ───────────────────────────────────────────
-   Kept visually distinct from layout controls: these change how the lesson is
-   PRESENTED, not how it is authored. */
-.lesson-editor-view-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 3px 3px 9px;
-  border: 1px solid #e6eaf0;
-  border-radius: 10px;
-  background: #f8fafc;
-}
-
-.lesson-editor-view-label {
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-/* ── Layout Mode controls (Phase 2) ──────────────────────────────────────────
-   Grouped and visually separated from document actions so the toolbar does not
-   become a wall of buttons. */
-.lesson-editor-layout-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid #e6eaf0;
-  border-radius: 10px;
-  background: #fbfcfe;
-}
-
-.lesson-editor-layout-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: #64748b;
-  font-family: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.lesson-editor-layout-btn:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #e2e8f0;
-  color: #1e293b;
-}
-
-.lesson-editor-layout-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.lesson-editor-layout-btn.is-active {
-  background: #fff7ed;
-  border-color: #ffd7a8;
-  color: #c2410c;
-}
-
-.lesson-editor-layout-btn--reset:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
-}
-
-/* Sidebar control: same affordance family as the path toggle, lighter weight so
-   it reads as workspace chrome rather than a document action. */
-.lesson-editor-sidebar-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px dashed #dbe2ea;
-  border-radius: 8px;
-  background: #fbfcfe;
-  color: #64748b;
-  font-family: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.lesson-editor-sidebar-toggle:hover {
-  border-style: solid;
-  border-color: #ffd7a8;
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.lesson-editor-path-toggle:hover {
-  border-color: #cbd5e1;
-  color: #1e293b;
-}
-
-.lesson-editor-path-toggle.is-active {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: var(--risse-orange-active, #c2410c);
-}
-
-.lesson-editor-btn {
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
-}
-
-.lesson-editor-btn--ghost {
-  border: 1px solid #e6eaf0;
-  background: #ffffff;
-  color: #475569;
-}
-
-.lesson-editor-btn--ghost:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1e293b;
-}
-
-.lesson-editor-btn--primary {
-  border: none;
-  background: linear-gradient(135deg, var(--risse-orange, #ff7a00), var(--risse-orange-hover, #ea580c));
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(255, 122, 0, 0.24);
-}
-
-.lesson-editor-btn--primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ff8c1a, var(--risse-orange-hover, #f97316));
-}
-
-.lesson-editor-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* ── Status line ─────────────────────────────────────────────────────────── */
-.lesson-editor-status {
-  margin: 0;
-  padding: 8px 20px;
-  flex-shrink: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #15803d;
-  background: #f0fdf4;
-  border-bottom: 1px solid #dcfce7;
-}
-
-.lesson-editor-status.is-error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border-bottom-color: #fee2e2;
-}
-
-/* ── Body: rail + document ───────────────────────────────────────────────── */
-.lesson-editor-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: stretch;
-}
-
-.lesson-editor-rail {
-  width: 268px;
-  flex-shrink: 0;
-  border-right: 1px solid #e6eaf0;
-  background: #ffffff;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.lesson-editor-rail-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 16px 18px 10px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.lesson-editor-rail-title {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: #94a3b8;
-}
-
-.lesson-editor-rail-count {
-  font-size: 11px;
-  font-weight: 700;
-  color: #cbd5e1;
-}
-
-.lesson-editor-rail-list {
-  padding: 10px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-.lesson-editor-rail-group {
-  margin-bottom: 14px;
-}
-
-.lesson-editor-rail-group:last-child {
-  margin-bottom: 0;
-}
-
-.lesson-editor-rail-group-title {
-  margin: 4px 8px 6px;
-  font-size: 10.5px;
-  font-weight: 800;
-  line-height: 1.4;
-  letter-spacing: 0.7px;
-  text-transform: uppercase;
-  color: #94a3b8;
-}
-
-.lesson-editor-rail-items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.lesson-editor-rail-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.45;
-  color: #475569;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.lesson-editor-rail-item:hover {
-  background: #f8fafc;
-  color: #1e293b;
-}
-
-.lesson-editor-rail-item.is-current {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: var(--risse-orange-active, #c2410c);
-}
-
-.lesson-editor-rail-index {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 10.5px;
-  font-weight: 800;
-}
-
-.lesson-editor-rail-item.is-current .lesson-editor-rail-index {
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.lesson-editor-rail-label {
-  overflow-wrap: anywhere;
-}
-
-/* ── Outline (no lesson chosen) ──────────────────────────────────────────── */
-.lesson-editor-outline {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 40px 32px 56px;
-}
-
-.lesson-editor-outline-title {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.8px;
-  color: #0f172a;
-  margin: 0 auto 8px;
-  max-width: 1120px;
-}
-
-.lesson-editor-outline-sub {
-  font-size: 14px;
-  line-height: 1.65;
-  color: #64748b;
-  margin: 0 auto 28px;
-  max-width: 1120px;
-}
-
-.lesson-editor-outline-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 18px;
-  max-width: 1120px;
-  margin: 0 auto;
-  align-items: start;
-}
-
-.lesson-editor-outline-card {
-  background: #ffffff;
-  border: 1px solid #e8edf4;
-  border-radius: 12px;
-  padding: 20px 22px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-}
-
-.lesson-editor-outline-card-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.lesson-editor-outline-card-title {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.3px;
-  color: #0f172a;
-  margin: 0;
-}
-
-.lesson-editor-outline-card-count {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-}
-
-.lesson-editor-outline-card-desc {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #64748b;
-  margin: 0 0 14px;
-}
-
-.lesson-editor-outline-lessons {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.lesson-editor-outline-lesson {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 8px 9px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.lesson-editor-outline-lesson:hover {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: var(--risse-orange-active, #c2410c);
-}
-
-.lesson-editor-outline-lesson-icon {
-  flex-shrink: 0;
-}
-
-.lesson-editor-outline-lesson-title {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.lesson-editor-outline-lesson-go {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-}
-
-.lesson-editor-outline-lesson:hover .lesson-editor-outline-lesson-go {
-  color: var(--risse-orange-hover, #ea580c);
-}
-
-/* ── Document ────────────────────────────────────────────────────────────── */
-.lesson-editor-document {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/*
- * Visible editing workspace: the boundary between the lesson canvas and the
- * application chrome. It takes all remaining width/height and scrolls
- * vertically only — horizontal overflow is never allowed at any breakpoint.
- */
-.lesson-editor-scroll {
-  border: 1px solid #e6eaf0;
-  border-radius: 14px;
-  background: #ffffff;
-  margin: 14px 20px 0;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-width: 0;
-}
-
-.lesson-editor-scroll {
-  flex: 1;
-  min-height: 0;
-  padding: 30px 36px 16px;
-  scroll-behavior: smooth;
-  scroll-padding-top: 16px;
-}
-
-/*
- * The shared renderer reports document mode itself (`--tutor-hidden`), so this
- * scroller is the only scroll container in the editor.
- */
-.lesson-editor-scroll :deep(.checkpoint-page-container) {
-  min-height: 100%;
-}
-
-/* ── Previous / Next ─────────────────────────────────────────────────────── */
-.lesson-editor-lesson-nav {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 40px;
-  background: #ffffff;
-  border-top: 1px solid #e6eaf0;
-}
-
-.lesson-editor-btn--nav {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  height: auto;
-  min-width: 0;
-  max-width: 38%;
-  padding: 8px 14px;
-  border: 1px solid #e6eaf0;
-  background: #ffffff;
-  color: #334155;
-  text-align: left;
-}
-
-.lesson-editor-btn--nav:hover:not(:disabled) {
-  border-color: #fed7aa;
-  background: #fffaf5;
-}
-
-.lesson-editor-btn--nav-next {
-  align-items: flex-end;
-  text-align: right;
-}
-
-.lesson-editor-nav-dir {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #94a3b8;
-}
-
-.lesson-editor-nav-name {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #334155;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.lesson-editor-nav-position {
-  flex-shrink: 0;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #94a3b8;
-}
-
-/* ── Responsive: keep the lesson usable on smaller screens ───────────────── */
-@media (max-width: 1100px) {
-  .lesson-editor-scroll {
-    padding: 24px 24px 8px;
-  }
-
-  .lesson-editor-lesson-nav {
-    padding: 10px 24px;
-  }
-
-  .lesson-editor-rail {
-    width: 224px;
-  }
-}
-
-@media (max-width: 820px) {
-  .lesson-editor-topbar {
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 10px 12px;
-  }
-
-  .lesson-editor-staged,
-  .lesson-editor-unsaved {
-    display: none;
-  }
-
-  .lesson-editor-crumb {
-    max-width: 40vw;
-  }
-
-  /* The rail becomes an overlay drawer so the document keeps full width. */
-  .lesson-editor-rail {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 5;
-    width: min(84vw, 300px);
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
-  }
-
-  .lesson-editor-body {
-    position: relative;
-  }
-
-  .lesson-editor-outline {
-    padding: 24px 16px 40px;
-  }
-
-  .lesson-editor-outline-title {
-    font-size: 23px;
-  }
-
-  .lesson-editor-outline-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .lesson-editor-scroll {
-    padding: 16px 14px 8px;
-  }
-
-  .lesson-editor-lesson-nav {
-    padding: 10px 14px;
-  }
-
-  .lesson-editor-nav-name {
-    display: none;
-  }
 }
 
 .btn-confirm-publish {
@@ -6538,7 +5632,6 @@ function saveCourseDetails() {
   color: #64748b;
 }
 
-/* Spinner helper */
 .btn-spinner-row {
   display: inline-flex;
   align-items: center;
@@ -6558,9 +5651,6 @@ function saveCourseDetails() {
   to { transform: rotate(360deg); }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* RESPONSIVE ADAPTATIONS                                                     */
-/* ═══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 1024px) {
   .summary-metrics-grid {
     grid-template-columns: repeat(3, 1fr);
@@ -6592,8 +5682,6 @@ function saveCourseDetails() {
     justify-content: space-between;
   }
 }
-
-/* ── SOURCE COVERAGE & TOPIC GROUP HEADERS STYLING ────────────────────────── */
 
 .source-coverage-indicator-card {
   background: #ffffff;
@@ -6779,8 +5867,6 @@ function saveCourseDetails() {
   margin-top: 6px;
 }
 
-/* ── LEVEL 3 CONTENT BLOCKS & ASSESSMENT EDITOR STYLING ───────────────────── */
-
 .source-reference-card {
   border-left: 4px solid #3b82f6;
   background: #f8fafc;
@@ -6958,9 +6044,6 @@ function saveCourseDetails() {
   border-radius: 4px;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════ */
-/* PUBLISHING FORMAT SELECTOR STYLES                                       */
-/* ═══════════════════════════════════════════════════════════════════════ */
 .publishing-format-section {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -7188,7 +6271,6 @@ function saveCourseDetails() {
   white-space: nowrap;
 }
 
-/* Modal Selector Styles */
 .publish-modal-format-box {
   margin-top: 18px;
   padding: 14px;
@@ -7253,7 +6335,6 @@ function saveCourseDetails() {
   font-weight: 600;
 }
 
-/* ── Studio entry: upload-first intake ───────────────────────────────────── */
 .studio-intake { display: flex; flex-direction: column; gap: 20px; max-width: 820px; margin: 0 auto; }
 .intake-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
 .intake-title { font-size: 24px; font-weight: 800; margin: 12px 0 6px; }
@@ -7283,4 +6364,281 @@ function saveCourseDetails() {
 .intake-draft-meta { display: flex; flex-direction: column; gap: 2px; }
 .intake-draft-name { font-size: 14px; font-weight: 700; }
 .intake-draft-sub { font-size: 12px; color: #64748b; }
+
+.student-experience-host {
+  /* Fills the mentor scroller while preview is open. The Studio levels and top
+     nav are not rendered at all in this state, so the module is the only thing
+     on the surface — no editor chrome behind it, nothing scrolled on top. */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.student-experience-host > .module-experience {
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * One toolbar. Controls are overlays, never layout: every cluster is `fixed`
+ * (out of flow) so showing or hiding it cannot move the lesson by a pixel.
+ */
+.float-cluster {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.9);
+  /* Two-tier shadow: a crisp edge plus a soft lift. Reads as a surface without
+     competing with the lesson content underneath. */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06),
+              0 8px 24px -6px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px) saturate(140%);
+  /* Edge safety: never wider than the workspace, wraps instead of clipping. */
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  pointer-events: auto;
+  transition: box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.float-cluster:hover,
+.float-cluster:focus-within {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08),
+              0 14px 34px -8px rgba(15, 23, 42, 0.22);
+}
+
+/*
+ * Placement rule for the whole preview toolbar: sit over the workspace CHROME,
+ * never over the lesson.
+ *
+ * The preview controls used to be pinned at `left: 250px; top: 14px` — inside
+ * the lesson column, on top of its header, covering the "Module" eyebrow and
+ * clipping the top of the lesson title. Students saw the header intact; the
+ * mentor did not, so preview was not the student presentation.
+ *
+ * Both clusters now hang in the right-hand chrome column (the tutor panel's
+ * header and footer) where nothing is lesson content.
+ */
+.float-cluster--top-right {
+  top: 14px;
+  right: 18px;
+}
+
+.float-cluster--bottom-right {
+  /* The editing toggles, in the chrome column. The preview controls used to sit
+     above this cluster; they now live on the lesson's action line, so this takes
+     the top slot itself. */
+  top: 14px;
+  right: 18px;
+  bottom: auto;
+}
+
+/* The preview controls when there is no lesson header to sit in (roadmap view). */
+.preview-toolbar-corner {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 60;
+}
+
+.float-cluster--bottom-center {
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.float-cluster--notice {
+  position: fixed;
+  bottom: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 61;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 9px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.24);
+}
+
+.float-cluster--notice.is-error {
+  background: #b91c1c;
+}
+
+.float-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  padding-left: 3px;
+  white-space: nowrap;
+}
+
+.float-divider {
+  width: 1px;
+  height: 18px;
+  background: #e2e8f0;
+  margin: 0 1px;
+}
+
+.float-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Resting state is quiet; the surface appears on interaction. */
+.float-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.float-btn.is-active {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.float-btn.is-active:hover:not(:disabled) {
+  background: #ffedd5;
+}
+
+/* Disabled reads as unavailable, not merely faded: no hover, no pointer. */
+.float-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+  border-color: transparent;
+  color: #94a3b8;
+}
+
+/* Keyboard focus must be obvious — these controls are the only way to edit. */
+.float-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #f97316;
+}
+
+.float-btn--sm {
+  padding: 5px 9px;
+  font-size: 11.5px;
+}
+
+.float-btn--icon {
+  width: 28px;
+  padding: 0;
+}
+
+.float-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #64748b;
+}
+
+.float-btn--ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.float-btn--primary {
+  background: #ff7a00;
+  border-color: #ff7a00;
+  color: #ffffff;
+}
+
+.float-btn--primary:hover:not(:disabled) {
+  background: #ea6d00;
+  border-color: #ea6d00;
+}
+
+.float-btn--danger:not(:disabled) {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.float-btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.float-unsaved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+/*
+ * Smaller workspaces: the two top clusters would meet in the middle and cover
+ * the lesson header, so the student-view cluster drops to the bottom edge and
+ * the labels collapse to icons. Nothing is placed inside the lesson flow.
+ */
+@media (max-width: 1180px) {
+  /* Keep both clusters in the chrome column, just tighter to the edges. */
+  .float-cluster--top-right {
+    top: 10px;
+    right: 10px;
+  }
+  .float-cluster--bottom-right {
+    top: 10px;
+    right: 10px;
+    bottom: auto;
+  }
+  .preview-toolbar-corner {
+    top: 10px;
+    right: 10px;
+  }
+  /* Pending-changes bar moves off centre so it cannot meet the bottom-right one. */
+  .float-cluster--bottom-center {
+    left: 10px;
+    transform: none;
+  }
+  .float-label {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .float-btn span {
+    display: none; /* icon-only; every control keeps title + aria-label */
+  }
+  .float-btn {
+    padding: 0 7px;
+  }
+}
+
+.float-unsaved-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
 </style>

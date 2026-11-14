@@ -201,6 +201,15 @@ function deterministicAllowlistSanitize(input: string): string {
  * Uses DOMPurify when a browser DOM is available, followed by strict inline CSS
  * property allowlisting so works identically in browser and Node test environments.
  */
+/**
+ * Counts structural block tags. Used only to detect a sanitizer that has
+ * silently unwrapped allowed markup (see `sanitizeLessonHtml`).
+ */
+function structureScore(html: string): number {
+  const matches = html.match(/<(h[1-6]|ul|ol|table|thead|tbody|tr|td|th|blockquote|pre|figure|figcaption)\b/gi);
+  return matches ? matches.length : 0;
+}
+
 export function sanitizeLessonHtml(html: string): string {
   if (!html || typeof html !== 'string') return '';
 
@@ -211,9 +220,15 @@ export function sanitizeLessonHtml(html: string): string {
     typeof document !== 'undefined' &&
     typeof DOMPurify?.sanitize === 'function';
 
-  if (hasBrowserDom) {
+  // ALWAYS run the deterministic allowlist first. It is a complete allowlist on
+  // its own, so the DOMPurify pass below is defence in depth rather than the
+  // thing that decides what survives.
+  const deterministic = deterministicAllowlistSanitize(html);
+  if (!hasBrowserDom) return deterministic.trim();
+
+  {
     try {
-      intermediate = DOMPurify.sanitize(html, {
+      intermediate = DOMPurify.sanitize(deterministic, {
         ALLOWED_TAGS: Array.from(ALLOWED_TAGS),
         ALLOWED_ATTR: [
           'style', 'class', 'data-color',
@@ -225,11 +240,21 @@ export function sanitizeLessonHtml(html: string): string {
         ALLOW_DATA_ATTR: false,
       });
     } catch (_) {
-      intermediate = html;
+      intermediate = deterministic;
     }
   }
 
-  return deterministicAllowlistSanitize(intermediate).trim();
+  const purified = deterministicAllowlistSanitize(intermediate);
+
+  /*
+   * A DOM present at import time is not proof that DOMPurify is functional.
+   * Under a partial DOM (SSR shim, lightweight test DOM) it can return text with
+   * the markup unwrapped, which silently deleted lesson headings — `<h2>` became
+   * a bare line of text. Both passes are allowlist-based, so keeping whichever
+   * one retains the structure is always safe and never lets anything through
+   * that the allowlist would have removed.
+   */
+  return (structureScore(purified) >= structureScore(deterministic) ? purified : deterministic).trim();
 }
 
 /**

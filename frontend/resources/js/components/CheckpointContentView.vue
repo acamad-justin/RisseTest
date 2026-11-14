@@ -6,9 +6,6 @@
       // Teacher editing session: scopes editing affordances only. Student
       // presentation is deliberately NOT altered here.
       'checkpoint-page-container--editing': canResizeBlocks,
-      // Student-environment simulation: the AI tutor column. Defaults to how
-      // students actually see the lesson (tutor visible).
-      'checkpoint-page-container--tutor-hidden': !tutorColumnVisible,
       'is-resizing': Boolean(activeResize),
       'is-moving': Boolean(activeDrag),
     }"
@@ -18,9 +15,9 @@
       <header class="checkpoint-header">
         <div class="checkpoint-header-left">
           <button 
-            v-if="!previewMode"
             type="button" 
             class="btn-back-nav" 
+            :class="{ 'is-preview-inert': previewMode }" 
             @click="$emit('back')" 
             title="Back to Progression Map" 
             aria-label="Back to Progression Map"
@@ -43,14 +40,18 @@
 
         <!-- Complete Checkpoint & Star/Kebab buttons -->
         <div class="checkpoint-header-actions">
-          <span v-if="previewMode" class="preview-mode-pill" id="preview-mode-indicator">
-            👁️ Teacher Preview — edits are not visible to students until you save
-          </span>
+          <!--
+            Host-provided controls that belong on this line. The mentor's preview
+            toolbar renders here, beside "Complete Checkpoint", so the row itself
+            aligns them. Empty for students: nothing is added to their view.
+          -->
+          <slot name="prepend-actions" />
 
           <button 
-            v-if="!previewMode"
             type="button" 
             class="btn-complete-checkpoint-action" 
+            :class="{ 'is-preview-inert': previewMode }"
+            :aria-disabled="previewMode" 
             @click="handleCompleteCheckpoint"
             title="Mark this checkpoint complete and advance progression"
             id="btn-complete-checkpoint"
@@ -62,10 +63,10 @@
           </button>
 
           <button 
-            v-if="!previewMode"
             type="button" 
             class="btn-icon-control" 
-            :class="{ 'is-starred': isStarred }"
+            :class="{ 'is-starred': isStarred, 'is-preview-inert': previewMode }"
+            :aria-disabled="previewMode"
             @click="toggleStar"
             :title="isStarred ? 'Remove from favorites' : 'Bookmark this path'"
             aria-label="Bookmark"
@@ -76,7 +77,7 @@
             </svg>
           </button>
 
-          <div v-if="!previewMode" class="kebab-menu-wrapper" @click.stop>
+          <div class="kebab-menu-wrapper" :class="{ 'is-preview-inert': previewMode }" @click.stop>
             <button 
               type="button" 
               class="btn-icon-control" 
@@ -116,9 +117,23 @@
 
       <!-- Educational Lesson Text & Core Concepts (When content is populated) -->
       <section v-else class="lesson-lecture-column">
-        <!-- Structured Content Blocks Stream (When blocks exist) -->
+        <!--
+          Shared lesson document — the same component renders for students and for
+          the teacher's preview/editing session, so what a teacher arranges is
+          literally what a student receives.
+        -->
+        <LessonDocumentView
+          v-if="lessonDocument"
+          :document="lessonDocument"
+          :course-id="lessonCourseId"
+          :editable="isEditable"
+          @update:document="onDocumentUpdate"
+          @update:flow="onDocumentFlow"
+        />
+
+        <!-- Structured Content Blocks Stream (legacy lessons without a document) -->
         <div
-          v-if="activeLessonData.blocks && activeLessonData.blocks.length > 0"
+          v-if="!lessonDocument && activeLessonData.blocks && activeLessonData.blocks.length > 0"
           ref="canvasRef"
           class="lesson-blocks-stream"
           :class="{
@@ -126,7 +141,7 @@
             // Previously this was only true once something was already pinned,
             // so the first grab measured against a different containing block
             // and the block landed offset by the stream's top edge.
-            'is-layout-canvas': canResizeBlocks.value,
+            'is-layout-canvas': canResizeBlocks.value || hasAnyPinnedBlock(),
             'is-layout-mode': layoutModeActive,
             'is-dragging-block': Boolean(activeDrag),
           }"
@@ -504,8 +519,17 @@
           </template>
         </div>
 
-        <!-- Fallback Standard 8-Section Layout (When blocks are not present) -->
-        <template v-else>
+        <!--
+          Fallback Standard 8-Section Layout.
+
+          It used to be the plain `v-else` of the block stream, so it rendered
+          underneath the document for any lesson that had no blocks — the
+          "Overview & Introduction" / "Instructional Guide" cards that could not
+          be selected, moved or deleted. Now that every lesson with content is
+          rendered as a document, these cards only remain for demo/test modules,
+          which carry no real lesson content.
+        -->
+        <template v-else-if="!lessonDocument">
           <!-- 1. Introduction & Overview -->
           <div v-if="activeLessonData.introduction" class="lesson-section-box lesson-intro-card" :class="{ 'is-inline-editable': isEditable }">
             <h2 class="section-title">Overview & Introduction</h2>
@@ -713,10 +737,10 @@
       </section>
     </div>
 
-    <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text) -->
-    <!-- Teacher Preview removes the tutor entirely so the lesson owns the width. -->
+    <!-- Right: Stretched Risse AI Chatbot Side Box (Top aligned with Module text).
+         Always rendered: the tutor column is part of the student layout, so
+         hiding it would give the lesson a width students never see. -->
     <aside
-      v-if="tutorColumnVisible"
       class="chatbot-panel-card" 
       :class="{ 'chatbot-panel-card--maximized': isChatMaximized }"
       aria-label="Risse AI Chat Assistant"
@@ -883,7 +907,9 @@ import {
   NUDGE_STEP,
   NUDGE_STEP_LARGE,
 } from '../../../lib/mentor/lessonBlockLayout.ts';
+import { documentFromBlocks, documentFromNodeContent, hasLessonDocument, lessonDocumentOf } from '../../../lib/mentor/lessonDocument.ts';
 import LessonRichTextInlineEditor from './mentor/LessonRichTextInlineEditor.vue';
+import LessonDocumentView from './mentor/LessonDocumentView.vue';
 
 const authStore = useAuthStore();
 
@@ -904,6 +930,11 @@ const props = defineProps({
     type: Object,
     default: () => null,
   },
+  /** Course the lesson belongs to. Scopes uploaded lesson images. */
+  courseId: {
+    type: String,
+    default: '',
+  },
   /**
    * Mentor Module Studio inline editing. When true, lesson prose becomes
    * click-to-edit with the Word-style compact formatting toolbar.
@@ -922,6 +953,16 @@ const props = defineProps({
     default: false,
   },
   /**
+   * Read-only student experience. The teacher enters the real module, so the
+   * student actions (Complete Checkpoint, bookmark, kebab menu, assessments)
+   * stay visible in their real positions — removing them would change the
+   * layout the teacher is meant to be inspecting — but they record nothing.
+   */
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
+  /**
    * Phase 2: Layout Mode. When true the teacher can drag blocks by their
    * handles and sees boundaries/selection chrome. Students never receive it.
    */
@@ -933,16 +974,6 @@ const props = defineProps({
   snapToGrid: {
     type: Boolean,
     default: false,
-  },
-  /**
-   * Teacher editor only: show the Risse AI tutor column so the layout can be
-   * previewed the way students will see it. The tutor is never *usable* in
-   * preview (sendMessage refuses), it is only rendered for layout parity.
-   * Students always get the tutor; this prop is ignored for them.
-   */
-  showTutor: {
-    type: Boolean,
-    default: true,
   },
 });
 
@@ -991,6 +1022,68 @@ function isEditingTarget(kind, field, index = null) {
 const selectedBlockIndex = ref(null);
 /** The exact array the template renders, so index lookups always resolve. */
 const currentBlocks = computed(() => activeLessonData.value?.blocks || []);
+
+/** Course id for lesson media, from the prop or from the module it belongs to. */
+const lessonCourseId = computed(() =>
+  String(props.courseId || props.moduleData?.course_id || props.moduleData?.courseId || '')
+);
+
+/**
+ * The lesson's shared document.
+ *
+ * An authored document always wins. A lesson that only has legacy blocks is
+ * bridged on read, so students and the teacher get the document experience with
+ * exactly one renderer — old lessons migrate forward the first time a teacher
+ * saves them, without anyone having to regenerate content.
+ */
+const lessonDocument = computed(() => {
+  const own = props.checkpointData;
+  const siblings = props.moduleData?.checkpoints;
+  let record = own;
+
+  if (!hasLessonDocument(own) && Array.isArray(siblings)) {
+    const title = (props.checkpointTitle || '').trim();
+    const match = siblings.find(c =>
+      (title && (c.name || c.title) === title) ||
+      (own?.id != null && String(c.id) === String(own.id))
+    );
+    if (match) record = match;
+  }
+
+  if (own && hasLessonDocument(own)) return lessonDocumentOf(own);
+  if (record && record !== own && hasLessonDocument(record)) return lessonDocumentOf(record);
+
+  const bridged = lessonDocumentOf(own) || (record && record !== own ? lessonDocumentOf(record) : null);
+  if (bridged) return bridged;
+
+  /*
+   * Last resort: build the document from whatever this lesson actually resolved
+   * to. Lessons whose content lives only in the eight-section shape used to fall
+   * through to the legacy section cards — plain divs with no selection, no move
+   * and no delete. Nothing in the content area may be un-editable, so the
+   * resolved sections become the document instead.
+   */
+  const data = activeLessonData.value;
+  if (!data?.hasContent || data.isTest) return null;
+
+  if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+    return documentFromBlocks(data.blocks);
+  }
+
+  const resolved = documentFromNodeContent({
+    introduction: data.introduction || data.p1 || '',
+    core_lesson: data.coreLesson || '',
+    key_concepts: (data.concepts || []).map(c => ({
+      concept: c.title,
+      explanation: c.text || c.keyIdea || '',
+    })),
+    examples: data.examples || [],
+    activities: data.activities || [],
+    engineering_challenges: data.challenges || [],
+  });
+
+  return resolved.flow.trim() || resolved.floats.length > 0 ? resolved : null;
+});
 /** Live drag state: { index, edge, startX, startY, startW, startH }. */
 const activeResize = ref(null);
 
@@ -1154,14 +1247,6 @@ const layoutModeActive = computed(() => canResizeBlocks.value && Boolean(props.l
  * Being *visible* never means being *usable*: sendMessage() refuses to call
  * the model in preview mode.
  */
-const tutorColumnVisible = computed(() => {
-  // Students always have the tutor. In the editor it defaults to visible too,
-  // because the student environment is the reference: the teacher opts OUT to
-  // see the wider layout, rather than having to opt IN to match reality.
-  if (!props.previewMode) return true;
-  return Boolean(props.showTutor);
-});
-
 const snapToGridEnabled = computed(() => Boolean(props.snapToGrid));
 
 /** The block currently being dragged: pointer bookkeeping + live offsets. */
@@ -1182,9 +1267,19 @@ function canMoveBlock(block) {
   return layoutModeActive.value && isResizableBlockType(block?.type);
 }
 
-/** Style for a block: positioning when pinned, sizing otherwise. */
+/**
+ * Style for a block: positioning when pinned, sizing otherwise.
+ *
+ * Deliberately NOT gated on the editing session. A block's layout was applied
+ * only while editing, which meant the teacher arranged the lesson one way and
+ * students read it another — and toggling Edit visibly re-laid-out the page.
+ * Layout metadata is presentation, so it renders the same in both: the student
+ * view is the reference, and the teacher edits exactly what students see.
+ *
+ * Stale records are filtered out upstream by LAYOUT_VERSION, so this only ever
+ * receives a deliberate choice.
+ */
 function blockCanvasStyle(block) {
-  if (!canResizeBlocks.value) return {};
   if (!isResizableBlockType(block?.type)) return {};
 
   const position = readBlockPosition(block);
@@ -1207,7 +1302,7 @@ function blockCanvasStyle(block) {
 }
 
 function blockIsPinned(block) {
-  return canResizeBlocks.value && isResizableBlockType(block?.type) && isBlockPinned(block);
+  return isResizableBlockType(block?.type) && isBlockPinned(block);
 }
 
 /**
@@ -1507,7 +1602,7 @@ const canvasMinHeight = ref(0);
 
 function recomputeCanvasHeight() {
   const canvas = canvasEl();
-  if (!canvas || !canResizeBlocks.value) {
+  if (!canvas || !(canResizeBlocks.value || hasAnyPinnedBlock())) {
     canvasMinHeight.value = 0;
     return;
   }
@@ -1528,7 +1623,7 @@ function recomputeCanvasHeight() {
 }
 
 const canvasStyle = computed(() => {
-  if (!canResizeBlocks.value || canvasMinHeight.value <= 0) return {};
+  if (!(canResizeBlocks.value || hasAnyPinnedBlock()) || canvasMinHeight.value <= 0) return {};
   // A minimum only: in-flow siblings keep contributing their own height, so
   // nothing is ever cropped and the canvas simply grows downward.
   return { minHeight: `${canvasMinHeight.value}px` };
@@ -1552,7 +1647,7 @@ onBeforeUnmount(() => {
 });
 
 function hasAnyPinnedBlock() {
-  return canResizeBlocks.value && currentBlocks.value.some(b => isBlockPinned(b) && isResizableBlockType(b.type));
+  return currentBlocks.value.some(b => isBlockPinned(b) && isResizableBlockType(b.type));
 }
 
 /** Clears a custom size, returning the block to natural flow dimensions. */
@@ -1595,6 +1690,29 @@ function nodeContentField(field) {
  * Emits buffered (never directly persisted) lesson content updates to the
  * Module Studio preview. The parent stores them in its preview draft only.
  */
+/**
+ * Document edits are buffered exactly like block edits: nothing here persists,
+ * the Module Studio parent keeps them in its preview draft until Save.
+ */
+function onDocumentUpdate(document) {
+  if (!document) return;
+  emit('update-lesson-content', {
+    kind: 'document',
+    checkpointId: props.checkpointData?.id ?? null,
+    document,
+  });
+}
+
+function onDocumentFlow(flowHtml) {
+  const document = lessonDocument.value;
+  if (!document) return;
+  emit('update-lesson-content', {
+    kind: 'document',
+    checkpointId: props.checkpointData?.id ?? null,
+    document: { ...document, flow: flowHtml },
+  });
+}
+
 function onInlineEditUpdate(html, kind, index = null, field = null) {
   const cleanHtml = sanitizeLessonHtml(html || '');
   emit('update-lesson-content', {
@@ -1649,7 +1767,7 @@ function submitAssessment() {
   isAssessmentSubmitted.value = true;
   isAssessmentPassed.value = allPassed;
 
-  if (props.previewMode) {
+  if (props.previewMode || props.readOnly) {
     // Local feedback only: preview never records mastery or checkpoint completion.
     emit('notify', allPassed ? 'Preview result: answers correct (nothing was recorded).' : 'Preview result: review the feedback above (nothing was recorded).');
     return;
@@ -1998,13 +2116,17 @@ function getLessonContextText() {
 }
 
 function toggleStar() {
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — bookmarks are not saved.');
+    return;
+  }
   isStarred.value = !isStarred.value;
   emit('notify', isStarred.value ? `Bookmarked "${props.checkpointTitle}"` : `Removed bookmark for "${props.checkpointTitle}"`);
 }
 
 async function handleCompleteCheckpoint() {
   // Mentor preview must never touch student progress, mastery, checkpoint or star records.
-  if (props.previewMode) {
+  if (props.previewMode || props.readOnly) {
     emit('notify', 'Preview mode — checkpoint completion is disabled for teachers.');
     return;
   }
@@ -2079,7 +2201,7 @@ onUnmounted(() => {
 });
 
 async function sendMessage() {
-  if (props.previewMode) {
+  if (props.previewMode || props.readOnly) {
     // Preview keeps the tutor panel for layout parity but never sends lesson
     // context to the model on behalf of the teacher's account.
     emit('notify', 'AI Tutor is available in the student workspace — not in Teacher Preview.');
@@ -2259,16 +2381,6 @@ function formatMessageText(text) {
 
 .checkpoint-page-container.is-chat-maximized {
   grid-template-columns: 0fr 1fr;
-  gap: 0;
-}
-
-/*
- * Tutor hidden => a single column that takes the whole width. This is what
- * "reclaim the panel's space" means: the 410px track is removed entirely, not
- * merely emptied, so the lesson actually reflows into it.
- */
-.checkpoint-page-container--tutor-hidden {
-  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
@@ -2498,13 +2610,17 @@ function formatMessageText(text) {
 /* Positioning only ever writes metadata.layout; prose is never rewritten.     */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-/* The canvas is the coordinate space pinned blocks are placed against. */
-.checkpoint-page-container--editing .lesson-blocks-stream.is-layout-canvas {
+/*
+ * The canvas is the coordinate space pinned blocks are placed against.
+ * Not scoped to --editing: a published layout positions blocks for students too,
+ * and the two views must resolve to the same rectangle.
+ */
+.lesson-blocks-stream.is-layout-canvas {
   position: relative;
 }
 
 /* A pinned block leaves the flow and is placed on the canvas. */
-.checkpoint-page-container--editing .is-block-pinned {
+.is-block-pinned {
   position: absolute;
   margin-bottom: 0;
   z-index: 1;
@@ -2762,6 +2878,19 @@ function formatMessageText(text) {
   align-items: center;
   gap: 10px;
   margin-top: 18px;
+}
+/*
+ * Teacher Preview: student-owned actions keep their exact geometry so the
+ * layout stays identical to the student view, but read as unavailable.
+ * Only opacity/cursor change — never size, padding, margin or display.
+ */
+.is-preview-inert {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.is-preview-inert:hover {
+  opacity: 0.55;
 }
 
 .btn-complete-checkpoint-action {

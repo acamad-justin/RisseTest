@@ -281,6 +281,15 @@ const props = defineProps({
       badge: 'Speed Learner',
     }),
   },
+  /**
+   * Teacher Preview. The roadmap renders in its real student form so the
+   * presentation is identical, but every student-owned write is suppressed:
+   * no progress POST, no Supabase checkpoint progress, no badges, no stars.
+   */
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['back', 'select-checkpoint', 'award-badge', 'notify', 'update-module']);
@@ -391,6 +400,10 @@ const objectives = computed(() => {
 });
 
 function toggleStar() {
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — bookmarks are not saved.');
+    return;
+  }
   isStarred.value = !isStarred.value;
   emit('notify', isStarred.value ? 'Module bookmarked!' : 'Bookmark removed');
 }
@@ -412,6 +425,13 @@ function handleNodeClick(cp, idx) {
 // Fast-Track Advance Step Handler
 async function advanceStep() {
   if (currentStep.value >= checkpoints.value.length) return;
+
+  // Teacher Preview: the control keeps its real position and appearance so the
+  // layout matches the student screen, but nothing is recorded.
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — student progress is not recorded.');
+    return;
+  }
 
   const nextStep = currentStep.value + 1;
   currentStep.value = nextStep;
@@ -458,6 +478,10 @@ async function advanceStep() {
 
 // Reset Progress Handler
 async function resetProgress() {
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — student progress is not recorded.');
+    return;
+  }
   currentStep.value = 0;
   emit('update-module', {
     currentStep: 0,
@@ -490,6 +514,7 @@ async function resetProgress() {
 
 // Trigger Badge Modal Celebration
 function triggerBadgeCelebration() {
+  if (props.readOnly) return;
   const badgeTitle = props.moduleData.badge && props.moduleData.badge !== 'No Badge' 
     ? props.moduleData.badge 
     : 'Speed Learner';

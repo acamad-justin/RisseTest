@@ -39,9 +39,34 @@
  *     vertical distances stable and predictable while the page scrolls.
  */
 
+/**
+ * Version stamped on every layout this build authors.
+ *
+ * Layouts written before this field existed were never meant to be visible to
+ * students: only the teacher's editing session read them, so they were free to
+ * carry sizes that were captured against a different canvas (imported payloads,
+ * an expanded sidebar, an older column width). Now that one layout drives BOTH
+ * the teacher's view and the student's, those stale records would silently
+ * shrink every lesson.
+ *
+ * So the record is versioned instead of migrated: anything without a matching
+ * stamp is treated as "no layout" and renders at natural, full width, while the
+ * first explicit resize or move by a teacher stamps the record and becomes
+ * authoritative everywhere from that point on. No database migration, no
+ * destructive rewrite of existing proposal data, and it is reversible.
+ */
+export const LAYOUT_VERSION = 2;
+
+/** True when a layout record was authored by a build that honours it. */
+export function isCurrentLayoutRecord(layout: any): boolean {
+  return Boolean(layout && typeof layout === 'object' && layout.v === LAYOUT_VERSION);
+}
+
 export type BlockDimension = number | null;
 
 export interface LessonBlockLayout {
+  /** Schema stamp; absent/older records are ignored, see LAYOUT_VERSION. */
+  v?: number;
   width?: BlockDimension;
   height?: BlockDimension;
   /** Percent of canvas width, 0–100. */
@@ -112,7 +137,7 @@ function toDimension(value: unknown, min: number): BlockDimension {
  */
 export function readBlockLayout(block: any): LessonBlockLayout {
   const layout = block?.metadata?.layout;
-  if (!layout || typeof layout !== 'object') return {};
+  if (!isCurrentLayoutRecord(layout)) return {};
 
   const width = toDimension(layout.width, MIN_BLOCK_WIDTH);
   const height = toDimension(layout.height, MIN_BLOCK_HEIGHT);
@@ -148,7 +173,7 @@ function toOffset(value: unknown): number | null {
  */
 export function isBlockPinned(block: any): boolean {
   const layout = block?.metadata?.layout;
-  if (!layout || typeof layout !== 'object') return false;
+  if (!isCurrentLayoutRecord(layout)) return false;
   return toPercent(layout.x) != null && toOffset(layout.y) != null;
 }
 
@@ -191,8 +216,10 @@ export function applyBlockLayout<T extends Record<string, any>>(
   dims: LessonBlockLayout
 ): T {
   const existingMeta = block?.metadata && typeof block.metadata === 'object' ? block.metadata : {};
-  const existingLayout = existingMeta.layout && typeof existingMeta.layout === 'object'
-    ? { ...existingMeta.layout }
+  // A legacy record contributes nothing: the teacher's next edit defines the
+  // layout from scratch rather than resurrecting a size nobody ever chose.
+  const existingLayout = isCurrentLayoutRecord(existingMeta.layout)
+    ? { ...(existingMeta.layout as Record<string, any>) }
     : {};
 
   const nextLayout: LessonBlockLayout = { ...existingLayout };
@@ -212,7 +239,7 @@ export function applyBlockLayout<T extends Record<string, any>>(
   if (isEmptyLayout(nextLayout)) {
     delete nextMeta.layout;
   } else {
-    nextMeta.layout = nextLayout;
+    nextMeta.layout = { ...nextLayout, v: LAYOUT_VERSION };
   }
 
   const nextBlock: any = { ...block };
@@ -232,7 +259,9 @@ export function hasCustomLayout(block: any): boolean {
  *
  * `width` is emitted alongside `maxWidth` because an absolutely-positioned box
  * shrink-wraps its content; without an explicit width a pinned block would
- * collapse. Keeping `maxWidth` too means the responsive cap still applies.
+ * collapse. `maxWidth` is the responsive cap: it keeps the stored size while a
+ * canvas narrower than the block still shrinks it, so a pinned block can never
+ * render outside the lesson column.
  */
 export function blockPositionStyle(block: any): Record<string, string> {
   const position = readBlockPosition(block);
@@ -244,8 +273,23 @@ export function blockPositionStyle(block: any): Record<string, string> {
     top: `${position.y}px`,
   };
   if (width != null) {
+    // Keep the authored footprint, but cap it to the canvas.
+    //
+    // `width` is an absolute px value recorded against whatever canvas the block
+    // was positioned on. The lesson column is narrower than that canvas as soon
+    // as the tutor docks beside it, and an absolute `width` guarded by an equal
+    // `max-width` has nothing to shrink against — the block then renders wider
+    // than the column, overflows it, and is clipped underneath the tutor. This
+    // is the one path that emitted a hard width; `blockLayoutStyle` (in-flow)
+    // already caps with `max-width` only, for exactly this reason.
+    //
+    // The cap is measured against the positioned canvas, so a block that fits
+    // keeps its stored size and one that does not shrinks to the column. The
+    // block's own offset is subtracted because it is positioned from that
+    // offset: capping at a flat 100% would still let a block shifted to the
+    // right hang off the edge.
     style.width = `${width}px`;
-    style.maxWidth = `${width}px`;
+    style.maxWidth = `calc(100% - ${position.x}%)`;
   }
   // Same reasoning as the in-flow case: min-height keeps the teacher's height
   // without trapping content in an inner scroller.
@@ -280,8 +324,10 @@ export function applyBlockPosition<T extends Record<string, any>>(
   position: BlockPosition | null
 ): T {
   const existingMeta = block?.metadata && typeof block.metadata === 'object' ? block.metadata : {};
-  const existingLayout = existingMeta.layout && typeof existingMeta.layout === 'object'
-    ? { ...existingMeta.layout }
+  // A legacy record contributes nothing: the teacher's next edit defines the
+  // layout from scratch rather than resurrecting a size nobody ever chose.
+  const existingLayout = isCurrentLayoutRecord(existingMeta.layout)
+    ? { ...(existingMeta.layout as Record<string, any>) }
     : {};
 
   const nextLayout: LessonBlockLayout = { ...existingLayout };
@@ -312,8 +358,10 @@ export function applyBlockSizeAndPosition<T extends Record<string, any>>(
   position: BlockPosition | null
 ): T {
   const existingMeta = block?.metadata && typeof block.metadata === 'object' ? block.metadata : {};
-  const existingLayout = existingMeta.layout && typeof existingMeta.layout === 'object'
-    ? { ...existingMeta.layout }
+  // A legacy record contributes nothing: the teacher's next edit defines the
+  // layout from scratch rather than resurrecting a size nobody ever chose.
+  const existingLayout = isCurrentLayoutRecord(existingMeta.layout)
+    ? { ...(existingMeta.layout as Record<string, any>) }
     : {};
 
   const nextLayout: LessonBlockLayout = { ...existingLayout };
@@ -360,7 +408,9 @@ function withLayout<T extends Record<string, any>>(
 ): T {
   const nextMeta = { ...existingMeta };
   if (isEmptyLayout(nextLayout)) delete nextMeta.layout;
-  else nextMeta.layout = nextLayout;
+  // Stamp on write: this record is now a deliberate choice and applies to the
+  // student view as well as the teacher's.
+  else nextMeta.layout = { ...nextLayout, v: LAYOUT_VERSION };
 
   const nextBlock: any = { ...block };
   if (Object.keys(nextMeta).length > 0) nextBlock.metadata = nextMeta;
