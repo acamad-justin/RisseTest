@@ -117,8 +117,13 @@ the selection affordances and the contextual controls. Students therefore cannot
 see editor chrome, and teacher/student layouts cannot drift apart by
 construction.
 
-The assessment / mastery card stays where it was: it is a semantic checkpoint
-object, not document prose.
+**No assessment card.** An end-of-topic assessment used to sit after the document
+as a graded mastery check, and passing it gated progression. It is gone: a student
+reads the document and marks the checkpoint complete from the lesson header.
+Stored lessons that still carry an `assessment` object are rendered without it, and
+the lesson generator no longer writes one — including the prompt, the cached seed
+lessons and the mock path. The formative question list (`assessment_questions`) is
+unaffected: those are study aids, not a gate.
 
 ---
 

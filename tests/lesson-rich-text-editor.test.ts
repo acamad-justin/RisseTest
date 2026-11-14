@@ -450,8 +450,11 @@ describe('5. Module Studio UI contracts', () => {
     assert.match(renderer, /block-code-card/);
     assert.match(renderer, /block-activity-card/);
     assert.match(renderer, /block-table-card/);
-    assert.match(renderer, /interactive-assessment-section/);
-    assert.match(renderer, /evaluateAssessmentAnswer/);
+    // The end-of-topic assessment was removed from the product: a lesson now
+    // ends with the document, and the student marks the checkpoint complete
+    // themselves. Nothing graded is rendered at the end of a lesson.
+    assert.doesNotMatch(renderer, /interactive-assessment-section/);
+    assert.doesNotMatch(renderer, /mastery check/i);
   });
 
   test('5e. preview mode blocks student progress / mastery / checkpoint writes', () => {
@@ -488,7 +491,10 @@ describe('5. Module Studio UI contracts', () => {
     assert.match(designer, /source-coverage-indicator/);
     assert.match(designer, /topic-group-header-divider/);
     assert.match(designer, /content-blocks-editor-card/);
-    assert.match(designer, /assessment-editor-card/);
+    // No assessment to configure: the Studio must not offer passing thresholds,
+    // question types or unlock rules that no longer exist.
+    assert.doesNotMatch(designer, /assessment-editor-card/);
+    assert.doesNotMatch(designer, /End-of-Topic Assessment Configuration/);
     assert.match(designer, /:disabled="isPublishing \|\| !selectedPublishingFormat \|\| !selectedPlan\.canPublish"/);
     assert.match(designer, /id="btn-approve-proposal"/);
     assert.match(designer, /Open (Course|in Module) Studio →|openStudentPreview/);

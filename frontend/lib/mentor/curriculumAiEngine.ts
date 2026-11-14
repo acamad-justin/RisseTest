@@ -1514,11 +1514,14 @@ export class CurriculumAiEngine {
           estimated_minutes: 25,
           estimated_duration: '25 mins',
           learning_objectives: topic.learningObjectives,
-          completion_criteria: `Complete assessment and verify mastery for ${topic.title}.`,
+          completion_criteria: `Read ${topic.title} and mark the checkpoint complete.`,
           source_materials: [materialNames[0] || 'Introduction to Robotics.pdf'],
           source_reference: topic.sourceReference,
           blocks: topic.blocks,
-          assessment: topic.assessment,
+          // No graded end-of-topic assessment: the student marks the checkpoint
+          // complete from the lesson header. (The formative question list lives
+          // in `node_content.assessment_questions` and is unaffected.)
+          assessment: { format: 'multiple_choice', passing_threshold: 80, questions: [] },
           node_content: nodeContent,
           status: 'draft',
           provenance_type: 'grounded_in_materials',

@@ -65224,6 +65224,22 @@ async function retryWithBackoff(fn, options) {
 		await new Promise((res) => setTimeout(res, delay));
 	}
 }
+/**
+* End-of-topic assessments are not part of the product any more.
+*
+* A lesson ends when the student says it does: they read the material and press
+* "Complete Checkpoint" from the lesson header. Nothing is graded, nothing gates
+* progression, so the generator must not spend tokens writing graded questions
+* and must not hand the renderer something that looks like a gate.
+*
+* The formative question list (`assessment_questions` in node content) is
+* unaffected: those are study aids shown inline, not a checkpoint requirement.
+*/
+var NO_END_OF_TOPIC_ASSESSMENT = {
+	format: "multiple_choice",
+	passing_threshold: 80,
+	questions: []
+};
 var ModuleStudioAiService = class {
 	config;
 	supabase = null;
@@ -65518,7 +65534,7 @@ DO NOT hallucinate sections that are not in the document. Follow the document te
 				estimated_minutes: 45,
 				estimated_duration: "45 mins",
 				learning_objectives: [`Understand ${t.title}`, `Apply principles of ${t.title}`],
-				completion_criteria: `Complete reading and score >= 80% on ${t.title} assessment.`,
+				completion_criteria: `Read ${t.title} and mark the checkpoint complete.`,
 				source_materials: [params.fileName || "Introduction to Robotics.pdf"],
 				source_reference: {
 					section: t.topic_group,
@@ -65526,7 +65542,7 @@ DO NOT hallucinate sections that are not in the document. Follow the document te
 					sourceExcerpt: t.blocks[0]?.content?.slice(0, 200) || ""
 				},
 				blocks: t.blocks,
-				assessment: t.assessment,
+				assessment: NO_END_OF_TOPIC_ASSESSMENT,
 				status: "draft",
 				provenance_type: "grounded_in_materials"
 			}));
@@ -65722,7 +65738,7 @@ Return ONLY a valid JSON object matching this exact schema:
 						sourceExcerpt: n.description || ""
 					},
 					blocks: matchAuth ? matchAuth.blocks : void 0,
-					assessment: matchAuth ? matchAuth.assessment : void 0,
+					assessment: NO_END_OF_TOPIC_ASSESSMENT,
 					node_content: {
 						introduction: n.description || `Introduction to ${n.title}`,
 						core_lesson: `Core instructional content and practical principles for ${n.title}`,
@@ -65780,7 +65796,7 @@ Return ONLY a valid JSON object matching this exact schema:
 		const matchAuth = ROBOTICS_AUTHENTIC_TOPICS.find((t) => t.title.toLowerCase() === params.nodeTitle.toLowerCase() || params.nodeTitle.toLowerCase().includes(t.title.toLowerCase()));
 		if (matchAuth) return {
 			blocks: matchAuth.blocks,
-			assessment: matchAuth.assessment
+			assessment: NO_END_OF_TOPIC_ASSESSMENT
 		};
 		const budget = await this.checkDailyBudget(params.teacherId);
 		if (budget.isBudgetExceeded && !this.config.mockMode) throw new Error(`[ModuleStudio] Daily generation safety budget reached (${budget.dailyRequestsUsed}/${budget.dailyBudget} requests).`);
@@ -65805,39 +65821,11 @@ Return ONLY a valid JSON object matching this exact schema:
 					content: `1. Review the circuit or code requirements for ${params.nodeTitle}.\n2. Build the hardware setup on your breadboard.\n3. Verify operational metrics with your mentor.`
 				}
 			],
-			assessment: {
-				format: "multiple_choice",
-				passing_threshold: 80,
-				questions: [{
-					id: "q-mock-1",
-					type: "multiple_choice",
-					question: `What is the primary engineering purpose of ${params.nodeTitle}?`,
-					options: [
-						{
-							id: "A",
-							text: "To ensure predictable, reliable robotic behavior"
-						},
-						{
-							id: "B",
-							text: "To bypass power regulation"
-						},
-						{
-							id: "C",
-							text: "To increase circuit resistance arbitrarily"
-						},
-						{
-							id: "D",
-							text: "To eliminate the need for ground reference"
-						}
-					],
-					correct_answer: "A",
-					explanation: "Standard engineering practices ensure repeatability and system safety."
-				}]
-			}
+			assessment: NO_END_OF_TOPIC_ASSESSMENT
 		};
 		if (!this.config.apiKey) throw new Error("[ModuleStudio] Missing GEMINI_API_KEY for lesson generation.");
 		const prompt = `You are the RISSE AI Lesson Generator.
-Generate comprehensive, source-grounded lesson content and an end-of-topic assessment for:
+Generate comprehensive, source-grounded lesson content for:
 Topic: ${params.nodeTitle}
 Topic Group: ${params.topicGroup || "General"}
 Course Title: ${params.moduleContext.title}
@@ -65853,10 +65841,10 @@ REQUIREMENTS:
      - For programming topics: 'text', 'code' (syntax-highlighted C++/Python with line-by-line explanation), 'activity'.
    - DO NOT force an identical rigid template.
 
-2. Configurable End-of-Topic Assessment:
-   - Provide 1 to 3 questions. Formats: 'multiple_choice', 'fill_in_the_blanks', or 'short_answer'.
-   - Include deterministic correct answers and detailed explanations.
-   - For fill_in_the_blanks, provide expected_answers and accepted_alternatives.
+2. No graded assessment:
+   - Do NOT write an end-of-topic assessment, quiz, or mastery check.
+   - Students finish a lesson by marking it complete themselves, so there is
+     nothing to score and no question set to produce.
 
 Return ONLY a JSON object:
 {
@@ -65869,23 +65857,7 @@ Return ONLY a JSON object:
       "code_language": "cpp | python | etc (if code)",
       "code_explanation": "string (if code)"
     }
-  ],
-  "assessment": {
-    "format": "multiple_choice | fill_in_the_blanks | short_answer",
-    "passing_threshold": 80,
-    "questions": [
-      {
-        "id": "q-1",
-        "type": "multiple_choice | fill_in_the_blanks | short_answer",
-        "question": "string",
-        "options": [{"id": "A", "text": "string"}],
-        "correct_answer": "A",
-        "expected_answers": ["string"],
-        "accepted_alternatives": ["string"],
-        "explanation": "string"
-      }
-    ]
-  }
+  ]
 }`;
 		const ai = new GoogleGenAI({ apiKey: this.config.apiKey });
 		try {
@@ -65908,11 +65880,7 @@ Return ONLY a JSON object:
 			});
 			return {
 				blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [],
-				assessment: parsed.assessment || {
-					format: "multiple_choice",
-					passing_threshold: 80,
-					questions: []
-				}
+				assessment: NO_END_OF_TOPIC_ASSESSMENT
 			};
 		} catch (e) {
 			console.error("[ModuleStudioAiService] generateLessonContent error:", e);
