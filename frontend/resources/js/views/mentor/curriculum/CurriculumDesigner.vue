@@ -2893,13 +2893,6 @@ watch(isPreviewOpen, open => {
   }
 });
 
-// The button labels change with the editing state ("Edit" ⇄ "Editing On"), which
-// changes how much room the cluster needs.
-watch(editingEnabled, () => nextTick(schedulePreviewToolMeasure));
-
-// Collapsing the student sidebar widens the lesson column: re-place the toolbar.
-watch(mentorSidebarCollapsed, () => schedulePreviewToolMeasure());
-
 function handleKeydown(e) {
   if (e.key === 'Escape') {
     if (isPublishModalOpen.value) isPublishModalOpen.value = false;
@@ -3762,6 +3755,18 @@ function stopPreviewToolTracking() {
   }
   previewToolsFrame = 0;
 }
+
+// Re-place the toolbar when anything it was measured against moves. These
+// watchers must sit below `editingEnabled` and `mentorSidebarCollapsed`: `watch`
+// reads its source immediately, so declaring it above them would touch a `const`
+// before initialisation and take the whole Studio down.
+//
+// The button labels change with the editing state ("Edit" ⇄ "Editing On"), which
+// changes how much room the cluster needs.
+watch(editingEnabled, () => nextTick(schedulePreviewToolMeasure));
+
+// Collapsing the student sidebar widens the lesson column.
+watch(mentorSidebarCollapsed, () => schedulePreviewToolMeasure());
 
 /**
  * Drops every buffered edit and re-renders the saved proposal, WITHOUT leaving

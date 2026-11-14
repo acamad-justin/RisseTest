@@ -130,3 +130,39 @@ test('the preview host is wired to the placement decision', () => {
   // No timers: placement is layout-driven, never a settle-after-a-while guess.
   assert.doesNotMatch(source, /setTimeout\([^)]*measurePreviewTools/);
 });
+
+test('no watcher reads a constant before it is initialised', async () => {
+  // `watch(source, ...)` evaluates `source` immediately, during setup. Declaring a
+  // watcher above the `const` it watches throws "Cannot access 'x' before
+  // initialization" and leaves the whole screen blank — which is exactly what
+  // happened when the toolbar watchers were first added. This sweeps every
+  // component so the class of mistake cannot come back unnoticed.
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      return entry.name.endsWith('.vue') ? [full] : [];
+    });
+
+  const offences: string[] = [];
+  for (const file of walk(new URL('../frontend/resources/js', import.meta.url).pathname)) {
+    const source = readFileSync(file, 'utf8');
+    const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+    if (!script) continue;
+    const body = script[1];
+
+    for (const match of body.matchAll(/^[ \t]*(?:watch|watchEffect)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/gm)) {
+      const name = match[1];
+      const decl = new RegExp(`\\b(?:const|let|var|function)\\s+${name}\\b`).exec(body);
+      if (!decl) continue; // imported or a template-level binding
+      if (decl.index > match.index) {
+        offences.push(`${file}: watch(${name}) runs before ${name} is declared`);
+      }
+    }
+  }
+
+  assert.deepEqual(offences, []);
+});
