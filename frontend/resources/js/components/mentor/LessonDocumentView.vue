@@ -128,6 +128,13 @@
             @mousedown.stop.prevent
             @click.stop="deleteFloat(segment.float)"
           >×</button>
+          <span
+            v-if="editable && !segment.float.locked"
+            class="lesson-float__resize"
+            title="Drag to resize"
+            aria-hidden="true"
+            @pointerdown.stop.prevent="startFloatResize($event, segment.float)"
+          ></span>
           <component :is="renderFloat(segment.float)" />
         </div>
       </template>
@@ -154,6 +161,13 @@
           @mousedown.stop.prevent
           @click.stop="deleteFloat(float)"
         >×</button>
+        <span
+          v-if="editable && !float.locked"
+          class="lesson-float__resize"
+          title="Drag to resize"
+          aria-hidden="true"
+          @pointerdown.stop.prevent="startFloatResize($event, float)"
+        ></span>
         <component :is="renderFloat(float)" />
       </div>
 
@@ -354,20 +368,32 @@ function floatClasses(float) {
 function floatStyle(float) {
   const width = float.width ? `${float.width}px` : '';
   const style = {};
+  const offsetY = float.offsetY ? `${float.offsetY}px` : '';
+  const offsetX = float.offsetX ? `${float.offsetX}px` : '';
+
   if (float.wrap === 'square') {
     style.float = float.side === 'right' ? 'right' : 'left';
     if (width) style.width = width;
     style.maxWidth = '62%';
+    // Offsets are margins, not coordinates: the element stays IN the flow, so
+    // the browser still lays the surrounding line boxes around it.
+    if (offsetY) style.marginTop = offsetY;
+    if (offsetX) {
+      if (float.side === 'right') style.marginRight = offsetX;
+      else style.marginLeft = offsetX;
+    }
   } else if (float.wrap === 'inline') {
     style.display = 'inline-block';
     style.verticalAlign = 'top';
     if (width) style.width = width;
     style.maxWidth = '100%';
+    if (offsetY) style.marginTop = offsetY;
   } else {
     style.display = 'block';
     style.clear = 'both';
     style.width = width || '100%';
     style.maxWidth = '100%';
+    if (offsetY) style.marginTop = offsetY;
   }
   if (float.height) style.minHeight = `${float.height}px`;
   return style;
@@ -600,8 +626,15 @@ function patch(patchValue) {
 function toggleOverlap() {
   const float = selected.value;
   if (!float) return;
-  if (float.overlap) patch({ overlap: false, wrap: float.wrap === 'none' ? 'square' : float.wrap });
-  else patch({ overlap: true, x: float.x ?? 0, y: float.y ?? 0, z: float.z ?? 1 });
+  const width = float.width || measuredWidth(float) || undefined;
+
+  if (float.overlap) {
+    patch({ overlap: false, width, wrap: float.wrap === 'none' ? 'square' : float.wrap });
+  } else {
+    // Carry the rendered size across, otherwise an overlay falls back to its
+    // 320px default and the box appears to shrink when overlap is switched on.
+    patch({ overlap: true, width, x: float.x ?? 0, y: float.y ?? 0, z: float.z ?? 1 });
+  }
 }
 
 function layer(action) {
@@ -625,6 +658,94 @@ function insertElement(kind) {
   applyDoc(next);
   const added = next.floats[next.floats.length - 1];
   if (added) selectedId.value = added.id;
+}
+
+/** Measures an element's rendered width, used when a box has no stored width. */
+function measuredWidth(float) {
+  const canvas = canvasRef.value;
+  const el = canvas?.querySelector(`[data-float-id="${float.id}"]`);
+  const width = el?.getBoundingClientRect?.().width || 0;
+  return width > 0 ? Math.round(width) : 0;
+}
+
+/**
+ * Turns a free drop point into an in-flow position: the nearest paragraph, the
+ * side, and the margins that place the box there. The element never leaves the
+ * document, so surrounding text reflows around it.
+ */
+function flowPlacement(x, y, width) {
+  const canvas = canvasRef.value;
+  const canvasRect = canvas?.getBoundingClientRect?.();
+  const canvasWidth = canvasRect?.width || 0;
+  const nodes = canvas ? Array.from(canvas.querySelectorAll('.lesson-document__node')) : [];
+
+  let anchorIndex = nodes.length;
+  let offsetY = 0;
+  if (nodes.length > 0 && canvasRect) {
+    let best = 0;
+    let bestDistance = Infinity;
+    nodes.forEach((node, index) => {
+      const rect = node.getBoundingClientRect();
+      const top = rect.top - canvasRect.top;
+      const distance = Math.abs(top - y);
+      if (distance < bestDistance) { bestDistance = distance; best = index; }
+    });
+    anchorIndex = best;
+    const rect = nodes[best].getBoundingClientRect();
+    offsetY = Math.max(0, Math.round(y - (rect.top - canvasRect.top)));
+  }
+
+  const side = canvasWidth && x + width / 2 > canvasWidth / 2 ? 'right' : 'left';
+  const offsetX = side === 'right'
+    ? Math.max(0, Math.round(canvasWidth - (x + width)))
+    : Math.max(0, Math.round(x));
+
+  // `top-bottom` cannot give way sideways, so a dragged box becomes a wrapped
+  // float — that is what makes the prose move aside instead of being covered.
+  return { wrap: 'square', anchor: anchorIndex, side, offsetX, offsetY, overlap: false };
+}
+
+/** Drag the corner of an element to resize it. */
+function startFloatResize(event, float) {
+  if (!props.editable || float.locked) return;
+  const el = event.currentTarget?.parentElement;
+  if (!el) return;
+  event.preventDefault();
+
+  const startRect = el.getBoundingClientRect();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startWidth = float.width || Math.round(startRect.width) || 320;
+  const startHeight = float.height || Math.round(startRect.height) || 0;
+  const canvas = canvasRef.value;
+  const canvasWidth = canvas?.getBoundingClientRect?.().width || startWidth;
+  let width = startWidth;
+  let height = startHeight;
+  let moved = false;
+
+  const onMove = moveEvent => {
+    const dx = moveEvent.clientX - startX;
+    const dy = moveEvent.clientY - startY;
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 3) return;
+    moved = true;
+    width = Math.min(Math.max(140, startWidth + dx), Math.max(160, canvasWidth));
+    height = Math.max(48, startHeight + dy);
+    el.style.width = `${width}px`;
+    el.style.maxWidth = '100%';
+    el.style.minHeight = `${height}px`;
+  };
+
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    if (!moved) return;
+    const patchValue = { width: Math.round(width), height: Math.round(height) };
+    applyDoc(updateFloat(localDoc.value, float.id, patchValue));
+    emit('update-float', { id: float.id, patch: patchValue });
+  };
+
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 
 /**
@@ -672,13 +793,33 @@ function startFloatDrag(event, float) {
 
     const dx = upEvent.clientX - startX;
     const dy = upEvent.clientY - startY;
+    const canvasWidth = canvasRect.width || startRect.width;
     // Keep the block inside the document: it must never become unreachable.
-    const maxX = Math.max(0, canvasRect.width - Math.min(startRect.width, canvasRect.width));
+    const maxX = Math.max(0, canvasWidth - Math.min(startRect.width, canvasWidth));
     const x = Math.min(Math.max(0, Math.round(startRect.left - canvasRect.left + dx)), maxX);
     const y = Math.max(0, Math.round(startRect.top - canvasRect.top + dy));
+    // A box that had no explicit width keeps the size it was rendered at.
+    const width = float.width || Math.round(startRect.width) || 320;
 
-    applyDoc(updateFloat(localDoc.value, float.id, { overlap: true, x, y, z: float.z ?? 1 }));
-    emit('update-float', { id: float.id, patch: { overlap: true, x, y } });
+    if (float.overlap) {
+      applyDoc(updateFloat(localDoc.value, float.id, { overlap: true, x, y, width, z: float.z ?? 1 }));
+      emit('update-float', { id: float.id, patch: { overlap: true, x, y, width } });
+      return;
+    }
+
+    /*
+     * In flow: express the drop as a position WITHIN the document instead of
+     * taking the element out of it.
+     *
+     * Absolute coordinates are the only way to be "free", but they also stop the
+     * text from reflowing — which is exactly the complaint: a moved box landed on
+     * top of the prose. A CSS float stays in the flow, so the anchor paragraph,
+     * the side and the offsets let the browser lay the surrounding lines around
+     * the box: move it anywhere and the text gives way.
+     */
+    const placement = flowPlacement(x, y, width);
+    applyDoc(updateFloat(localDoc.value, float.id, { width, ...placement }));
+    emit('update-float', { id: float.id, patch: { width, ...placement } });
   };
 
   window.addEventListener('pointermove', onMove);
@@ -856,6 +997,29 @@ defineExpose({ selectedId });
 .lesson-document--editable .lesson-float:hover .lesson-float__delete,
 .lesson-document--editable .lesson-float.is-selected .lesson-float__delete { opacity: 1; }
 .lesson-float__delete:hover { background: #fef2f2; }
+
+/* Resize corner: a box that was moved must never become un-resizable. */
+.lesson-float__resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid #fdba74;
+  background: #fff;
+  cursor: nwse-resize;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.lesson-document--editable .lesson-float:hover .lesson-float__resize,
+.lesson-document--editable .lesson-float.is-selected .lesson-float__resize { opacity: 1; }
+
+/* Dragging inside a document must not select text or scroll the page. */
+.lesson-document--editable .lesson-float,
+.lesson-document--editable .lesson-float__handle,
+.lesson-document--editable .lesson-float__resize { touch-action: none; }
 .lesson-float__delete:focus-visible { opacity: 1; outline: 2px solid #f59e0b; outline-offset: 1px; }
 
 .lesson-float--wrap-square { margin: 4px 18px 14px 0; }

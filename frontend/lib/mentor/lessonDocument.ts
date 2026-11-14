@@ -80,6 +80,16 @@ export interface LessonFloat {
   y?: number;
   width?: number;
   height?: number;
+  /**
+   * Fine position of an IN-FLOW element, in px, applied as margins.
+   *
+   * This is how a box can be dragged anywhere and still have the text flow
+   * around it: a CSS float only reflows text if it stays in the flow, so its
+   * position is expressed as an offset from its anchor paragraph rather than as
+   * absolute coordinates. `overlap: true` remains the only absolute mode.
+   */
+  offsetX?: number;
+  offsetY?: number;
   wrap: FloatWrap;
   /** Which side a `square` float sits on. */
   side?: 'left' | 'right';
@@ -181,6 +191,10 @@ export function normalizeLessonDocument(input: any): LessonDocument {
     if (typeof raw.locked === 'boolean') float.locked = raw.locked;
     const anchor = toFiniteNumber(raw.anchor);
     if (anchor != null && anchor >= 0) float.anchor = anchor;
+    const offsetX = toFiniteNumber(raw.offsetX);
+    const offsetY = toFiniteNumber(raw.offsetY);
+    if (offsetX != null) float.offsetX = Math.max(0, offsetX);
+    if (offsetY != null) float.offsetY = Math.max(0, offsetY);
     if (raw.semantic && typeof raw.semantic === 'object') {
       float.semantic = {
         ...(raw.semantic.blockId ? { blockId: String(raw.semantic.blockId) } : {}),
@@ -360,12 +374,80 @@ export function hasLessonDocument(checkpoint: any): boolean {
  * none. A checkpoint with legacy blocks is bridged on the fly, so the student
  * renderer has exactly one code path.
  */
+function asParagraph(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  return /<[a-z][\s\S]*>/i.test(text) ? text : `<p>${text}</p>`;
+}
+
+/**
+ * Builds a document from the legacy eight-section `node_content` shape.
+ *
+ * Lessons that never had `blocks` (the "Overview & Introduction" / "Instructional
+ * Guide" cards) fell through to the old section renderer, so their content was
+ * not a document at all — nothing in it could be selected, moved or deleted.
+ * Mapping the sections onto the same document gives those lessons the same
+ * renderer and the same controls, without regenerating anything.
+ */
+export function documentFromNodeContent(nc: any): LessonDocument {
+  if (!nc || typeof nc !== 'object') return emptyLessonDocument();
+
+  const intro = asParagraph(nc.introduction || nc.overview);
+  const core = asParagraph(nc.core_lesson || nc.step_by_step_guide);
+  const flow = [intro, core].filter(Boolean).join('\n');
+  const anchor = flow ? splitFlowHtml(flow).length : 0;
+
+  const floats: LessonFloat[] = [];
+  const push = (kind: FloatKind, html: string, caption?: string) => {
+    const body = asParagraph(html);
+    if (!body) return;
+    floats.push({
+      id: newFloatId(kind),
+      kind,
+      html: body,
+      ...(caption ? { caption } : {}),
+      wrap: 'top-bottom',
+      overlap: false,
+      anchor,
+    });
+  };
+
+  if (Array.isArray(nc.key_concepts)) {
+    for (const concept of nc.key_concepts) {
+      if (!concept) continue;
+      if (typeof concept === 'string') push('callout', concept);
+      else push('callout', concept.explanation || concept.text || '', concept.concept || concept.title);
+    }
+  }
+  for (const example of Array.isArray(nc.examples) ? nc.examples : []) push('example', example);
+  for (const activity of Array.isArray(nc.activities) ? nc.activities : []) push('activity', activity);
+  for (const challenge of Array.isArray(nc.engineering_challenges) ? nc.engineering_challenges : []) push('example', challenge, 'Engineering challenge');
+
+  return normalizeLessonDocument({ version: LESSON_DOCUMENT_VERSION, flow, floats });
+}
+
 export function lessonDocumentOf(checkpoint: any): LessonDocument | null {
   if (!checkpoint || typeof checkpoint !== 'object') return null;
   const authored = checkpoint.document || checkpoint?.node_content?.document;
   if (authored && typeof authored === 'object') return normalizeLessonDocument(authored);
   const blocks = checkpoint.blocks || checkpoint?.node_content?.blocks;
   if (Array.isArray(blocks) && blocks.length > 0) return documentFromBlocks(blocks);
+
+  const nc = checkpoint.node_content;
+  if (nc && typeof nc === 'object') {
+    const hasContent = Boolean(
+      (nc.introduction || '').trim() ||
+      (nc.overview || '').trim() ||
+      (nc.core_lesson || '').trim() ||
+      (nc.step_by_step_guide || '').trim() ||
+      (Array.isArray(nc.key_concepts) && nc.key_concepts.length) ||
+      (Array.isArray(nc.examples) && nc.examples.length)
+    );
+    if (hasContent) {
+      const doc = documentFromNodeContent(nc);
+      if (doc.flow.trim() || doc.floats.length) return doc;
+    }
+  }
   return null;
 }
 
