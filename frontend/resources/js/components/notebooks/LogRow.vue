@@ -74,7 +74,6 @@ function confirmDelete() {
         class="log-row__rename-input"
         type="text"
         aria-label="Rename log"
-        autofocus
         @keydown.enter="submitRename"
         @keydown.esc="showRename = false"
       />

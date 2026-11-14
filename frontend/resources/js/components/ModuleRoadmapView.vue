@@ -165,8 +165,12 @@
           </template>
         </svg>
 
-        <!-- HTML/CSS Bokeh Glowing Orbs (Dynamic based on currentStep) -->
-        <div class="nodes-overlay">
+        <!-- Dynamic Checkpoint Nodes or Empty State -->
+        <div v-if="checkpoints.length === 0" class="no-checkpoints-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #64748b; text-align: center; padding: 24px;">
+          <p style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">No checkpoints available for this module yet.</p>
+          <p style="font-size: 13px; color: #94a3b8;">Check back once your instructor publishes learning path milestones.</p>
+        </div>
+        <div v-else class="nodes-overlay">
           <div 
             v-for="(cp, idx) in checkpoints" 
             :key="cp.id"
@@ -231,11 +235,14 @@
       <!-- Right: Learning Objectives Panel -->
       <aside class="objectives-panel">
         <h3 class="objectives-title">Learning Objectives</h3>
-        <ul class="objectives-list">
+        <ul v-if="objectives.length > 0" class="objectives-list">
           <li v-for="(obj, i) in objectives" :key="i">
             {{ obj }}
           </li>
         </ul>
+        <p v-else class="objectives-empty-note" style="font-size: 13px; color: #64748b; font-style: italic; margin: 4px 0 16px 0;">
+          No learning objectives specified for this module yet.
+        </p>
 
         <!-- Achievement Badge Preview Card -->
         <div class="badge-preview-card" @click="handleBadgeCardClick">
@@ -257,6 +264,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import axios from 'axios';
+import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
+import { useAuthStore } from '../stores/authStore.js';
 
 const props = defineProps({
   moduleData: {
@@ -272,10 +281,20 @@ const props = defineProps({
       badge: 'Speed Learner',
     }),
   },
+  /**
+   * Teacher Preview. The roadmap renders in its real student form so the
+   * presentation is identical, but every student-owned write is suppressed:
+   * no progress POST, no Supabase checkpoint progress, no badges, no stars.
+   */
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['back', 'select-checkpoint', 'award-badge', 'notify', 'update-module']);
 
+const authStore = useAuthStore();
 const isStarred = ref(false);
 const currentStep = ref(props.moduleData.currentStep || 0);
 
@@ -299,15 +318,40 @@ const checkpoints = computed(() => {
     ];
   }
 
-  // Default checkpoints for other modules
-  return [
-    { id: 1, name: 'Robotics Basics', x: 740, y: 840, labelPos: 'right', desc: 'Introduction to foundational mechanical concepts' },
-    { id: 2, name: 'Robot Anatomy', x: 480, y: 720, labelPos: 'left', desc: 'Structural components and motor links' },
-    { id: 3, name: 'Inputs, Output, and Signals', x: 680, y: 500, labelPos: 'top', desc: 'Digital logic and signal routing' },
-    { id: 4, name: 'Microcontrollers', x: 220, y: 400, labelPos: 'bottom', desc: 'Processing sensor inputs and registers' },
-    { id: 5, name: 'Sensing', x: 460, y: 160, labelPos: 'bottom', desc: 'Perception of surrounding environment' },
-    { id: 6, name: 'Action & Actuation', x: 720, y: 120, labelPos: 'bottom', desc: 'Closed-loop motion and motors' },
-  ];
+  // Dynamic checkpoints provided by authoritative database or teacher curriculum
+  if (props.moduleData?.checkpoints && Array.isArray(props.moduleData.checkpoints) && props.moduleData.checkpoints.length > 0) {
+    const total = props.moduleData.checkpoints.length;
+    const predefinedPositions = [
+      { x: 260, y: 840, labelPos: 'right' },
+      { x: 500, y: 720, labelPos: 'left' },
+      { x: 740, y: 580, labelPos: 'top' },
+      { x: 340, y: 440, labelPos: 'bottom' },
+      { x: 620, y: 320, labelPos: 'right' },
+      { x: 440, y: 180, labelPos: 'left' },
+      { x: 760, y: 120, labelPos: 'bottom' },
+      { x: 520, y: 80, labelPos: 'top' },
+    ];
+    return props.moduleData.checkpoints.map((cp, idx) => {
+      const pos = predefinedPositions[idx % predefinedPositions.length];
+      const yDynamic = total > 1 ? Math.round(840 - (idx / (total - 1)) * 700) : 500;
+      return {
+        ...cp,
+        id: cp.id || idx + 1,
+        name: cp.name || cp.title || `Checkpoint ${idx + 1}`,
+        title: cp.title || cp.name || `Checkpoint ${idx + 1}`,
+        x: pos.x,
+        y: yDynamic,
+        labelPos: pos.labelPos,
+        desc: cp.description || cp.desc || '',
+        type: cp.type || 'concept',
+        node_content: cp.node_content || null,
+        raw: cp,
+      };
+    });
+  }
+
+  // Strictly return empty if module has no checkpoints in database
+  return [];
 });
 
 // Constellation lines connecting consecutive checkpoints
@@ -345,16 +389,21 @@ const objectives = computed(() => {
       'Achieve 100% mastery to unlock the Speed Learner achievement badge.',
     ];
   }
-  return [
-    'Identify the main components of a robot and explain their functions.',
-    'Describe how microcontrollers process information.',
-    'Distinguish inputs, outputs, and signals in a robotic system.',
-    'Explain how sensors and actuators enable robots to sense and act.',
-    'Trace the basic flow of information from sensing to action.',
-  ];
+  const rawObjs = props.moduleData?.learningObjectives || props.moduleData?.learning_objectives || props.moduleData?.objectives;
+  if (Array.isArray(rawObjs) && rawObjs.length > 0) {
+    return rawObjs.map(o => String(o).trim()).filter(Boolean);
+  }
+  if (typeof rawObjs === 'string' && rawObjs.trim().length > 0) {
+    return rawObjs.split('\n').map(o => o.trim()).filter(Boolean);
+  }
+  return [];
 });
 
 function toggleStar() {
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — bookmarks are not saved.');
+    return;
+  }
   isStarred.value = !isStarred.value;
   emit('notify', isStarred.value ? 'Module bookmarked!' : 'Bookmark removed');
 }
@@ -367,7 +416,7 @@ function getNodeTooltip(cp, idx) {
 
 function handleNodeClick(cp, idx) {
   if (idx <= currentStep.value) {
-    emit('select-checkpoint', cp.name);
+    emit('select-checkpoint', cp);
   } else {
     emit('notify', `Checkpoint "${cp.name}" is locked. Complete Step ${currentStep.value + 1} first!`);
   }
@@ -376,6 +425,13 @@ function handleNodeClick(cp, idx) {
 // Fast-Track Advance Step Handler
 async function advanceStep() {
   if (currentStep.value >= checkpoints.value.length) return;
+
+  // Teacher Preview: the control keeps its real position and appearance so the
+  // layout matches the student screen, but nothing is recorded.
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — student progress is not recorded.');
+    return;
+  }
 
   const nextStep = currentStep.value + 1;
   currentStep.value = nextStep;
@@ -391,7 +447,7 @@ async function advanceStep() {
 
   emit('notify', `Step ${nextStep} completed! Constellation illuminated.`);
 
-  // Persist to backend
+  // Persist to backend and Supabase
   try {
     await axios.post('/api/modules/progress', {
       moduleId: props.moduleData.id,
@@ -401,6 +457,19 @@ async function advanceStep() {
     console.log('Saved step locally');
   }
 
+  try {
+    const studentId = authStore?.currentUser?.id;
+    if (studentId) {
+      const activeCp = checkpoints.value[Math.min(nextStep - 1, checkpoints.value.length - 1)];
+      await StudentSyncService.recordCheckpointProgress(
+        studentId,
+        props.moduleData.id,
+        String(activeCp?.id || nextStep),
+        progressPercent.value
+      );
+    }
+  } catch (_) {}
+
   // If completed 100%, award badge
   if (isFinished) {
     triggerBadgeCelebration();
@@ -409,6 +478,10 @@ async function advanceStep() {
 
 // Reset Progress Handler
 async function resetProgress() {
+  if (props.readOnly) {
+    emit('notify', 'Preview mode — student progress is not recorded.');
+    return;
+  }
   currentStep.value = 0;
   emit('update-module', {
     currentStep: 0,
@@ -425,10 +498,23 @@ async function resetProgress() {
   } catch (e) {
     console.log('Reset locally');
   }
+
+  try {
+    const studentId = authStore?.currentUser?.id;
+    if (studentId) {
+      await StudentSyncService.recordCheckpointProgress(
+        studentId,
+        props.moduleData.id,
+        String(checkpoints.value[0]?.id || 'start'),
+        0
+      );
+    }
+  } catch (_) {}
 }
 
 // Trigger Badge Modal Celebration
 function triggerBadgeCelebration() {
+  if (props.readOnly) return;
   const badgeTitle = props.moduleData.badge && props.moduleData.badge !== 'No Badge' 
     ? props.moduleData.badge 
     : 'Speed Learner';

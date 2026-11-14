@@ -113,6 +113,22 @@
               <span v-if="!isCollapsed">Profile</span>
             </button>
           </li>
+
+          <!-- Switch to Teacher Studio Button (Teachers & Admins Previewing Student Workspace) -->
+          <li v-if="isMentorOrAdmin" class="risse-nav-item">
+            <button 
+              type="button" 
+              class="risse-nav-btn btn-switch-to-studio" 
+              @click="$emit('switch-to-mentor')"
+              id="nav-switch-to-studio"
+              :title="isCollapsed ? 'Teacher Studio' : undefined"
+            >
+              <svg class="risse-nav-icon text-orange" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+              <span v-if="!isCollapsed">Teacher Studio</span>
+            </button>
+          </li>
         </ul>
       </nav>
     </div>
@@ -192,9 +208,17 @@ const props = defineProps({
     type: Object,
     default: () => null,
   },
+  userRole: {
+    type: String,
+    default: 'student',
+  },
 });
 
-defineEmits(['update:activeTab', 'open-settings', 'logout']);
+defineEmits(['update:activeTab', 'open-settings', 'switch-to-mentor', 'logout']);
+
+const isMentorOrAdmin = computed(() => {
+  return props.userRole === 'teacher' || props.userRole === 'admin' || props.user?.role === 'teacher' || props.user?.role === 'admin';
+});
 
 const isCollapsed = ref(localStorage.getItem('risse_sidebar_collapsed') === 'true');
 

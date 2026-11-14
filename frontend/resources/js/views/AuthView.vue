@@ -192,13 +192,31 @@
             <div class="form-group">
               <div class="label-row">
                 <label for="login-password" class="form-label">Password</label>
-                <button 
-                  type="button" 
-                  class="demo-fill-link"
-                  @click="fillDemo('adriel')"
-                >
-                  Fill Demo Password
-                </button>
+                <div class="demo-fill-links">
+                  <button 
+                    type="button" 
+                    class="demo-fill-link"
+                    @click="fillDemo('demo1')"
+                  >
+                    Demo 1
+                  </button>
+                  <span class="demo-sep">•</span>
+                  <button 
+                    type="button" 
+                    class="demo-fill-link"
+                    @click="fillDemo('demo2')"
+                  >
+                    Demo 2
+                  </button>
+                  <span class="demo-sep">•</span>
+                  <button 
+                    type="button" 
+                    class="demo-fill-link fill-mentor-link"
+                    @click="fillDemo('mentor')"
+                  >
+                    Demo Mentor
+                  </button>
+                </div>
               </div>
               <div class="input-wrapper">
                 <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -268,14 +286,14 @@
                 <button 
                   type="button" 
                   class="demo-card-btn"
-                  @click="handleQuickLogin('usr_adriel')"
-                  id="btn-demo-adriel"
-                  title="Sign in as Adriel Justin Dela Cruz"
+                  @click="handleQuickLogin('demo1')"
+                  id="btn-demo-1"
+                  title="Sign in as Demo Student 1 (demo1@acamad.com)"
                 >
-                  <div class="demo-avatar">A</div>
+                  <div class="demo-avatar">1</div>
                   <div class="demo-meta">
-                    <span class="demo-name">Adriel Dela Cruz</span>
-                    <span class="demo-school">Grade 10 • Rizal Poly</span>
+                    <span class="demo-name">Demo Student 1</span>
+                    <span class="demo-school">demo1@acamad.com</span>
                   </div>
                   <span class="demo-go">→</span>
                 </button>
@@ -283,14 +301,29 @@
                 <button 
                   type="button" 
                   class="demo-card-btn"
-                  @click="handleQuickLogin('usr_sofia')"
-                  id="btn-demo-sofia"
-                  title="Sign in as Sofia Ramirez"
+                  @click="handleQuickLogin('demo2')"
+                  id="btn-demo-2"
+                  title="Sign in as Demo Student 2 (demo2@acamad.com)"
                 >
-                  <div class="demo-avatar avatar-pink">S</div>
+                  <div class="demo-avatar avatar-pink">2</div>
                   <div class="demo-meta">
-                    <span class="demo-name">Sofia Ramirez</span>
-                    <span class="demo-school">Grade 11 • Phil Science</span>
+                    <span class="demo-name">Demo Student 2</span>
+                    <span class="demo-school">demo2@acamad.com</span>
+                  </div>
+                  <span class="demo-go">→</span>
+                </button>
+
+                <button 
+                  type="button" 
+                  class="demo-card-btn demo-card-mentor"
+                  @click="handleQuickLogin('usr_mentor')"
+                  id="btn-demo-mentor"
+                  title="Sign in as Certified Mentor (Prof. Ramon Bautista)"
+                >
+                  <div class="demo-avatar avatar-orange">R</div>
+                  <div class="demo-meta">
+                    <span class="demo-name">Prof. Bautista</span>
+                    <span class="demo-school">Mentor View 🌟</span>
                   </div>
                   <span class="demo-go">→</span>
                 </button>
@@ -494,12 +527,15 @@ function switchMode(mode) {
 }
 
 function fillDemo(who) {
-  if (who === 'adriel') {
-    loginForm.email = 'adriel@risse.edu';
+  if (who === 'mentor') {
+    loginForm.email = 'mentor@risse.edu';
     loginForm.password = 'password123';
+  } else if (who === 'demo2' || who === 'sofia') {
+    loginForm.email = 'demo2@acamad.com';
+    loginForm.password = 'acamaddemo2';
   } else {
-    loginForm.email = 'sofia@risse.edu';
-    loginForm.password = 'password123';
+    loginForm.email = 'demo1@acamad.com';
+    loginForm.password = 'acamaddemo1';
   }
 }
 
@@ -1240,8 +1276,38 @@ async function handleRegisterSubmit() {
 
 .demo-cards-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+}
+
+.demo-fill-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.demo-sep {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.fill-mentor-link {
+  color: #ea580c !important;
+  font-weight: 700;
+}
+
+.demo-avatar.avatar-orange {
+  background: linear-gradient(135deg, #f18701, #7c3aed);
+}
+
+.demo-card-mentor {
+  border-color: #fed7aa;
+  background: #fffaf5;
+}
+
+.demo-card-mentor:hover {
+  border-color: #f18701;
+  background: #fff7ed;
 }
 
 .demo-card-btn {

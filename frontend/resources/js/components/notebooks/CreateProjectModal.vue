@@ -51,7 +51,6 @@ function close() {
               :class="{ 'modal__input--error': nameError }"
               type="text"
               placeholder="e.g. Sumobot v2"
-              autofocus
               @input="nameError = ''"
             />
             <p v-if="nameError" class="modal__error">{{ nameError }}</p>

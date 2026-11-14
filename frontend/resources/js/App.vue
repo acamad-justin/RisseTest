@@ -5,7 +5,17 @@
     @authenticated="handleAuthenticated" 
   />
 
-  <!-- Main Authenticated App Layout -->
+  <!-- Dedicated Mentor Workspace / Teacher Studio Layout -->
+  <MentorWorkspaceLayout 
+    v-else-if="isMentorWorkspace"
+    :current-mentor="authStore.currentUser"
+    :user-role="authStore.userRole"
+    @switch-to-student="switchToStudentWorkspace"
+    @logout="handleLogout"
+    @notify="showToast"
+  />
+
+  <!-- Main Authenticated Student Workspace App Layout -->
   <div 
     v-else
     class="risse-layout" 
@@ -20,9 +30,11 @@
     <Sidebar 
       :active-tab="currentTab === 'DynamicHome' ? 'Home' : currentTab" 
       :user="profileData.user"
+      :user-role="authStore.userRole"
       @update:active-tab="handleTabChange"
       @update:activeTab="handleTabChange"
       @open-settings="handleOpenSettings"
+      @switch-to-mentor="switchToMentorWorkspace"
       @logout="handleLogout"
     />
 
@@ -33,6 +45,9 @@
         v-if="currentTab === 'DynamicHome'" 
         :user-stats="profileData.stats"
         :user-email="authStore.currentUserEmail"
+        :achievements="profileData.achievements"
+        :has-active-activity="hasActiveStudentActivity"
+        @explore="currentTab = 'Modules'"
       />
 
       <!-- STANDARD HOME VIEW (Constellation & Space) -->
@@ -41,6 +56,8 @@
         :is-chat-open="isChatOpen"
         :user-stats="profileData.stats"
         :user-email="authStore.currentUserEmail"
+        :achievements="profileData.achievements"
+        :has-active-activity="hasActiveStudentActivity"
         @open-module="currentTab = 'Modules'"
         @open-mascot-prompt="openChat"
       />
@@ -56,30 +73,28 @@
 
       <!-- MODULES VIEWS FLOW -->
       <template v-else-if="currentTab === 'Modules'">
-        <!-- View 3: Checkpoint Lesson & AI Chatbot -->
-        <CheckpointContentView 
-          v-if="moduleViewState === 'checkpoint'"
-          :checkpoint-title="selectedCheckpoint"
-          :parent-module-name="selectedModule.title"
+        <!--
+          The student module journey. `ModuleExperience` is the SAME component
+          the mentor's Preview mounts — students and teachers share one
+          renderer, one navigation and one presentation. This view simply adds
+          the live (non read-only) persistence handlers.
+        -->
+        <ModuleExperience
+          v-if="moduleViewState === 'roadmap' || moduleViewState === 'checkpoint'"
+          :key="'module-experience-' + (selectedModule?.id || '')"
           :module-data="selectedModule"
-          @back="moduleViewState = 'roadmap'"
-          @notify="showToast"
-          @complete-checkpoint="handleCheckpointCompleted"
-        />
-
-        <!-- View 2: Module Progression Chart / Roadmap Checkpoints -->
-        <ModuleRoadmapView 
-          v-else-if="moduleViewState === 'roadmap'"
-          :module-data="selectedModule"
+          :initial-view="moduleViewState === 'checkpoint' ? 'lesson' : 'roadmap'"
+          :initial-checkpoint="selectedCheckpointObject"
           @back="moduleViewState = 'list'"
-          @select-checkpoint="handleSelectCheckpoint"
-          @award-badge="handleAwardBadge"
           @notify="showToast"
+          @select-checkpoint="handleSelectCheckpoint"
+          @complete-checkpoint="handleCheckpointCompleted"
+          @award-badge="handleAwardBadge"
           @update-module="handleUpdateModule"
         />
 
-        <!-- View 1: Main Modules Page (Currently Enrolled & Scrollable Explore) -->
-        <ModulesPage 
+        <!-- Main Modules Page (Currently Enrolled & Scrollable Explore) -->
+        <ModulesPage
           v-else
           :key="modulesComponentKey"
           @open-module="handleOpenModule"
@@ -153,6 +168,7 @@
         </div>
       </div>
 
+
     </main>
 
     <!-- Seamless Full-Screen Edge-to-Edge Circular Reveal Overlay (Safely guarded against accidental white screen) -->
@@ -203,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 import AuthView from './views/AuthView.vue';
 import Sidebar from './components/Sidebar.vue';
@@ -215,8 +231,7 @@ import NotebookPromptView from './components/notebooks/NotebookPromptView.vue';
 import { useAuthStore } from './stores/authStore.js';
 import { useNotebooksStore } from './stores/notebooksStore.js';
 import ModulesPage from './components/ModulesPage.vue';
-import ModuleRoadmapView from './components/ModuleRoadmapView.vue';
-import CheckpointContentView from './components/CheckpointContentView.vue';
+import ModuleExperience from './components/ModuleExperience.vue';
 import ProfileCard from './components/ProfileCard.vue';
 import StatsSection from './components/StatsSection.vue';
 import SkillsSection from './components/SkillsSection.vue';
@@ -224,12 +239,53 @@ import AchievementsSection from './components/AchievementsSection.vue';
 import FeaturedProjects from './components/FeaturedProjects.vue';
 import EditProfileModal from './components/EditProfileModal.vue';
 import BadgeModal from './components/BadgeModal.vue';
+import MentorWorkspaceLayout from './layouts/MentorWorkspaceLayout.vue';
+import { useMentorStore } from './stores/mentorStore.js';
+import { StudentSyncService, isValidUuid } from '../../lib/student/studentSyncService.ts';
 
 const authStore = useAuthStore();
 const notebooksStore = useNotebooksStore();
+const mentorStore = useMentorStore();
 
 const isAuthenticated = computed(() => Boolean(authStore.isAuthenticated));
 const modulesComponentKey = ref(0);
+
+// ── Workspace State Separation (Student vs Mentor Studio) ──────────────────
+const activeWorkspace = ref('student'); // 'student' | 'mentor' | 'student-preview'
+
+const isMentorWorkspace = computed(() => {
+  // Hard security invariant: Students CANNOT enter Mentor Workspace
+  if (authStore.userRole === 'student') return false;
+
+  // Teachers default to Mentor Workspace unless explicitly previewing student view
+  if (authStore.userRole === 'teacher') {
+    return activeWorkspace.value !== 'student-preview';
+  }
+
+  // Admins can toggle
+  if (authStore.userRole === 'admin') {
+    return activeWorkspace.value === 'mentor';
+  }
+
+  return false;
+});
+
+function switchToMentorWorkspace() {
+  if (authStore.userRole === 'student') {
+    showToast('Access denied: Student accounts cannot access Teacher Studio.');
+    return;
+  }
+  mentorStore.resetModals();
+  activeWorkspace.value = 'mentor';
+  currentTab.value = 'MentorDashboard';
+  window.history.pushState({}, '', '/mentor');
+}
+
+function switchToStudentWorkspace() {
+  activeWorkspace.value = 'student-preview';
+  currentTab.value = 'Home';
+  window.history.pushState({}, '', '/');
+}
 
 // ── URL-Driven Initial Tab Detection ──────────────────────────────────────
 function getInitialTabFromUrl() {
@@ -237,6 +293,9 @@ function getInitialTabFromUrl() {
   const search = window.location.search.toLowerCase();
   if (path.includes('login') || search.includes('login') || path.includes('auth') || search.includes('auth')) {
     return 'Auth';
+  }
+  if (path.includes('mentor') || search.includes('mentor')) {
+    return 'MentorDashboard';
   }
   if (path.includes('dynamic') || search.includes('dynamic')) {
     return 'DynamicHome';
@@ -341,6 +400,7 @@ const selectedModule = ref({
 });
 
 const selectedCheckpoint = ref('Inputs, Output, and Signals');
+const selectedCheckpointObject = ref(null);
 
 const isEditModalOpen = ref(false);
 const selectedBadge = ref(null);
@@ -370,6 +430,8 @@ function updateDocumentTitle() {
     }
   } else if (currentTab.value === 'Profile') {
     title = `${profileData.user?.name || 'Profile'} | Risse`;
+  } else if (currentTab.value === 'MentorDashboard') {
+    title = 'Mentor Dashboard | Risse Robotics Lab';
   }
   document.title = title;
 }
@@ -501,6 +563,30 @@ function persistUserProfile(userOrEmail) {
 const initialProfileState = loadUserProfile(authStore.currentUser);
 const profileData = reactive(initialProfileState);
 
+// Phase 2C: Authoritative database star award synchronization
+async function syncStarAwardsFromDatabase(targetUser = null) {
+  const user = targetUser || authStore.currentUser;
+  const studentId = user?.id;
+  if (!studentId) return;
+
+  try {
+    const liveAwards = await StudentSyncService.getStudentStarAwards(studentId);
+    if (Array.isArray(liveAwards)) {
+      // Keep existing non-mentor awards (e.g. locally unlocked module badges)
+      const existingNonMentor = (profileData.achievements || []).filter(a => !a.isMentorAward && !a.star_id);
+      
+      // Merge live awards from student_star_awards (only active status='awarded' are returned)
+      profileData.achievements = [...existingNonMentor, ...liveAwards];
+      profileData.stats.badges = profileData.achievements.length;
+      
+      // CRITICAL INVARIANT: Mentor star awards celebrate milestones but NEVER
+      // increase verified concept mastery. profileData.stats.mastered remains strictly unchanged.
+    }
+  } catch (err) {
+    console.warn('[App] Failed to sync star awards from database:', err);
+  }
+}
+
 // Strict integrity invariant: Badges count cannot exist without matching achievements.
 // Fresh accounts with 0 achievements and 0 skills heal orphan ghost numbers to 0.
 watch(
@@ -537,7 +623,7 @@ watch(() => authStore.currentUser, async (newUser) => {
           profileData.achievements = serverAchievements;
           profileData.skills = res.data.skills || [];
           profileData.stats.badges = serverAchievements.length;
-          profileData.stats.mastered = res.data.stats.mastered || serverAchievements.length;
+          profileData.stats.mastered = res.data.stats.mastered || 0;
           profileData.stats.projects = res.data.stats.projects || 0;
         } else {
           profileData.stats.badges = 0;
@@ -546,6 +632,8 @@ watch(() => authStore.currentUser, async (newUser) => {
         }
       }
     } catch (_) {}
+
+    await syncStarAwardsFromDatabase(newUser);
   } else {
     notebooksStore.switchUser('');
   }
@@ -558,6 +646,23 @@ const userFirstName = computed(() => {
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 });
 
+const hasActiveStudentActivity = computed(() => {
+  if ((profileData.achievements?.length || 0) > 0) return true;
+  if ((profileData.stats?.mastered || 0) > 0) return true;
+  if ((profileData.skills?.length || 0) > 0) return true;
+  try {
+    const email = authStore.currentUserEmail;
+    if (email) {
+      const raw = localStorage.getItem(`risse_email_${email.replace(/[^a-zA-Z0-9]/g, '_')}_enrolled_modules`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+});
+
 // Watch and persist profile data under the active user's key
 watch(profileData, (val) => {
   try {
@@ -568,10 +673,28 @@ watch(profileData, (val) => {
   } catch (e) {}
 }, { deep: true });
 
+// Cross-Workspace Window Focus Refresh
+function handleWindowFocus() {
+  if (authStore.currentUser && (currentTab.value === 'Home' || currentTab.value === 'DynamicHome')) {
+    syncStarAwardsFromDatabase();
+  }
+}
+
+// Watch tab change to refresh star awards on return to Home and guarantee modal reset
+watch(currentTab, (newTab) => {
+  mentorStore.resetModals();
+  if (newTab === 'Home' || newTab === 'DynamicHome') {
+    syncStarAwardsFromDatabase();
+  }
+});
+
 // Listen for popstate & initialize
 onMounted(async () => {
+  mentorStore.resetModals();
   ensureFavicon();
+  window.addEventListener('focus', handleWindowFocus);
   window.addEventListener('popstate', () => {
+    mentorStore.resetModals();
     isChatOpen.value = false;
     isOverlayVisible.value = false;
     currentTab.value = getInitialTabFromUrl();
@@ -594,7 +717,7 @@ onMounted(async () => {
           profileData.achievements = serverAchievements;
           profileData.skills = res.data.skills || [];
           profileData.stats.badges = serverAchievements.length;
-          profileData.stats.mastered = res.data.stats.mastered || serverAchievements.length;
+          profileData.stats.mastered = res.data.stats.mastered || 0;
           profileData.stats.projects = res.data.stats.projects || 0;
         } else {
           profileData.stats.badges = 0;
@@ -606,6 +729,21 @@ onMounted(async () => {
   } catch (err) {
     // Graceful offline fallback
   }
+
+  await syncStarAwardsFromDatabase(authStore.currentUser);
+
+  // Handle direct module deep-link if requested via query parameter
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const deepModuleId = urlParams.get('moduleId');
+    if (deepModuleId && currentTab.value === 'Modules') {
+      await handleOpenModule({ id: deepModuleId });
+    }
+  } catch (_) {}
+});
+
+onUnmounted(() => {
+  window.removeEventListener('focus', handleWindowFocus);
 });
 
 function handleAuthenticated(user) {
@@ -618,15 +756,34 @@ function handleAuthenticated(user) {
 
   notebooksStore.switchUser(user.email);
   modulesComponentKey.value++;
-  currentTab.value = 'Home';
-  window.history.pushState({}, '', '/');
+  syncStarAwardsFromDatabase(user);
 
-  showToast(`Welcome to your robotics station, ${user.name}!`);
+  if (authStore.userRole === 'teacher') {
+    mentorStore.resetModals();
+    activeWorkspace.value = 'mentor';
+    currentTab.value = 'MentorDashboard';
+    window.history.pushState({}, '', '/mentor');
+    showToast(`Welcome to Teacher Studio, ${user.name}!`);
+  } else {
+    activeWorkspace.value = 'student';
+    currentTab.value = 'Home';
+    window.history.pushState({}, '', '/');
+    showToast(`Welcome to your robotics station, ${user.name}!`);
+  }
 }
 
 function handleLogout() {
+  mentorStore.resetModals();
+  activeWorkspace.value = 'student';
   authStore.logout();
   notebooksStore.switchUser('');
+  // Clear in-memory profile state to prevent stale cache leakage across account switches
+  profileData.achievements = [];
+  profileData.skills = [];
+  profileData.stats.badges = 0;
+  profileData.stats.mastered = 0;
+  profileData.stats.projects = 0;
+  modulesComponentKey.value++;
   currentTab.value = 'Auth';
   window.history.pushState({}, '', '/login');
   showToast('Signed out of station. Your progress, chats, and badges are safely saved.');
@@ -657,7 +814,7 @@ async function handleAwardBadge(payload, maybeSkills = []) {
   if (!exists) {
     profileData.achievements.push(badge);
     profileData.stats.badges = profileData.achievements.length;
-    profileData.stats.mastered = (profileData.stats.mastered || 0) + 1;
+    // INVARIANT: Milestone badges and mentor star awards do not increment cognitive concept mastery
   }
 
   if (Array.isArray(skills)) {
@@ -707,6 +864,19 @@ function syncModuleProgressToLocalStorage(updatedMod) {
 function handleUpdateModule(updatedMod) {
   selectedModule.value = { ...selectedModule.value, ...updatedMod };
   syncModuleProgressToLocalStorage(selectedModule.value);
+
+  // Phase 2C: Synchronize manual checkpoint updates to Supabase student_module_memory
+  const studentId = authStore.currentUser?.id;
+  if (studentId && selectedModule.value?.id) {
+    const prog = selectedModule.value.progressPercent ?? 0;
+    const chk = selectedModule.value.currentCheckpoint || 'Checkpoint';
+    StudentSyncService.recordCheckpointProgress(
+      studentId,
+      selectedModule.value.id,
+      chk,
+      prog
+    ).catch(err => console.warn('[StudentSyncService] Checkpoint sync non-fatal:', err));
+  }
 }
 
 function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
@@ -720,6 +890,18 @@ function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
     progressPercent,
   };
   syncModuleProgressToLocalStorage(selectedModule.value);
+
+  // Phase 2C: Synchronize manual checkpoint progress with Supabase student_module_memory
+  // INVARIANT: Manual completion updates progress but NEVER fabricates verified concept mastery
+  const studentId = authStore.currentUser?.id;
+  if (studentId && selectedModule.value?.id) {
+    StudentSyncService.recordCheckpointProgress(
+      studentId,
+      selectedModule.value.id,
+      checkpoint?.name || checkpoint?.id || 'Checkpoint',
+      progressPercent
+    ).catch(err => console.warn('[StudentSyncService] Checkpoint sync non-fatal:', err));
+  }
 
   if (isLast) {
     showToast(`🏆 Mastered ${selectedModule.value.title}!`);
@@ -756,6 +938,18 @@ function handleCheckpointCompleted({ checkpoint, nextCheckpoint, isLast }) {
 function handleTabChange(tab) {
   isChatOpen.value = false;
   isOverlayVisible.value = false;
+
+  // Access control: Only teachers and admins can view the Mentor Studio
+  if (tab === 'MentorDashboard') {
+    if (authStore.userRole === 'teacher' || authStore.userRole === 'admin') {
+      switchToMentorWorkspace();
+      return;
+    } else {
+      showToast('Access restricted: Only certified mentors and admins may access Teacher Studio.');
+      return;
+    }
+  }
+
   currentTab.value = tab;
   if (tab === 'Notebooks') {
     notebooksViewMode.value = 'overview';
@@ -774,16 +968,65 @@ function handleTabChange(tab) {
     window.history.pushState({}, '', '/modules');
   } else if (tab === 'Profile') {
     window.history.pushState({}, '', '/profile');
+  } else if (tab === 'MentorDashboard') {
+    window.history.pushState({}, '', '/mentor');
   }
 }
 
-function handleOpenModule(module) {
-  selectedModule.value = module;
+// Automatically route teachers and admins to Mentor Studio
+watch(() => authStore.userRole, (newRole) => {
+  if (newRole === 'teacher') {
+    mentorStore.resetModals();
+    activeWorkspace.value = 'mentor';
+  } else if (newRole === 'admin' && activeWorkspace.value !== 'student-preview') {
+    mentorStore.resetModals();
+    activeWorkspace.value = 'mentor';
+  } else if (newRole === 'student') {
+    activeWorkspace.value = 'student';
+    if (currentTab.value === 'MentorDashboard') {
+      currentTab.value = 'Home';
+    }
+  }
+}, { immediate: true });
+
+async function handleOpenModule(module) {
+  if (!module) return;
+  const studentId = authStore.currentUser?.id;
+  const modId = String(module.id || module.courseId);
+
+  // Authoritatively verify student access to this module
+  if (studentId && isValidUuid(studentId)) {
+    try {
+      const access = await StudentSyncService.verifyModuleAccess(studentId, modId);
+      if (!access.authorized) {
+        showToast(access.reason || 'Access denied: Module not found or you are not enrolled.');
+        moduleViewState.value = 'list';
+        modulesComponentKey.value++;
+        return;
+      }
+      if (access.module) {
+        selectedModule.value = { ...module, ...access.module };
+      } else {
+        selectedModule.value = module;
+      }
+    } catch (_) {
+      selectedModule.value = module;
+    }
+  } else {
+    selectedModule.value = module;
+  }
   moduleViewState.value = 'roadmap';
 }
 
-function handleSelectCheckpoint(checkpointName) {
-  selectedCheckpoint.value = checkpointName;
+function handleSelectCheckpoint(cpPayload) {
+  if (typeof cpPayload === 'object' && cpPayload !== null) {
+    selectedCheckpoint.value = cpPayload.name || cpPayload.title || 'Checkpoint';
+    selectedCheckpointObject.value = cpPayload;
+  } else {
+    selectedCheckpoint.value = cpPayload;
+    const found = selectedModule.value?.checkpoints?.find(c => (c.name || c.title) === cpPayload);
+    selectedCheckpointObject.value = found || null;
+  }
   moduleViewState.value = 'checkpoint';
 }
 
