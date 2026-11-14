@@ -108774,6 +108774,10 @@ async function handleChatStream(body, authContext) {
 	const moduleId = body.moduleId || body.module_id || "";
 	const checkpointId = body.checkpointId || body.checkpoint_id || "";
 	const conversationId = body.conversationId || body.conversation_id || "";
+	const topicGroup = body.topicGroup || body.topic_group || "";
+	const checkpointDescription = body.checkpointDescription || body.checkpoint_description || "";
+	const lessonContext = typeof body.lessonContext === "string" ? body.lessonContext.trim() : body.lesson_context || "";
+	const sourceExcerpt = typeof body.sourceExcerpt === "string" ? body.sourceExcerpt.trim() : body.source_excerpt || "";
 	const isNotebook = Boolean(body.isNotebook || body.is_notebook || body.contextType === "notebook" || body.context_type === "notebook" || checkpointTitle === "Project Notebook Log");
 	let learnerMemoryContext = void 0;
 	if (authContext?.user?.id && supabaseUrl && supabaseKey) try {
@@ -108842,7 +108846,22 @@ ${teachingDirectives}
 CURRENT ACTIVE LEARNING MODULE CONTEXT
 ==================================================
 Active Module: ${moduleTitle || "Robotics & Control Systems Lab"}
-Active Checkpoint: ${checkpointTitle || "Robotics Fundamentals & Sensors"}
+Active Learning Node: ${checkpointTitle || "Robotics Fundamentals & Sensors"}
+${checkpointDescription ? `Node Description: ${checkpointDescription}` : ""}
+${topicGroup ? `Topic Group: ${topicGroup}` : ""}
+
+${lessonContext ? `==================================================
+LESSON BACKGROUND CONTEXT (INSTRUCTIONAL MATERIAL)
+==================================================
+The student is viewing this instructional material on the left side of their screen. You have full access to explain its principles, code, formulas, and activities, but NEVER regurgitate or dump this lesson text in bulk:
+${lessonContext}
+==================================================` : ""}
+
+${sourceExcerpt ? `==================================================
+SOURCE DOCUMENT PASSAGES (GROUNDING CONTEXT)
+==================================================
+${sourceExcerpt}
+==================================================` : ""}
 
 ==================================================
 RETRIEVED CONTEXT FROM CURRICULUM
@@ -108871,7 +108890,22 @@ PRIORITY: Socratic mentorship, guided inquiry, scaffolding discovery, and strict
 CURRENT ACTIVE LEARNING MODULE CONTEXT
 ==================================================
 Active Module: ${moduleTitle || "Robotics & Control Systems Lab"}
-Active Checkpoint: ${checkpointTitle || "Robotics Fundamentals & Sensors"}
+Active Learning Node: ${checkpointTitle || "Robotics Fundamentals & Sensors"}
+${checkpointDescription ? `Node Description: ${checkpointDescription}` : ""}
+${topicGroup ? `Topic Group: ${topicGroup}` : ""}
+
+${lessonContext ? `==================================================
+LESSON BACKGROUND CONTEXT (INSTRUCTIONAL MATERIAL)
+==================================================
+The student is viewing this instructional material on the left side of their screen. You have full access to explain its principles, code, formulas, and activities, but NEVER regurgitate or dump this lesson text in bulk:
+${lessonContext}
+==================================================` : ""}
+
+${sourceExcerpt ? `==================================================
+SOURCE DOCUMENT PASSAGES (GROUNDING CONTEXT)
+==================================================
+${sourceExcerpt}
+==================================================` : ""}
 
 ==================================================
 RETRIEVED CONTEXT FROM CURRICULUM
@@ -108883,7 +108917,7 @@ SOCRATIC GUIDANCE INSTRUCTION:
 Follow the Socratic Progression steps provided in the retrieved context above. Lead the student to discover the answers through targeted scaffolding, metric units (mm, cm, m, kg), and finish your response with at most ONE single, focused guiding question.
 `;
 	const streamResult = streamText({
-		model: createGoogleGenerativeAI({ apiKey: googleApiKey })("gemini-3.5-flash-lite"),
+		model: createGoogleGenerativeAI({ apiKey: googleApiKey })(process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite"),
 		system: fullSystemPrompt,
 		messages: modelMessages
 	});

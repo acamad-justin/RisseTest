@@ -202,6 +202,10 @@ async function handleChatStream(body: any, authContext?: AuthContext | null) {
   const moduleId = body.moduleId || body.module_id || '';
   const checkpointId = body.checkpointId || body.checkpoint_id || '';
   const conversationId = body.conversationId || body.conversation_id || '';
+  const topicGroup = body.topicGroup || body.topic_group || '';
+  const checkpointDescription = body.checkpointDescription || body.checkpoint_description || '';
+  const lessonContext = typeof body.lessonContext === 'string' ? body.lessonContext.trim() : (body.lesson_context || '');
+  const sourceExcerpt = typeof body.sourceExcerpt === 'string' ? body.sourceExcerpt.trim() : (body.source_excerpt || '');
   const isNotebook = Boolean(
     body.isNotebook ||
     body.is_notebook ||
@@ -308,7 +312,22 @@ ${teachingDirectives}
 CURRENT ACTIVE LEARNING MODULE CONTEXT
 ==================================================
 Active Module: ${moduleTitle || 'Robotics & Control Systems Lab'}
-Active Checkpoint: ${checkpointTitle || 'Robotics Fundamentals & Sensors'}
+Active Learning Node: ${checkpointTitle || 'Robotics Fundamentals & Sensors'}
+${checkpointDescription ? `Node Description: ${checkpointDescription}` : ''}
+${topicGroup ? `Topic Group: ${topicGroup}` : ''}
+
+${lessonContext ? `==================================================
+LESSON BACKGROUND CONTEXT (INSTRUCTIONAL MATERIAL)
+==================================================
+The student is viewing this instructional material on the left side of their screen. You have full access to explain its principles, code, formulas, and activities, but NEVER regurgitate or dump this lesson text in bulk:
+${lessonContext}
+==================================================` : ''}
+
+${sourceExcerpt ? `==================================================
+SOURCE DOCUMENT PASSAGES (GROUNDING CONTEXT)
+==================================================
+${sourceExcerpt}
+==================================================` : ''}
 
 ==================================================
 RETRIEVED CONTEXT FROM CURRICULUM
@@ -338,7 +357,22 @@ PRIORITY: Socratic mentorship, guided inquiry, scaffolding discovery, and strict
 CURRENT ACTIVE LEARNING MODULE CONTEXT
 ==================================================
 Active Module: ${moduleTitle || 'Robotics & Control Systems Lab'}
-Active Checkpoint: ${checkpointTitle || 'Robotics Fundamentals & Sensors'}
+Active Learning Node: ${checkpointTitle || 'Robotics Fundamentals & Sensors'}
+${checkpointDescription ? `Node Description: ${checkpointDescription}` : ''}
+${topicGroup ? `Topic Group: ${topicGroup}` : ''}
+
+${lessonContext ? `==================================================
+LESSON BACKGROUND CONTEXT (INSTRUCTIONAL MATERIAL)
+==================================================
+The student is viewing this instructional material on the left side of their screen. You have full access to explain its principles, code, formulas, and activities, but NEVER regurgitate or dump this lesson text in bulk:
+${lessonContext}
+==================================================` : ''}
+
+${sourceExcerpt ? `==================================================
+SOURCE DOCUMENT PASSAGES (GROUNDING CONTEXT)
+==================================================
+${sourceExcerpt}
+==================================================` : ''}
 
 ==================================================
 RETRIEVED CONTEXT FROM CURRICULUM
@@ -355,8 +389,10 @@ Follow the Socratic Progression steps provided in the retrieved context above. L
     apiKey: googleApiKey,
   });
 
+  const chatModel = process.env.GEMINI_CHAT_MODEL || 'gemini-3.5-flash-lite';
+
   const streamResult = streamText({
-    model: google('gemini-3.5-flash-lite'),
+    model: google(chatModel),
     system: fullSystemPrompt,
     messages: modelMessages,
   });

@@ -122,44 +122,48 @@ try {
   // non-fatal
 }
 
-// Bundle Vercel Serverless Function api/chat.js from frontend/server/chat.ts
+// Bundle Vercel Serverless Functions api/chat.js & api/module-studio.js
 try {
   const projectRoot = path.resolve(rootDir, '..');
-  const chatSrc = path.join(rootDir, 'server', 'chat.ts');
   const apiOutDir = path.join(projectRoot, 'api');
-  const prebundledChat = path.join(apiOutDir, 'chat.js');
+  const serverFunctions = [
+    { src: path.join(rootDir, 'server', 'chat.ts'), outName: 'chat.js' },
+    { src: path.join(rootDir, 'server', 'moduleStudioApi.ts'), outName: 'module-studio.js' },
+  ];
 
-  if (process.env.VERCEL && fs.existsSync(prebundledChat)) {
-    console.log('[build-dist] ✓ Using committed pre-bundled serverless function api/chat.js on Vercel.');
-  } else if (fs.existsSync(chatSrc)) {
-    const { build: viteBuild } = await import('vite');
-    await viteBuild({
-      root: projectRoot,
-      ssr: {
-        noExternal: true,
-      },
-      build: {
-        ssr: chatSrc,
-        outDir: apiOutDir,
-        emptyOutDir: false,
-        rollupOptions: {
-          output: {
-            format: 'es',
-            entryFileNames: 'chat.js',
-            inlineDynamicImports: true,
+  for (const fn of serverFunctions) {
+    const prebundled = path.join(apiOutDir, fn.outName);
+    if (process.env.VERCEL && fs.existsSync(prebundled)) {
+      console.log(`[build-dist] ✓ Using committed pre-bundled serverless function api/${fn.outName} on Vercel.`);
+    } else if (fs.existsSync(fn.src)) {
+      const { build: viteBuild } = await import('vite');
+      await viteBuild({
+        root: projectRoot,
+        ssr: {
+          noExternal: true,
+        },
+        build: {
+          ssr: fn.src,
+          outDir: apiOutDir,
+          emptyOutDir: false,
+          rollupOptions: {
+            output: {
+              format: 'es',
+              entryFileNames: fn.outName,
+              inlineDynamicImports: true,
+            },
           },
         },
-      },
-    });
-    console.log('[build-dist] ✓ Successfully bundled serverless function api/chat.js.');
+      });
+      console.log(`[build-dist] ✓ Successfully bundled serverless function api/${fn.outName}.`);
 
-    // Mirror chat.js to frontend/api/chat.js if running in frontend context
-    const frontendApiChat = path.join(rootDir, 'api', 'chat.js');
-    if (fs.existsSync(prebundledChat) && (!fs.existsSync(frontendApiChat) || fs.statSync(prebundledChat).mtimeMs > fs.statSync(frontendApiChat).mtimeMs)) {
-      fs.copyFileSync(prebundledChat, frontendApiChat);
-      console.log('[build-dist] ✓ Mirrored prebundled function to frontend/api/chat.js.');
+      const frontendApiFile = path.join(rootDir, 'api', fn.outName);
+      if (fs.existsSync(prebundled) && (!fs.existsSync(frontendApiFile) || fs.statSync(prebundled).mtimeMs > fs.statSync(frontendApiFile).mtimeMs)) {
+        fs.copyFileSync(prebundled, frontendApiFile);
+        console.log(`[build-dist] ✓ Mirrored prebundled function to frontend/api/${fn.outName}.`);
+      }
     }
   }
 } catch (e) {
-  console.error('[build-dist] Error bundling serverless function api/chat.js:', e);
+  console.error('[build-dist] Error bundling serverless functions:', e);
 }

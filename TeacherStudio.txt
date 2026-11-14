@@ -1,0 +1,130 @@
+
+RISSE ECOSYSTEM
+
+
+TWO EXPERIENCES, ONE LEARNING ECOSYSTEM
+
+
+RISSE should have two connected experiences: 
+
+Teacher Studio: Create, Manage, Analyze
+Teachers upload syllabi, create modules, customize activities, manage sections, and monitor student progress. 
+
+Student Learning Space: Explore, Learn, Build 
+Students follow learning missions, complete interactive activities, ask RISSE for guidance, and demonstrate mastery. 
+
+Both experiences will use the same underlying module and activity data. 
+The teacher creates the learning experience. The student experiences it.
+
+
+
+
+TEACHER WORKFLOW: From Syllabus to interactive course
+
+Step 1 - The teacher enters Teacher Studio and clicks Create Course. 
+The teacher provides basic information:
+Course title: Introduction to Robotics
+Description: Fundamental principles of robotics and engineering.
+Academic level: College / High School
+Subject: Robotics
+Sections: Section A, Section B, Section C
+Optional: Semester, school year, learning outcomes.
+The teacher doesn't need to manually create 12 modules or 50 checkpoints.
+RISSE will help generate the initial course structure.
+
+
+
+Step 2 -  Upload learning materials 
+The teacher uploads:
+PDF
+Powerpoint
+Word Documents
+Syllabus
+Lecture Notes
+Supplementary Reading Materials
+RISSE then processes the documents. BUT, Uploading a file should not immediately publish an AI-generated course. 
+Instead, it will begin a curriculum transformation process. 
+
+Step 3 - RISSE's AI Curriculum Designer 
+
+RISSE reads the uploaded material and generates a proposed course structure. 
+
+For example, imagine the teacher uploads a 40-slide PowerPoint about DC motors. RISSE extracts the material and proposes: 
+
+RISSE Curriculum Designer
+Draft generated
+SOURCE: DC_MOTORS_LECTURE.PPTX
+
+Module 03: DC Motors and Motion Control
+Learning objectives
+Explain the operating principle of DC motors.
+Identify major motor components.
+Distinguish between speed and torque.
+Explain how voltage and load affect motor behavior.
+Proposed learning nodes
+Understanding DC Motors
+Concept introduction and interactive component exploration.
+Torque and Rotational Speed
+Interactive prediction and engineering scenario.
+Motor Control
+Explore how a motor responds to different control inputs.
+
+Engineering Challenge
+Select a motor for a specified robotics application.
+Knowledge Assessment
+Independent assessment of the module's learning objectives.
+
+The AI should also identify:
+Important concepts.
+Prerequisite relationships.
+Definitions and terminology.
+Examples and case studies.
+Possible assessment questions.
+Practical applications.
+Concepts that need clarification.
+Strictly, the generated course should be grounded in the uploaded materials. 
+RISSE must not silently invent additional curriculum content and present it as the teacher's syllabus.
+If the source material lacks enough information for an activity, RISSE should flag that rather than fabricate a lesson.
+
+3. How does RISSE transform documents into interactive activities? 
+Teacher uploads materials (PDF · PPTX · DOCX · Notes)
+|
+Document Extraction (Text · Images · Diagrams · Tables · Learning objectives) 
+|
+RISSE Instructional Designer (Organizes concepts and designs learning activities )
+|
+Generated Learning Components (Micro-lessons · Challenges · Interactions · Assessments)
+|
+Teacher Reviews and Approves (Edit · Regenerate · Rearrange · Publish)
+
+	4. Teacher review studio: Let teachers remain in control 
+
+After generation, the teacher enters an editor where they can inspect each learning node. 
+
+Each node could contain:
+Learning objectives.
+Lesson content.
+Interactive activity.
+Engineering challenge.
+Assessment.
+Supporting resources.
+Estimated duration.
+Teachers should be able to:
+Edit generated text.
+Replace an activity.
+Regenerate an activity.
+Add their own questions.
+Upload additional supporting files.
+Reorder nodes.
+Change prerequisites.
+Remove unnecessary activities.
+Preview the student experience.
+The teacher should be able to create one course and assign it to multiple sections. 
+
+The teacher can switch between sections or view the combined class.
+Importantly, a single course should be reusable across sections, while each section maintains its own enrollment and progress.
+
+
+
+
+

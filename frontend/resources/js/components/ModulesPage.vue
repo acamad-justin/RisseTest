@@ -5,6 +5,61 @@
       <h1 class="modules-title">Currently Enrolled</h1>
       
       <div class="modules-header-actions">
+        <!-- Student Notifications Dropdown -->
+        <div class="student-notif-wrapper" ref="studentNotifDropdownRef">
+          <button 
+            type="button" 
+            class="btn-icon-notif" 
+            @click="toggleStudentNotifs"
+            title="Notifications"
+            aria-label="Notifications"
+            id="btn-student-notifications"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <span v-if="unreadStudentNotifsCount > 0" class="student-notif-badge">
+              {{ unreadStudentNotifsCount }}
+            </span>
+          </button>
+
+          <!-- Notifications Dropdown Popover -->
+          <transition name="dropdown-fade">
+            <div v-if="isStudentNotifsOpen" class="student-notif-popover" @click.stop>
+              <div class="student-notif-header">
+                <span class="student-notif-header-title">Notifications</span>
+                <span v-if="unreadStudentNotifsCount > 0" class="student-notif-unread-tag">
+                  {{ unreadStudentNotifsCount }} new
+                </span>
+              </div>
+              <div v-if="studentNotifications.length === 0" class="student-notif-empty">
+                <span>No new notifications</span>
+              </div>
+              <div v-else class="student-notif-list">
+                <div 
+                  v-for="notif in studentNotifications" 
+                  :key="notif.id" 
+                  class="student-notif-item"
+                  :class="{ 'is-unread': !notif.is_read }"
+                  @click="handleStudentNotifClick(notif)"
+                >
+                  <div class="notif-dot-col">
+                    <span v-if="notif.type === 'unenrollment_approved'" class="notif-approved-icon">✓</span>
+                    <span v-else-if="notif.type === 'unenrollment_rejected'" class="notif-rejected-icon">✕</span>
+                    <span v-else>🔔</span>
+                  </div>
+                  <div class="notif-body-col">
+                    <span class="notif-headline">{{ notif.title }}</span>
+                    <p class="notif-text">{{ notif.message }}</p>
+                    <span class="notif-date">{{ formatNotifTime(notif.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </div>
+
         <!-- Favorites Filter Button -->
         <button 
           type="button" 
@@ -57,8 +112,7 @@
           <div class="empty-enrolled-content">
             <h3 class="empty-enrolled-title">No Enrolled Modules Yet</h3>
             <p class="empty-enrolled-text">
-              Browse the catalog below and click <strong>Enroll</strong> on the 
-              <span class="highlight-orange">Test Module</span> to test instant progress from 0%, dynamic star chart illumination, and achievement unlocks!
+              Browse the catalog below and click <strong>Enroll</strong> on any available module to begin learning, track checkpoints, and unlock achievements!
             </p>
           </div>
         </div>
@@ -85,7 +139,12 @@
             >
               <div class="card-content-top">
                 <div class="card-title-row">
-                  <h3 class="enrolled-card-title">{{ enrolled.title }}</h3>
+                  <div class="card-title-badges-col">
+                    <span v-if="enrolled.isPendingUnenrollment" class="badge-pending-pill">
+                      ⏳ Pending Approval
+                    </span>
+                    <h3 class="enrolled-card-title">{{ enrolled.title }}</h3>
+                  </div>
                   
                   <!-- Kebab menu button -->
                   <div class="card-kebab-wrapper" @click.stop>
@@ -113,9 +172,18 @@
                         @click.stop
                       >
                         <button 
+                          v-if="enrolled.isPendingUnenrollment"
+                          type="button" 
+                          class="dropdown-item-disabled"
+                          disabled
+                        >
+                          <span>⏳ Unenroll Pending</span>
+                        </button>
+                        <button 
+                          v-else
                           type="button" 
                           class="dropdown-item-unenroll" 
-                          @click.stop="handleUnenroll(enrolled)"
+                          @click.stop="promptUnenroll(enrolled)"
                           :id="`btn-unenroll-${enrolled.id}`"
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -182,7 +250,6 @@
             type="search"
             class="explore-search-input"
             placeholder="Search modules..."
-            autofocus
           />
         </div>
 
@@ -220,30 +287,130 @@
       </div>
     </div>
 
+    <!-- Catalog Filter Tabs (All, Assigned Class Courses, Foundation) -->
+    <div class="catalog-filter-bar">
+      <button 
+        type="button" 
+        class="filter-pill-btn" 
+        :class="{ 'is-active': activeCatalogFilter === 'all' }"
+        @click="activeCatalogFilter = 'all'"
+      >
+        All Modules
+      </button>
+      <button 
+        type="button" 
+        class="filter-pill-btn" 
+        :class="{ 'is-active': activeCatalogFilter === 'class-courses' }"
+        @click="activeCatalogFilter = 'class-courses'"
+      >
+        Assigned Class Courses ({{ publishedClassModules.length }})
+      </button>
+      <button 
+        type="button" 
+        class="filter-pill-btn" 
+        :class="{ 'is-active': activeCatalogFilter === 'foundation' }"
+        @click="activeCatalogFilter = 'foundation'"
+      >
+        Foundation Curriculum
+      </button>
+    </div>
+
+    <!-- Empty State for Assigned Class Courses -->
+    <div v-if="activeCatalogFilter === 'class-courses' && publishedClassModules.length === 0" class="no-assigned-courses-card">
+      <div class="empty-badge">✦</div>
+      <div class="empty-info">
+        <h4 class="empty-title">No courses assigned yet</h4>
+        <p class="empty-desc">Your mentor's published courses will appear here once you are enrolled.</p>
+      </div>
+    </div>
+
     <!-- THE ONLY SCROLLABLE AREA: Explore Modules List -->
     <div class="explore-scroll-container" id="explore-scroll-area">
       <div class="explore-modules-list">
+        <!-- Loading State -->
+        <div v-if="isLoadingModules" class="modules-loading-card" id="modules-loading-indicator">
+          <div class="modules-spinner"></div>
+          <p class="modules-loading-text">Loading curriculum modules from database...</p>
+        </div>
+
+        <!-- Query Error State with Retry Button -->
+        <div v-else-if="loadError" class="modules-error-card" id="modules-error-indicator">
+          <div class="modules-error-icon">⚠️</div>
+          <div class="modules-error-body">
+            <h4 class="modules-error-title">Unable to Load Modules</h4>
+            <p class="modules-error-msg">{{ loadError }}</p>
+          </div>
+          <button type="button" class="btn-retry-load" id="btn-retry-modules" @click="loadModules">
+            Retry
+          </button>
+        </div>
+
+        <!-- Clean Database Empty State (When database legitimately returns 0 modules) -->
+        <div v-else-if="modulesList.length === 0" class="no-modules-placeholder clean-empty-state" id="empty-modules-catalog">
+          <div class="clean-empty-icon">✦</div>
+          <h4 class="clean-empty-title">No learning modules are available yet</h4>
+          <p class="clean-empty-desc">
+            {{
+              activeCatalogFilter === 'class-courses'
+                ? 'Your teacher has not published any courses for your class section yet.'
+                : activeCatalogFilter === 'foundation'
+                ? 'No platform curriculum modules are currently published in the database.'
+                : 'Your teacher has not published any courses for your class yet, and no platform curriculum modules are currently available.'
+            }}
+          </p>
+        </div>
+
+        <!-- Filter/Search Empty State (When modules exist in DB, but filtered out) -->
+        <div v-else-if="displayedModules.length === 0" class="no-modules-placeholder">
+          <p>No favorited or matching modules found.</p>
+          <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false; searchQuery = ''">Show All Modules</button>
+        </div>
+
+        <!-- Real Database-Driven Module Cards -->
         <article 
+          v-else
           v-for="module in displayedModules" 
           :key="module.id" 
           class="module-card-item"
+          :class="{ 'is-expanded': expandedId === module.id }"
           :id="`module-item-${module.id}`"
         >
           <div class="module-thumbnail-box">
-            <div class="thumbnail-inner"></div>
-          </div>
-
-          <div class="module-info-col">
-            <h4 class="module-title-text">{{ module.title }}</h4>
-            <div class="module-meta-row">
-              <span class="level-pill" :class="`pill-${module.levelColor}`">{{ module.level }}</span>
-              <span class="steps-text">{{ module.steps }}</span>
+            <div class="thumbnail-inner">
+              <span class="thumb-star-icon">✦</span>
             </div>
           </div>
 
+          <div class="module-info-col">
+            <div class="module-badges-row">
+              <span class="level-pill" :class="`pill-${module.levelColor}`">{{ module.level }}</span>
+              <span v-if="module.isTeacherAssigned" class="badge-type-pill pill-assigned">
+                Teacher Assigned
+              </span>
+              <span v-else-if="module.enrollmentType === 'self_paced'" class="badge-type-pill pill-self-paced">
+                Self-Paced
+              </span>
+              <span v-else class="badge-type-pill pill-curriculum">
+                Curriculum
+              </span>
+              <span v-if="module.isPendingUnenrollment" class="badge-type-pill pill-pending-approval">
+                Pending Approval
+              </span>
+            </div>
+
+            <h3 class="module-title-text" :title="module.title">{{ module.title }}</h3>
+            <p v-if="module.courseTitle && module.courseTitle !== module.title" class="module-course-subtitle">
+              Course: {{ module.courseTitle }}
+            </p>
+            <p v-if="module.description" class="module-desc-text">
+              {{ module.description }}
+            </p>
+          </div>
+
           <div class="module-skills-col">
-            <p class="acquired-skills-text">Skills Acquired: {{ module.skillsAcquired }}</p>
-            <p class="badge-target-text">Badge: {{ module.badge }}</p>
+            <p class="acquired-skills-text"><strong class="skills-lead">Skills:</strong> {{ module.skillsAcquired }}</p>
+            <p class="badge-target-text"><strong class="badge-lead">Badge:</strong> {{ module.badge }}</p>
+            <span class="steps-chip">{{ module.steps }}</span>
           </div>
 
           <div class="module-actions-col">
@@ -251,8 +418,9 @@
               type="button" 
               class="module-expand-btn" 
               @click="toggleExpand(module.id)"
-              title="Expand Details"
-              aria-label="Expand Details"
+              :title="expandedId === module.id ? 'Collapse Details' : 'Expand Details'"
+              :aria-label="expandedId === module.id ? 'Collapse Details' : 'Expand Details'"
+              :class="{ 'is-expanded': expandedId === module.id }"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"/>
@@ -277,7 +445,11 @@
               <button 
                 type="button" 
                 class="btn-enroll-module" 
-                :class="{ 'btn-start': module.actionText === 'Start' }"
+                :class="{ 
+                  'btn-start': module.actionText === 'Start',
+                  'btn-resume': module.actionText === 'Resume',
+                  'btn-review': module.actionText === 'Review'
+                }"
                 @click="handleModuleClick(module)"
                 :id="`btn-enroll-${module.id}`"
               >
@@ -285,12 +457,104 @@
               </button>
             </div>
           </div>
-        </article>
 
-        <div v-if="displayedModules.length === 0" class="no-modules-placeholder">
-          <p>No favorited or matching modules found.</p>
-          <button type="button" class="btn-clear-filter" @click="showOnlyFavorites = false; searchQuery = ''">Show All Modules</button>
+          <!-- Expandable drawer showing checkpoints -->
+          <div v-if="expandedId === module.id" class="module-drawer-panel">
+            <h5 class="drawer-title">Module Checkpoints & Syllabus</h5>
+            <div v-if="module.checkpoints && module.checkpoints.length > 0" class="drawer-checkpoints-list">
+              <div 
+                v-for="(cp, cIdx) in module.checkpoints" 
+                :key="cp.id || cIdx" 
+                class="drawer-cp-item"
+              >
+                <span class="cp-num-pill">{{ cIdx + 1 }}</span>
+                <div class="cp-detail-col">
+                  <span class="cp-name">{{ cp.title || cp.name }}</span>
+                  <span class="cp-type-badge">{{ cp.type }}</span>
+                  <p v-if="cp.description" class="cp-desc">{{ cp.description }}</p>
+                </div>
+              </div>
+            </div>
+            <p v-else class="drawer-no-cp">Self-paced conceptual module with integrated guided checkpoints.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- Self-Paced Unenrollment Confirmation Modal -->
+    <div v-if="showSelfPacedUnenrollModal" class="modal-backdrop" @click="closeUnenrollModals">
+      <div class="modal-card" @click.stop>
+        <header class="modal-header">
+          <h3 class="modal-title">Unenroll from Course</h3>
+          <button type="button" class="btn-close-modal" @click="closeUnenrollModals">&times;</button>
+        </header>
+        <div class="modal-body">
+          <p class="modal-desc">
+            Are you sure you want to unenroll from <strong>{{ targetUnenrollModule?.title }}</strong>?
+          </p>
+          <div class="modal-info-box">
+            <span>ℹ Your learning progress and completed checkpoints will be safely preserved in your academic record. You can re-enroll at any time.</span>
+          </div>
         </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn-modal-cancel" @click="closeUnenrollModals" :disabled="isSubmittingUnenroll">
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="btn-modal-danger" 
+            :disabled="isSubmittingUnenroll"
+            @click="confirmSelfPacedUnenroll"
+            id="btn-confirm-self-paced-unenroll"
+          >
+            <span v-if="isSubmittingUnenroll">Unenrolling...</span>
+            <span v-else>Confirm Unenroll</span>
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Curriculum Unenrollment Request Modal -->
+    <div v-if="showCurriculumUnenrollModal" class="modal-backdrop" @click="closeUnenrollModals">
+      <div class="modal-card" @click.stop>
+        <header class="modal-header">
+          <h3 class="modal-title">Request Course Unenrollment</h3>
+          <button type="button" class="btn-close-modal" @click="closeUnenrollModals">&times;</button>
+        </header>
+        <div class="modal-body">
+          <p class="modal-desc">
+            <strong>{{ targetUnenrollModule?.title }}</strong> is a teacher-assigned curriculum course. Unenrollment requires review and approval from your instructor.
+          </p>
+          <div class="modal-info-box">
+            <span>ℹ While your request is pending, you will retain full access to this course and its materials.</span>
+          </div>
+
+          <div class="form-group" style="margin-top: 14px;">
+            <label class="form-label" for="unenroll-reason">Reason for Dropping (Optional)</label>
+            <textarea 
+              id="unenroll-reason"
+              v-model="unenrollReason" 
+              class="form-textarea" 
+              rows="3" 
+              placeholder="e.g. Schedule conflict with robotics lab or transferring to another section."
+            ></textarea>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn-modal-cancel" @click="closeUnenrollModals" :disabled="isSubmittingUnenroll">
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="btn-modal-primary" 
+            :disabled="isSubmittingUnenroll"
+            @click="submitCurriculumUnenrollRequest"
+            id="btn-submit-curriculum-unenroll"
+          >
+            <span v-if="isSubmittingUnenroll">Submitting...</span>
+            <span v-else>Submit Request</span>
+          </button>
+        </footer>
       </div>
     </div>
 
@@ -386,6 +650,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore.js';
+import { StudentSyncService } from '../../../lib/student/studentSyncService.ts';
+import { supabase } from '../lib/supabaseClient.js';
 
 const emit = defineEmits(['notify', 'open-module']);
 const authStore = useAuthStore();
@@ -429,31 +695,15 @@ function getActiveUserEmail() {
   return '';
 }
 
-function getEnrolledStorageKey(email = getActiveUserEmail()) {
-  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
-  return safe ? `risse_email_${safe}_enrolled_modules` : 'risse_enrolled_modules';
-}
+const isValidUuid = (val) =>
+  typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
-function getInitialEnrolled() {
-  const email = getActiveUserEmail();
-  if (!email) return [];
-  try {
-    const userKey = getEnrolledStorageKey(email);
-    let raw = localStorage.getItem(userKey);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return [];
-}
-
-const enrolledList = ref(getInitialEnrolled());
-
-watch(enrolledList, (val) => {
-  const email = getActiveUserEmail();
-  if (!email) return;
-  try {
-    localStorage.setItem(getEnrolledStorageKey(email), JSON.stringify(val));
-  } catch (e) {}
-}, { deep: true });
+const isLoadingModules = ref(false);
+const loadError = ref(null);
+const enrolledList = ref([]);
+const modulesList = ref([]);
+const publishedClassModules = ref([]);
+const foundationCurriculumModules = ref([]);
 
 const filteredAllEnrolled = computed(() => {
   if (enrolledFilter.value === 'in-progress') {
@@ -490,6 +740,40 @@ function prevCarouselPage() {
   }
 }
 
+// Unenroll modals state
+const showSelfPacedUnenrollModal = ref(false);
+const showCurriculumUnenrollModal = ref(false);
+const targetUnenrollModule = ref(null);
+const unenrollReason = ref('');
+const isSubmittingUnenroll = ref(false);
+
+// Student notifications state
+const isStudentNotifsOpen = ref(false);
+const studentNotifDropdownRef = ref(null);
+const studentNotifications = ref([]);
+const unreadStudentNotifsCount = computed(() => (studentNotifications.value || []).filter(n => !n.is_read).length);
+
+function toggleStudentNotifs() {
+  isStudentNotifsOpen.value = !isStudentNotifsOpen.value;
+}
+
+async function handleStudentNotifClick(notif) {
+  if (!notif.is_read) {
+    await StudentSyncService.markNotificationRead(notif.id);
+    notif.is_read = true;
+  }
+}
+
+function formatNotifTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return isoStr;
+  }
+}
+
 function toggleCardMenu(id) {
   activeCardMenuId.value = activeCardMenuId.value === id ? null : id;
 }
@@ -498,148 +782,104 @@ function closeCardMenu() {
   activeCardMenuId.value = null;
 }
 
-async function handleUnenroll(enrolled) {
-  const targetId = enrolled.id;
-  const targetTitle = enrolled.title;
+function closePopovers(e) {
+  closeCardMenu();
+  if (studentNotifDropdownRef.value && !studentNotifDropdownRef.value.contains(e.target)) {
+    isStudentNotifsOpen.value = false;
+  }
+}
+
+function promptUnenroll(enrolled) {
   activeCardMenuId.value = null;
-
-  enrolledList.value = enrolledList.value.filter(e => e.id !== targetId);
-
-  if (currentEnrolledPage.value >= totalPages.value) {
-    currentEnrolledPage.value = Math.max(0, totalPages.value - 1);
+  targetUnenrollModule.value = enrolled;
+  unenrollReason.value = '';
+  if (enrolled.enrollmentType === 'self_paced') {
+    showSelfPacedUnenrollModal.value = true;
+  } else {
+    showCurriculumUnenrollModal.value = true;
   }
-
-  const modInExplore = modulesList.value.find(m => m.id === targetId || m.title === targetTitle);
-  if (modInExplore) {
-    modInExplore.actionText = 'Enroll';
-    modInExplore.status = 'unregistered';
-  }
-
-  emit('notify', `Unenrolled from "${targetTitle}".`);
-
-  try {
-    await axios.post('/api/modules/unenroll', { moduleId: targetId });
-  } catch (e) {}
 }
 
-const BASE_EXPLORE_MODULES = [
-  {
-    id: 999,
-    title: 'Test Module: Quick Progression',
-    level: 'Beginner',
-    levelColor: 'yellow',
-    steps: '3 Learning Steps',
-    skillsAcquired: 'Rapid Prototyping, Checkpoint Progression, Star Chart Navigation',
-    badge: 'Speed Learner',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-    description: 'Fast-track test module to test enrolling, advancing checkpoints from 0, dynamic star chart states, and achievement unlocks.',
-  },
-  {
-    id: 101,
-    title: 'Sensors & Perception',
-    level: 'Beginner',
-    levelColor: 'yellow',
-    steps: '3 Learning Steps',
-    skillsAcquired: 'Component Identification, Circuit Assembly, Electrical Signals',
-    badge: 'Sensor Scout',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 102,
-    title: 'Programming Robot Behavior',
-    level: 'Intermediate',
-    levelColor: 'pink',
-    steps: '5 Learning Steps',
-    skillsAcquired: 'Programming Logic, Conditional Behavior, Sensor-Driven Motion',
-    badge: 'Behavior Programmer',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 103,
-    title: 'Robotics Fundamentals',
-    level: 'Beginner',
-    levelColor: 'yellow',
-    steps: '4 Learning Steps',
-    skillsAcquired: 'Circuit Fundamentals, Motor Control, Power Management',
-    badge: 'Motion Builder',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 104,
-    title: 'Sumobot Design & Competition',
-    level: 'Advanced',
-    levelColor: 'purple',
-    steps: '6 Learning Steps',
-    skillsAcquired: 'Mechanical Design, Strategic Programming, Performance Tuning',
-    badge: 'Sumo Champion',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 105,
-    title: 'Embedded Microcontroller Architecture',
-    level: 'Intermediate',
-    levelColor: 'pink',
-    steps: '4 Learning Steps',
-    skillsAcquired: 'Hardware Registers, SPI/I2C Communication, Clock Timers',
-    badge: 'System Architect',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-  {
-    id: 106,
-    title: 'Real-Time Motion Trajectory Planning',
-    level: 'Advanced',
-    levelColor: 'purple',
-    steps: '5 Learning Steps',
-    skillsAcquired: 'Kinematics Modeling, PID Vector Loops, Actuator Sync',
-    badge: 'Motion Master',
-    status: 'unregistered',
-    isStarred: false,
-    actionText: 'Enroll',
-  },
-];
-
-function getExploreStorageKey(email = getActiveUserEmail()) {
-  const safe = email ? email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_') : '';
-  return safe ? `risse_email_${safe}_explore_modules` : 'risse_explore_modules';
+function closeUnenrollModals() {
+  showSelfPacedUnenrollModal.value = false;
+  showCurriculumUnenrollModal.value = false;
+  targetUnenrollModule.value = null;
+  unenrollReason.value = '';
 }
 
-function getInitialExplore() {
-  const email = getActiveUserEmail();
-  if (!email) return JSON.parse(JSON.stringify(BASE_EXPLORE_MODULES));
+async function confirmSelfPacedUnenroll() {
+  if (!targetUnenrollModule.value) return;
+  isSubmittingUnenroll.value = true;
+  const mod = targetUnenrollModule.value;
+  const studentId = authStore?.currentUser?.id;
   try {
-    const raw = localStorage.getItem(getExploreStorageKey(email));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    if (studentId && mod.courseId) {
+      await StudentSyncService.unenrollSelfPacedCourse(studentId, mod.courseId);
     }
-  } catch (e) {}
-  return JSON.parse(JSON.stringify(BASE_EXPLORE_MODULES));
+    enrolledList.value = enrolledList.value.filter(e => e.id !== mod.id);
+    if (currentEnrolledPage.value >= totalPages.value) {
+      currentEnrolledPage.value = Math.max(0, totalPages.value - 1);
+    }
+    const modInExplore = modulesList.value.find(m => m.id === mod.id || m.title === mod.title);
+    if (modInExplore) {
+      modInExplore.actionText = 'Enroll';
+      modInExplore.status = 'unregistered';
+      // Preserves historical checkpoint progress in student_module_memory
+    }
+    emit('notify', `Unenrolled from "${mod.title}". Completed checkpoints remain safely saved.`);
+    closeUnenrollModals();
+  } catch (err) {
+    emit('notify', err.message || 'Failed to unenroll.');
+  } finally {
+    isSubmittingUnenroll.value = false;
+  }
 }
 
-const modulesList = ref(getInitialExplore());
-
-watch(modulesList, (val) => {
-  const email = getActiveUserEmail();
-  if (!email) return;
+async function submitCurriculumUnenrollRequest() {
+  if (!targetUnenrollModule.value) return;
+  isSubmittingUnenroll.value = true;
+  const mod = targetUnenrollModule.value;
+  const studentId = authStore?.currentUser?.id;
   try {
-    localStorage.setItem(getExploreStorageKey(email), JSON.stringify(val));
-  } catch (e) {}
-}, { deep: true });
+    const res = await StudentSyncService.requestCurriculumUnenrollment({
+      studentId: studentId || '19e54c4f-d062-42b0-8b08-fc88a7afdbb3',
+      courseId: mod.courseId || String(mod.id),
+      sectionId: mod.sectionId || null,
+      mentorId: mod.mentorId || null,
+      reason: unenrollReason.value.trim(),
+    });
+    if (res.success) {
+      mod.isPendingUnenrollment = true;
+      const targetEnrolled = enrolledList.value.find(e => e.id === mod.id);
+      if (targetEnrolled) targetEnrolled.isPendingUnenrollment = true;
+      const modInExplore = modulesList.value.find(m => m.id === mod.id || m.title === mod.title);
+      if (modInExplore) modInExplore.isPendingUnenrollment = true;
+      emit('notify', `Unenrollment request submitted for "${mod.title}". Awaiting instructor review.`);
+      closeUnenrollModals();
+    } else {
+      emit('notify', res.error || 'Failed to submit unenrollment request.');
+    }
+  } catch (err) {
+    emit('notify', err.message || 'Error submitting unenrollment request.');
+  } finally {
+    isSubmittingUnenroll.value = false;
+  }
+}
+
+// Backward-compatible alias
+const handleUnenroll = promptUnenroll;
+
+const activeCatalogFilter = ref('all'); // 'all' | 'class-courses' | 'foundation'
 
 const displayedModules = computed(() => {
   let list = modulesList.value;
+
+  if (activeCatalogFilter.value === 'class-courses') {
+    list = list.filter(m => m.isClassCourse);
+  } else if (activeCatalogFilter.value === 'foundation') {
+    list = list.filter(m => !m.isClassCourse);
+  }
+
   if (showOnlyFavorites.value) {
     list = list.filter(m => m.isStarred);
   }
@@ -654,33 +894,262 @@ const displayedModules = computed(() => {
   return list;
 });
 
-// Re-sync when authenticated user changes
-watch(() => authStore?.currentUser?.email, () => {
-  enrolledList.value = getInitialEnrolled();
-  modulesList.value = getInitialExplore();
-});
+// Phase 2C & Workflow Repair: Authoritative Database Loader
+async function loadModules() {
+  isLoadingModules.value = true;
+  loadError.value = null;
 
-onMounted(async () => {
-  window.addEventListener('click', closeCardMenu);
+  // 1. Purge any stale localStorage module keys across sessions
   try {
-    const email = getActiveUserEmail();
-    const res = await axios.get('/api/modules', {
-      headers: email ? { 'X-User-Email': email } : {}
-    });
-    if (res.data && Array.isArray(res.data.enrolled)) {
-      const userKey = getEnrolledStorageKey(email);
-      const hasLocal = email && localStorage.getItem(userKey);
-      if (!hasLocal) {
-        enrolledList.value = res.data.enrolled;
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('risse_') && (key.includes('explore_modules') || key.includes('enrolled_modules')))) {
+        keysToRemove.push(key);
       }
     }
-  } catch (e) {
-    // Graceful offline fallback
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (_) {}
+
+  const studentId = authStore?.currentUser?.id;
+
+  try {
+    // 2. Load authoritative platform curriculum modules from Supabase public.curriculum_modules
+    let dbFoundation = [];
+    try {
+      let rawModules = [];
+      const { data, error } = await supabase
+        .from('curriculum_modules')
+        .select('*, curriculum_checkpoints(*)')
+        .order('id', { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        rawModules = data;
+      } else {
+        // Fallback: separate queries joined in memory if FK relationship isn't configured in schema cache
+        const { data: mods } = await supabase
+          .from('curriculum_modules')
+          .select('*')
+          .order('id', { ascending: true });
+        if (Array.isArray(mods) && mods.length > 0) {
+          const { data: cps } = await supabase
+            .from('curriculum_checkpoints')
+            .select('*')
+            .order('step_number', { ascending: true });
+          rawModules = mods.map(m => ({
+            ...m,
+            curriculum_checkpoints: (cps || []).filter(c => String(c.module_id) === String(m.id)),
+          }));
+        }
+      }
+
+      if (Array.isArray(rawModules) && rawModules.length > 0) {
+        dbFoundation = rawModules.map(m => {
+          const cps = (m.curriculum_checkpoints || []).sort((a, b) => (a.step_number || 0) - (b.step_number || 0));
+          const totalSteps = m.total_steps || cps.length || 3;
+          const skills = Array.isArray(m.skills_acquired) ? m.skills_acquired.join(', ') : (m.skills_acquired || 'Robotics Fundamentals');
+          return {
+            id: m.id,
+            title: m.title,
+            level: m.level || 'Beginner',
+            levelColor: m.level_color || 'yellow',
+            steps: `${totalSteps} Learning Steps`,
+            skillsAcquired: skills,
+            badge: m.badge_name || 'Curriculum Scholar',
+            status: 'unregistered',
+            isStarred: false,
+            actionText: 'Enroll',
+            isClassCourse: false,
+            checkpoints: cps.map(c => ({
+              id: c.id,
+              name: c.title,
+              type: c.type || 'concept',
+              description: c.description || '',
+              estimated_minutes: c.estimated_minutes || 30,
+            })),
+          };
+        });
+      }
+    } catch (e) {
+      console.warn('[ModulesPage] Error loading curriculum_modules:', e);
+    }
+
+    foundationCurriculumModules.value = dbFoundation;
+
+    // 3. Load published courses assigned to student's enrolled sections via StudentSyncService
+    let dbClassCourses = [];
+    try {
+      const published = await StudentSyncService.getPublishedModulesForStudent(studentId || '');
+      if (Array.isArray(published)) {
+        dbClassCourses = published.map(p => ({
+          ...p,
+          isClassCourse: true,
+        }));
+      }
+    } catch (err) {
+      console.warn('[ModulesPage] Error loading published class courses:', err);
+    }
+    publishedClassModules.value = dbClassCourses;
+
+    // 4. Combine real database modules
+    const combined = [...dbClassCourses, ...dbFoundation];
+
+    // 5. Fetch student progress from Supabase student_module_memory
+    const progressMap = new Map();
+    if (studentId && isValidUuid(studentId)) {
+      try {
+        const { data: memData } = await supabase
+          .from('student_module_memory')
+          .select('*')
+          .eq('student_id', studentId);
+        if (Array.isArray(memData)) {
+          memData.forEach(r => progressMap.set(String(r.module_id), r));
+        }
+      } catch (_) {}
+    }
+
+    // Enrich combined list with live progress
+    const enrichedList = combined.map(mod => {
+      const prog = progressMap.get(String(mod.id));
+      const progressPercent = prog ? Number(prog.progress_percent) || 0 : (mod.progressPercent || 0);
+      const isCompleted = prog?.status === 'completed' || progressPercent >= 100;
+      const isStarted = progressPercent > 0 || prog?.status === 'in_progress';
+
+      // INVARIANT: For class courses, active enrollment is strictly governed by whether student is currently enrolled
+      // Historical progress is preserved in progressPercent/transcripts, but NEVER fabricates active enrollment
+      const isActivelyEnrolled = mod.isClassCourse ? Boolean(mod.isStudentEnrolled) : (isStarted || isCompleted);
+
+      let actionText = 'Enroll';
+      let status = 'unregistered';
+
+      if (isActivelyEnrolled) {
+        if (isCompleted) {
+          actionText = 'Review';
+          status = 'completed';
+        } else if (isStarted) {
+          actionText = 'Resume';
+          status = 'in_progress';
+        } else {
+          actionText = 'Start';
+          status = 'enrolled';
+        }
+      } else {
+        actionText = 'Enroll';
+        status = 'unregistered';
+      }
+
+      return {
+        ...mod,
+        progressPercent,
+        actionText,
+        status,
+        isStudentEnrolled: isActivelyEnrolled,
+        currentCheckpoint: prog?.current_checkpoint || mod.currentCheckpoint || 'Foundation',
+      };
+    });
+
+    modulesList.value = enrichedList;
+
+    // 6. Populate Currently Enrolled strictly from active enrollment
+    const enrolledFromDb = enrichedList
+      .filter(m => {
+        if (m.isClassCourse) {
+          return Boolean(m.isStudentEnrolled) && (m.status === 'enrolled' || m.actionText === 'Start' || m.status === 'in_progress' || m.status === 'completed');
+        }
+        return m.status === 'enrolled' || m.actionText === 'Start' || m.status === 'in_progress' || m.status === 'completed' || (m.progressPercent || 0) > 0;
+      })
+      .map(edm => {
+        const match = (edm.steps || '').match(/\d+/);
+        const totalSteps = match ? parseInt(match[0]) : (edm.totalSteps || 3);
+        const currentStep = edm.status === 'completed' || edm.progressPercent >= 100
+          ? totalSteps
+          : Math.min(totalSteps, Math.floor(((edm.progressPercent || 0) / 100) * totalSteps));
+        return {
+          id: edm.id,
+          courseId: edm.courseId,
+          title: edm.title,
+          subtitle: `${edm.level} • ${edm.currentCheckpoint || 'Foundation'}`,
+          theme: edm.levelColor || 'yellow',
+          currentStep,
+          totalSteps,
+          progressPercent: edm.progressPercent || 0,
+          badge: edm.badge,
+          isStarred: edm.isStarred,
+          courseTitle: edm.courseTitle,
+          isClassCourse: edm.isClassCourse,
+          enrollmentType: edm.enrollmentType || 'curriculum',
+          isTeacherAssigned: edm.isTeacherAssigned,
+          isPendingUnenrollment: edm.isPendingUnenrollment,
+          pendingRequestId: edm.pendingRequestId,
+          mentorId: edm.mentorId,
+          sectionId: edm.sectionId,
+        };
+      });
+
+    enrolledList.value = enrolledFromDb;
+
+    // 7. Load persistent notifications for student
+    if (studentId) {
+      try {
+        const notifs = await StudentSyncService.getStudentNotifications(studentId);
+        studentNotifications.value = notifs || [];
+      } catch (_) {}
+    }
+
+  } catch (err) {
+    console.error('[ModulesPage] loadModules critical error:', err);
+    loadError.value = 'Failed to load curriculum modules from database. Please check your network and retry.';
+    modulesList.value = [];
+    enrolledList.value = [];
+  } finally {
+    isLoadingModules.value = false;
   }
+}
+
+const loadPublishedModules = loadModules;
+
+// Re-sync when authenticated user changes or auth finishes loading
+watch([() => authStore?.currentUser?.id, () => authStore?.currentUser?.email, () => authStore?.isAuthLoading], () => {
+  loadModules();
+}, { deep: true });
+
+let realtimeChannel = null;
+
+function handleWindowFocus() {
+  loadModules();
+}
+
+onMounted(async () => {
+  window.addEventListener('click', closePopovers);
+  window.addEventListener('focus', handleWindowFocus);
+  await loadModules();
+
+  // Supabase Realtime subscription for instant module catalog synchronization
+  try {
+    realtimeChannel = supabase
+      .channel('modules-catalog-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, () => {
+        loadModules();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'course_sections' }, () => {
+        loadModules();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'section_students' }, () => {
+        loadModules();
+      })
+      .subscribe();
+  } catch (_) {}
 });
 
 onUnmounted(() => {
-  window.removeEventListener('click', closeCardMenu);
+  window.removeEventListener('click', closePopovers);
+  window.removeEventListener('focus', handleWindowFocus);
+  if (realtimeChannel) {
+    try {
+      supabase.removeChannel(realtimeChannel);
+    } catch (_) {}
+    realtimeChannel = null;
+  }
 });
 
 function toggleExpand(id) {
@@ -716,6 +1185,8 @@ function handleSeeAll() {
 async function handleModuleClick(module) {
   if (module.actionText === 'Enroll') {
     module.actionText = 'Start';
+    module.status = 'enrolled';
+
     const existing = enrolledList.value.find(e => e.id === module.id || e.title === module.title);
     if (!existing) {
       const match = (module.steps || '').match(/\d+/);
@@ -723,6 +1194,7 @@ async function handleModuleClick(module) {
       
       const newCard = {
         id: module.id,
+        courseId: module.courseId,
         title: module.title,
         subtitle: `${module.level} • Not Started`,
         theme: module.levelColor || 'yellow',
@@ -731,12 +1203,34 @@ async function handleModuleClick(module) {
         progressPercent: 0,
         currentPath: 'Not Started',
         badge: module.badge,
+        isStarred: module.isStarred,
+        courseTitle: module.courseTitle,
+        isClassCourse: module.isClassCourse,
+        enrollmentType: module.enrollmentType || 'self_paced',
+        isTeacherAssigned: Boolean(module.isTeacherAssigned),
+        isPendingUnenrollment: false,
+        mentorId: module.mentorId,
+        sectionId: module.sectionId,
       };
       
       enrolledList.value.push(newCard);
     }
 
-    emit('notify', `Enrolled in "${module.title}" at 0% progress! Added to Currently Enrolled.`);
+    emit('notify', `Enrolled in "${module.title}"! Added to Currently Enrolled.`);
+
+    const studentId = authStore?.currentUser?.id;
+    if (studentId) {
+      if (module.courseId) {
+        StudentSyncService.enrollSelfPacedCourse(studentId, module.courseId)
+          .catch(err => console.warn('[ModulesPage] enrollSelfPacedCourse note:', err));
+      }
+      StudentSyncService.recordCheckpointProgress(
+        studentId,
+        module.id,
+        'Foundation',
+        0
+      ).catch(err => console.warn('[ModulesPage] Initial enroll sync non-fatal:', err));
+    }
 
     try {
       await axios.post('/api/modules/enroll', { moduleId: module.id });
@@ -745,6 +1239,7 @@ async function handleModuleClick(module) {
     const enrolledObj = enrolledList.value.find(e => e.id === module.id || e.title === module.title);
     const payload = enrolledObj || {
       id: module.id,
+      courseId: module.courseId,
       title: module.title,
       level: module.level,
       currentStep: 0,
@@ -753,6 +1248,9 @@ async function handleModuleClick(module) {
       currentPath: 'Not Started',
       badge: module.badge,
       theme: module.levelColor || 'yellow',
+      checkpoints: module.checkpoints,
+      learningObjectives: module.learningObjectives,
+      enrollmentType: module.enrollmentType,
     };
     emit('open-module', payload);
   }
@@ -1310,6 +1808,75 @@ async function handleModuleClick(module) {
   transform: translateY(-1px);
 }
 
+/* Catalog Filter Bar */
+.catalog-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.filter-pill-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.filter-pill-btn.is-active {
+  background: #fff7ed;
+  color: #ea580c;
+  border-color: #fdba74;
+}
+
+.no-assigned-courses-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 20px;
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.no-assigned-courses-card .empty-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff7ed;
+  color: #ea580c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.no-assigned-courses-card .empty-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 3px 0;
+}
+
+.no-assigned-courses-card .empty-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* Scrollable Explore Container */
 .explore-scroll-container {
   flex: 1;
@@ -1345,63 +1912,167 @@ async function handleModuleClick(module) {
   padding-bottom: 16px;
 }
 
-/* Module Card Item */
+/* Card Badges and Kebab Dropdown Enhancements */
+.card-title-badges-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.badge-pending-pill {
+  align-self: flex-start;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  background: rgba(254, 243, 199, 0.95);
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 9999px;
+}
+
+.dropdown-item-disabled {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  cursor: not-allowed;
+  text-align: left;
+}
+
+/* Module Card Item (Part 1 Overlap & Responsive Fix) */
 .module-card-item {
   background: #ffffff;
-  border: 1px solid #A2A2A2;
+  border: 1px solid #cbd5e1;
   border-radius: 16px;
-  padding: 20px 24px;
-  display: grid;
-  grid-template-columns: 150px 1.2fr 1.6fr auto;
+  padding: 18px 22px;
+  display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 18px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-  margin: 0 30px 16px 30px;
+  margin: 0 20px 14px 20px;
+  box-sizing: border-box;
+  width: calc(100% - 40px);
+  min-height: auto;
+  position: relative;
+  flex-wrap: wrap;
 }
 
 .module-card-item:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  border-color: #94a3b8;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
   transform: translateY(-1px);
 }
 
 .module-thumbnail-box {
-  width: 130px;
+  width: 110px;
   height: 68px;
-  background-color: #d8dde3;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   border-radius: 10px;
   overflow: hidden;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
 }
 
 .thumbnail-inner {
   width: 100%;
   height: 100%;
-  background: #d4d8de;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumb-star-icon {
+  font-size: 22px;
+  color: #f18701;
+  opacity: 0.6;
 }
 
 .module-info-col {
+  flex: 1 1 260px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.module-title-text {
-  font-size: 25px;
-  font-weight: 400;
-  color: #181d24;
-  margin: 0;
-  letter-spacing: -0.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.module-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
 }
 
-.module-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.badge-type-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.pill-assigned {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.pill-self-paced {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.pill-curriculum {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.pill-pending-approval {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.module-title-text {
+  font-size: 17.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.module-course-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f18701;
+  margin: 0;
+}
+
+.module-desc-text {
+  font-size: 12px;
+  color: #64748b;
+  margin: 2px 0 0 0;
+  line-height: 1.45;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .level-pill {
@@ -1413,52 +2084,57 @@ async function handleModuleClick(module) {
   letter-spacing: 0.2px;
 }
 
-.pill-yellow {
-  background: #f59e0b;
-}
-
-.pill-pink {
-  background: #ec4899;
-}
-
-.pill-purple {
-  background: #4338ca;
-}
-
-.steps-text {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: #374151;
-}
+.pill-yellow { background: #f59e0b; }
+.pill-pink { background: #ec4899; }
+.pill-purple { background: #4338ca; }
 
 .module-skills-col {
+  flex: 1 1 200px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .acquired-skills-text {
   font-size: 11.5px;
-  color: #6b7280;
+  color: #475569;
   margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.skills-lead, .badge-lead {
+  color: #1e293b;
+  font-weight: 600;
 }
 
 .badge-target-text {
   font-size: 11.5px;
-  color: #6b7280;
+  color: #64748b;
   margin: 0;
 }
 
+.steps-chip {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-top: 2px;
+}
+
 .module-actions-col {
+  flex: 0 0 auto;
+  min-width: 140px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: center;
   gap: 8px;
-  min-width: 110px;
+  margin-left: auto;
 }
 
 .module-expand-btn {
@@ -1466,7 +2142,7 @@ async function handleModuleClick(module) {
   border: none;
   cursor: pointer;
   color: #6b7280;
-  padding: 2px;
+  padding: 4px;
   display: flex;
   align-items: center;
   transition: transform 0.2s, color 0.2s;
@@ -1474,46 +2150,17 @@ async function handleModuleClick(module) {
 
 .module-expand-btn:hover {
   color: #111827;
-  transform: translateY(1px);
+}
+
+.module-expand-btn.is-expanded {
+  transform: rotate(180deg);
+  color: #f18701;
 }
 
 .actions-bottom-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.btn-favorite-toggle {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #cbd5e1;
-  opacity: 0.25;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, color 0.2s ease;
-}
-
-.module-card-item:hover .btn-favorite-toggle {
-  opacity: 0.65;
-  color: #9ca3af;
-}
-
-.btn-favorite-toggle:hover {
-  opacity: 1 !important;
-  color: #ff7a00 !important;
-  transform: scale(1.22);
-}
-
-.btn-favorite-toggle.is-favorited {
-  opacity: 1 !important;
-  color: #ff7a00 !important;
-}
-
-.btn-favorite-toggle.is-favorited:hover {
-  transform: scale(1.25);
+  gap: 8px;
 }
 
 .btn-enroll-module {
@@ -1521,12 +2168,16 @@ async function handleModuleClick(module) {
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 5px 18px;
+  padding: 7px 18px;
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
-  transition: background-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 84px;
+  text-align: center;
 }
 
 .btn-enroll-module:hover {
@@ -1539,42 +2190,432 @@ async function handleModuleClick(module) {
   background: #F18701;
 }
 
-.no-modules-placeholder {
-  text-align: center;
-  padding: 36px 20px;
+.btn-resume {
+  background: #0284c7;
+}
+
+.btn-resume:hover {
+  background: #0369a1;
+  box-shadow: 0 4px 10px rgba(2, 132, 199, 0.25);
+}
+
+.btn-review {
+  background: #10b981;
+}
+
+.btn-review:hover {
+  background: #059669;
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25);
+}
+
+/* Expanded Drawer */
+.module-drawer-panel {
+  flex: 1 1 100%;
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.drawer-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 10px 0;
+}
+
+.drawer-checkpoints-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.drawer-cp-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.cp-num-pill {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f18701;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cp-detail-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.cp-type-badge {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.cp-desc {
+  font-size: 11.5px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  line-height: 1.35;
+}
+
+.drawer-no-cp {
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
+  margin: 0;
+}
+
+/* Notifications Header Icon & Popover */
+.student-notif-wrapper {
+  position: relative;
+}
+
+.btn-icon-notif {
+  position: relative;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-icon-notif:hover {
+  border-color: #f18701;
+  color: #f18701;
+  background: #fff7ed;
+}
+
+.student-notif-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+}
+
+.student-notif-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 310px;
+  max-height: 380px;
   background: #ffffff;
-  border-radius: 16px;
-  border: 1px dashed #d1d5db;
-  color: #6b7280;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
+  z-index: 120;
+  overflow: hidden;
+}
+
+.student-notif-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
 }
 
-.btn-clear-filter {
-  background: #ff7a00;
-  color: #ffffff;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 9999px;
-  font-size: 12.5px;
-  font-weight: 600;
+.student-notif-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.student-notif-unread-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #ef4444;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.student-notif-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.student-notif-list {
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.student-notif-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.15s ease;
 }
 
-.btn-clear-filter:hover {
+.student-notif-item:hover {
+  background: #f8fafc;
+}
+
+.student-notif-item.is-unread {
+  background: #fffbf5;
+}
+
+.notif-dot-col {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.notif-approved-icon {
+  color: #10b981;
+  font-weight: 800;
+}
+
+.notif-rejected-icon {
+  color: #ef4444;
+  font-weight: 800;
+}
+
+.notif-body-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-headline {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.notif-text {
+  font-size: 11.5px;
+  color: #475569;
+  margin: 0 0 3px 0;
+  line-height: 1.35;
+}
+
+.notif-date {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/* Modals */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-desc {
+  font-size: 13.5px;
+  color: #334155;
+  line-height: 1.5;
+  margin: 0 0 12px 0;
+}
+
+.modal-info-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-modal-cancel {
+  padding: 8px 16px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+}
+
+.btn-modal-danger {
+  padding: 8px 16px;
+  background: #ef4444;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.btn-modal-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-modal-primary {
+  padding: 8px 16px;
+  background: #f18701;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.btn-modal-primary:hover:not(:disabled) {
   background: #ff8c1a;
 }
 
-@media (max-width: 1024px) {
+/* Responsive Media Queries */
+@media (max-width: 960px) {
   .module-card-item {
-    grid-template-columns: 100px 1fr;
+    padding: 16px;
+    gap: 14px;
+    margin: 0 12px 12px 12px;
+    width: calc(100% - 24px);
+  }
+
+  .module-thumbnail-box {
+    width: 90px;
+    height: 60px;
+  }
+
+  .module-info-col {
+    flex: 1 1 calc(100% - 110px);
+  }
+
+  .module-skills-col {
+    flex: 1 1 100%;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 8px;
+  }
+
+  .module-actions-col {
+    flex: 1 1 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 10px;
+    margin-left: 0;
+  }
+
+  .actions-bottom-row {
+    flex: 1;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 640px) {
+  .modules-header {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 12px;
   }
-  .module-skills-col {
-    display: none;
+  .module-card-item {
+    margin: 0 8px 10px 8px;
+    width: calc(100% - 16px);
   }
 }
 
